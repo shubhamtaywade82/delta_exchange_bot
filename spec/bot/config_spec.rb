@@ -112,6 +112,13 @@ RSpec.describe Bot::Config do
     end
   end
 
+  context "with missing symbols key" do
+    it "raises ValidationError (not NoMethodError) when symbols key is absent" do
+      bad = valid_yaml.reject { |k, _| k == "symbols" }
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /symbols/)
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # risk fields
   # ---------------------------------------------------------------------------
@@ -242,6 +249,14 @@ RSpec.describe Bot::Config do
       bad = valid_yaml.dup
       bad["notifications"] = valid_yaml["notifications"].merge("daily_summary_time" => "8:00")
       expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /daily_summary_time must be in HH:MM format/)
+    end
+  end
+
+  context "with invalid daily_summary_time" do
+    it "raises on out-of-range time" do
+      bad = valid_yaml.dup
+      bad["notifications"] = valid_yaml["notifications"].merge("daily_summary_time" => "25:00")
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /daily_summary_time/)
     end
   end
 

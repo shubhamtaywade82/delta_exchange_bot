@@ -27,7 +27,7 @@ module Bot
     def live?              = mode == "live"
 
     def symbols
-      @symbols ||= @raw["symbols"].map { |s| { symbol: s["symbol"], leverage: s["leverage"] } }
+      @symbols ||= (@raw["symbols"] || []).map { |s| { symbol: s["symbol"], leverage: s["leverage"] } }
     end
 
     def symbol_names       = symbols.map { |s| s[:symbol] }
@@ -145,7 +145,7 @@ module Bot
         error("telegram.chat_id must not be blank when telegram is enabled") if telegram_chat_id.to_s.strip.empty?
       end
 
-      if daily_summary_time && !/\A\d{2}:\d{2}\z/.match?(daily_summary_time)
+      if daily_summary_time && !/\A([01]\d|2[0-3]):[0-5]\d\z/.match?(daily_summary_time)
         error("daily_summary_time must be in HH:MM format")
       end
 
