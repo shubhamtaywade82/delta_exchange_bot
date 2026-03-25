@@ -61,6 +61,52 @@ RSpec.describe Bot::Execution::PositionTracker do
     end
   end
 
+  describe "SHORT position" do
+    let(:short_position) do
+      {
+        symbol:      "ETHUSDT",
+        side:        :short,
+        lots:        10,
+        entry_price: 3_000.0,
+        leverage:    10,
+        trail_pct:   2.0,
+        entry_time:  Time.now.utc
+      }
+    end
+
+    before { tracker.open(short_position) }
+
+    it "sets stop_price above entry on open" do
+      pos = tracker.get("ETHUSDT")
+      expect(pos[:stop_price]).to eq(3_000.0 * (1.0 + 0.02))
+    end
+
+    it "lowers peak and raises stop when ltp drops (favourable for short)" do
+      tracker.update_trailing_stop("ETHUSDT", 2_800.0)
+      pos = tracker.get("ETHUSDT")
+      expect(pos[:peak_price]).to eq(2_800.0)
+      expect(pos[:stop_price]).to be_within(0.01).of(2_800.0 * 1.02)
+    end
+
+    it "does not raise peak when ltp rises (unfavourable for short)" do
+      tracker.update_trailing_stop("ETHUSDT", 2_800.0)
+      tracker.update_trailing_stop("ETHUSDT", 3_100.0)
+      pos = tracker.get("ETHUSDT")
+      expect(pos[:peak_price]).to eq(2_800.0)
+    end
+
+    it "returns :exit when ltp rises to or above stop_price" do
+      tracker.update_trailing_stop("ETHUSDT", 2_800.0)
+      result = tracker.update_trailing_stop("ETHUSDT", 2_856.0)
+      expect(result).to eq(:exit)
+    end
+
+    it "returns nil when ltp is below stop_price" do
+      result = tracker.update_trailing_stop("ETHUSDT", 2_950.0)
+      expect(result).to be_nil
+    end
+  end
+
   describe "#close" do
     it "removes the position" do
       tracker.open(position)

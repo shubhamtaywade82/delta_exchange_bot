@@ -9,19 +9,22 @@ module Bot
       end
 
       def open(attrs)
-        symbol    = attrs[:symbol]
-        trail_pct = attrs[:trail_pct] / 100.0
-        entry     = attrs[:entry_price].to_f
-        side      = attrs[:side]
-
-        stop = if side == :long
-                 entry * (1.0 - trail_pct)
-               else
-                 entry * (1.0 + trail_pct)
-               end
-
         @mutex.synchronize do
-          @positions[symbol] = attrs.merge(peak_price: entry, stop_price: stop)
+          trail_pct = attrs.fetch(:trail_pct).to_f / 100.0
+          entry     = attrs.fetch(:entry_price).to_f
+          side      = attrs.fetch(:side)
+          stop      = side == :long ? entry * (1.0 - trail_pct) : entry * (1.0 + trail_pct)
+
+          @positions[attrs.fetch(:symbol)] = {
+            symbol:     attrs.fetch(:symbol),
+            side:       side,
+            entry:      entry,
+            lots:       attrs.fetch(:lots),
+            trail_pct:  attrs.fetch(:trail_pct).to_f,
+            peak_price: entry,
+            stop_price: stop,
+            entry_time: Time.now
+          }
         end
       end
 
