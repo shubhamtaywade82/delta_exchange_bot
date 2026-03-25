@@ -15,6 +15,7 @@ module Bot
 
       def start
         @client = DeltaExchange::Websocket::Client.new(testnet: @testnet)
+        queue   = Queue.new
 
         @client.on(:open) do
           @logger.info("ws_connected")
@@ -32,15 +33,20 @@ module Bot
           @logger.debug("ltp_update", symbol: symbol, price: price)
         end
 
-        @client.on(:close) do
-          @logger.warn("ws_disconnected")
+        @client.on(:close) do |event|
+          @logger.warn("ws_disconnected", code: event.code, reason: event.reason)
+          @client.close
+          queue.push(:closed)
         end
 
         @client.on(:error) do |err|
           @logger.error("ws_error", message: err.to_s)
+          @client.close
+          queue.push(:error)
         end
 
         @client.connect!
+        queue.pop # Block until closed or error
       end
 
       def stop
