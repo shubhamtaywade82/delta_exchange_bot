@@ -130,26 +130,27 @@ module Bot
     end
 
     def reconcile_open_positions
-      api_positions = DeltaExchange::Models::Position.all
       adopted = 0
 
-      api_positions.each do |pos|
-        symbol = @product_cache.symbol_for(pos.product_id)
-        next unless symbol && @config.symbol_names.include?(symbol)
+      @config.symbol_names.each do |symbol|
+        product_id = @product_cache.product_id_for(symbol)
+        pos = DeltaExchange::Models::Position.find(product_id)
+        next unless pos && pos.size.to_i > 0
 
-        mark     = pos.mark_price.to_f
         side     = pos.side == "buy" ? :long : :short
         leverage = @config.leverage_for(symbol)
 
         @position_tracker.open(
-          symbol:       symbol,
-          side:         side,
-          lots:         pos.size.to_i,
-          entry_price:  mark,
-          leverage:     leverage,
-          trail_pct:    @config.trailing_stop_pct
+          symbol:      symbol,
+          side:        side,
+          lots:        pos.size.to_i,
+          entry_price: pos.entry_price.to_f,
+          leverage:    leverage,
+          trail_pct:   @config.trailing_stop_pct
         )
         adopted += 1
+      rescue StandardError => e
+        @logger.warn("reconcile_failed", symbol: symbol, message: e.message)
       end
 
       return unless adopted.positive?
