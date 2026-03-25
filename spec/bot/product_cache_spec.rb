@@ -30,4 +30,18 @@ RSpec.describe Bot::ProductCache do
       described_class.new(symbols: %w[BTCUSDT UNKNOWN], products: products)
     }.to raise_error(Bot::ProductCache::MissingProductError, /UNKNOWN/)
   end
+
+  it "raises MissingProductError (not KeyError) for unknown symbol lookup" do
+    expect { cache.product_id_for("UNKNOWN") }.to raise_error(Bot::ProductCache::MissingProductError)
+  end
+
+  it "returns nil for symbol_for with unconfigured product_id" do
+    expect(cache.symbol_for(999)).to be_nil
+  end
+
+  it "knows about configured product_ids" do
+    expect(cache.known_product_id?(1)).to be(true)
+    expect(cache.known_product_id?(2)).to be(true)
+    expect(cache.known_product_id?(999)).to be(false)
+  end
 end

@@ -17,9 +17,18 @@ module Bot
       end
     end
 
-    def product_id_for(symbol)     = @forward.fetch(symbol)[:product_id]
-    def contract_value_for(symbol) = @forward.fetch(symbol)[:contract_value]
+    def product_id_for(symbol)
+      @forward.fetch(symbol) { raise MissingProductError, "Unknown symbol: #{symbol}" }[:product_id]
+    end
+
+    def contract_value_for(symbol)
+      @forward.fetch(symbol) { raise MissingProductError, "Unknown symbol: #{symbol}" }[:contract_value]
+    end
+
     def symbol_for(product_id)     = @inverse[product_id]
+
     def known_symbol?(symbol)      = @forward.key?(symbol)
+
+    def known_product_id?(product_id) = @inverse.key?(product_id)
   end
 end
