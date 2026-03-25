@@ -9,9 +9,13 @@ module Bot
       LEVELS = %w[debug info warn error].freeze
 
       def initialize(file:, level: "info")
-        @file = file
-        @min_level = LEVELS.index(level.to_s) || 1
-        FileUtils.mkdir_p(File.dirname(@file))
+        raise ArgumentError, "Unknown log level: #{level}" unless LEVELS.include?(level.to_s)
+
+        @min_level = LEVELS.index(level.to_s)
+        @mutex     = Mutex.new
+        FileUtils.mkdir_p(File.dirname(file))
+        @io = File.open(file, "a")
+        @io.sync = true  # flush immediately on each write
       end
 
       def debug(event, **payload) = log("debug", event, payload)
@@ -19,13 +23,17 @@ module Bot
       def warn(event, **payload)  = log("warn",  event, payload)
       def error(event, **payload) = log("error", event, payload)
 
+      def close
+        @mutex.synchronize { @io.close }
+      end
+
       private
 
       def log(level, event, payload)
         return if LEVELS.index(level) < @min_level
 
         entry = { ts: Time.now.utc.iso8601, level: level, event: event }.merge(payload)
-        File.open(@file, "a") { |f| f.puts(entry.to_json) }
+        @mutex.synchronize { @io.write("#{entry.to_json}\n") }
       end
     end
   end

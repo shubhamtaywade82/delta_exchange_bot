@@ -5,10 +5,11 @@ require "telegram/bot"
 module Bot
   module Notifications
     class TelegramNotifier
-      def initialize(enabled:, token:, chat_id:)
+      def initialize(enabled:, token:, chat_id:, logger: nil)
         @enabled = enabled
         @token   = token
         @chat_id = chat_id.to_s
+        @logger  = logger
       end
 
       def send_message(text)
@@ -16,7 +17,11 @@ module Bot
 
         client.api.send_message(chat_id: @chat_id, text: text, parse_mode: "HTML")
       rescue StandardError => e
-        warn "[TelegramNotifier] Failed to send: #{e.message}"
+        if @logger
+          @logger.error("telegram_send_failed", message: e.message)
+        else
+          $stderr.puts("[TelegramNotifier] Failed to send: #{e.message}")
+        end
       end
 
       private
