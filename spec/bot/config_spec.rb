@@ -42,6 +42,10 @@ RSpec.describe Bot::Config do
     expect(config.symbols).to eq([{ symbol: "BTCUSDT", leverage: 10 }])
   end
 
+  it "memoizes symbols" do
+    expect(config.symbols).to be(config.symbols)
+  end
+
   it "exposes supertrend config" do
     expect(config.supertrend_atr_period).to eq(10)
     expect(config.supertrend_multiplier).to eq(3.0)
@@ -58,6 +62,10 @@ RSpec.describe Bot::Config do
     expect(config.usd_to_inr_rate).to eq(85.0)
   end
 
+  it "exposes max_margin_per_position_pct" do
+    expect(config.max_margin_per_position_pct).to eq(40.0)
+  end
+
   it "exposes timeframes" do
     expect(config.timeframe_trend).to eq("60")
     expect(config.timeframe_confirm).to eq("15")
@@ -68,12 +76,45 @@ RSpec.describe Bot::Config do
     expect(config.leverage_for("BTCUSDT")).to eq(10)
   end
 
+  # ---------------------------------------------------------------------------
+  # mode
+  # ---------------------------------------------------------------------------
+
   context "with invalid mode" do
     it "raises on invalid mode" do
       bad = valid_yaml.merge("mode" => "invalid")
       expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /mode/)
     end
   end
+
+  context "with missing mode key" do
+    it "raises ValidationError (not KeyError)" do
+      bad = valid_yaml.reject { |k, _| k == "mode" }
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /mode is required/)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # symbols
+  # ---------------------------------------------------------------------------
+
+  context "with empty symbols" do
+    it "raises on empty symbols list" do
+      bad = valid_yaml.merge("symbols" => [])
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /symbols/)
+    end
+  end
+
+  context "with a blank symbol name" do
+    it "raises" do
+      bad = valid_yaml.merge("symbols" => [{ "symbol" => "  ", "leverage" => 10 }])
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /symbol name must not be blank/)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # risk fields
+  # ---------------------------------------------------------------------------
 
   context "with out-of-range risk_per_trade_pct" do
     it "raises when > 10" do
@@ -83,10 +124,146 @@ RSpec.describe Bot::Config do
     end
   end
 
-  context "with empty symbols" do
-    it "raises on empty symbols list" do
-      bad = valid_yaml.merge("symbols" => [])
-      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /symbols/)
+  context "with out-of-range max_margin_per_position_pct" do
+    it "raises when < 5.0" do
+      bad = valid_yaml.dup
+      bad["risk"] = valid_yaml["risk"].merge("max_margin_per_position_pct" => 3)
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /max_margin_per_position_pct/)
+    end
+
+    it "raises when > 100.0" do
+      bad = valid_yaml.dup
+      bad["risk"] = valid_yaml["risk"].merge("max_margin_per_position_pct" => 110)
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /max_margin_per_position_pct/)
+    end
+  end
+
+  context "with usd_to_inr_rate at zero" do
+    it "raises" do
+      bad = valid_yaml.dup
+      bad["risk"] = valid_yaml["risk"].merge("usd_to_inr_rate" => 0)
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /usd_to_inr_rate/)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # strategy fields
+  # ---------------------------------------------------------------------------
+
+  context "with out-of-range trailing_stop_pct" do
+    it "raises when > 20" do
+      bad = valid_yaml.dup
+      bad["strategy"] = valid_yaml["strategy"].merge("trailing_stop_pct" => 25)
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /trailing_stop_pct/)
+    end
+
+    it "raises when < 0.1" do
+      bad = valid_yaml.dup
+      bad["strategy"] = valid_yaml["strategy"].merge("trailing_stop_pct" => 0.0)
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /trailing_stop_pct/)
+    end
+  end
+
+  context "with out-of-range supertrend_atr_period" do
+    it "raises when > 50" do
+      bad = valid_yaml.dup
+      bad["strategy"] = valid_yaml["strategy"].merge(
+        "supertrend" => { "atr_period" => 55, "multiplier" => 3.0 }
+      )
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /atr_period/)
+    end
+
+    it "raises when missing (nil coercion prevented)" do
+      bad = valid_yaml.dup
+      bad["strategy"] = valid_yaml["strategy"].merge(
+        "supertrend" => { "multiplier" => 3.0 }
+      )
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /strategy\.supertrend\.atr_period is required/)
+    end
+  end
+
+  context "with out-of-range adx_period" do
+    it "raises when > 50" do
+      bad = valid_yaml.dup
+      bad["strategy"] = valid_yaml["strategy"].merge(
+        "adx" => { "period" => 60, "threshold" => 25 }
+      )
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /adx\.period/)
+    end
+  end
+
+  context "with min_candles_required > candles_lookback" do
+    it "raises" do
+      bad = valid_yaml.dup
+      bad["strategy"] = valid_yaml["strategy"].merge(
+        "min_candles_required" => 150,
+        "candles_lookback" => 100
+      )
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /min_candles_required must be <= candles_lookback/)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # telegram
+  # ---------------------------------------------------------------------------
+
+  context "with telegram enabled but blank token" do
+    it "raises" do
+      bad = valid_yaml.dup
+      bad["notifications"] = valid_yaml["notifications"].merge(
+        "telegram" => { "enabled" => true, "bot_token" => "", "chat_id" => "12345" }
+      )
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /telegram\.bot_token must not be blank/)
+    end
+  end
+
+  context "with telegram enabled but blank chat_id" do
+    it "raises" do
+      bad = valid_yaml.dup
+      bad["notifications"] = valid_yaml["notifications"].merge(
+        "telegram" => { "enabled" => true, "bot_token" => "tok123", "chat_id" => "" }
+      )
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /telegram\.chat_id must not be blank/)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # daily_summary_time
+  # ---------------------------------------------------------------------------
+
+  context "with invalid daily_summary_time format" do
+    it "raises on non-HH:MM format" do
+      bad = valid_yaml.dup
+      bad["notifications"] = valid_yaml["notifications"].merge("daily_summary_time" => "6pm")
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /daily_summary_time must be in HH:MM format/)
+    end
+
+    it "raises on single-digit hour" do
+      bad = valid_yaml.dup
+      bad["notifications"] = valid_yaml["notifications"].merge("daily_summary_time" => "8:00")
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /daily_summary_time must be in HH:MM format/)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # log_level
+  # ---------------------------------------------------------------------------
+
+  context "with invalid log_level" do
+    it "raises" do
+      bad = valid_yaml.dup
+      bad["logging"] = { "level" => "verbose", "file" => "logs/bot.log" }
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /log_level must be one of/)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # leverage_for sad path
+  # ---------------------------------------------------------------------------
+
+  context "leverage_for with unknown symbol" do
+    it "raises ArgumentError" do
+      expect { config.leverage_for("UNKNOWN") }.to raise_error(ArgumentError, /Unknown symbol/)
     end
   end
 end
