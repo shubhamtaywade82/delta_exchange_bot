@@ -8,5 +8,10 @@ $LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
 
 require "bot/runner"
 
-config = Bot::Config.load
-Bot::Runner.new(config: config).start
+begin
+  config = Bot::Config.load
+  Bot::Runner.new(config: config).start
+rescue => e
+  warn "Fatal startup error: #{e.message}"
+  exit 1
+end

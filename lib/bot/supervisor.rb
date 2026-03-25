@@ -43,7 +43,8 @@ module Bot
       @threads[name][:thread] = Thread.new do
         @threads[name][:block].call
       rescue StandardError => e
-        @logger.error("thread_crashed", thread: name.to_s, message: e.message)
+        @logger.error("thread_crashed", thread: name.to_s, message: e.message,
+                      backtrace: e.backtrace&.first(5)&.join(" | "))
       end
     end
 
@@ -63,14 +64,14 @@ module Bot
         exit 1
       end
 
-      backoff = BACKOFF_SEQUENCE[[meta[:crashes].size - 2, BACKOFF_SEQUENCE.size - 1].max]
+      backoff = BACKOFF_SEQUENCE[[[meta[:crashes].size - 2, 0].max, BACKOFF_SEQUENCE.size - 1].min]
       attempt = meta[:crashes].size
 
       @logger.warn("thread_restarting", thread: name.to_s, backoff: backoff, attempt: attempt)
       @notifier.send_message("⚠️ #{name} crashed. Restarting in #{backoff}s... (attempt #{attempt}/#{MAX_CRASHES})")
 
       sleep backoff
-      spawn_thread(name)
+      spawn_thread(name) unless @stop
     end
   end
 end
