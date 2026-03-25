@@ -106,7 +106,7 @@ At startup, before any threads are spawned, the bot fetches all configured symbo
 symbol → { product_id: Integer, contract_value: Float, contract_type: String }
 ```
 
-This cache is used by `OrderManager` (needs `product_id` for order placement) and `RiskCalculator` (needs `contract_value` for lot sizing). If any configured symbol cannot be resolved at startup, the bot logs an error, sends a Telegram alert, and exits rather than starting with a broken config.
+This cache is used by `OrderManager` (needs `product_id` for order placement) and `RiskCalculator` (needs `contract_value` for lot sizing). The cache builds **both** a forward index (`symbol → attrs`) and an inverse index (`product_id → symbol`) at startup so that restart reconciliation can map `Position.product_id` back to a symbol string efficiently. If any configured symbol cannot be resolved at startup, the bot logs an error, sends a Telegram alert, and exits rather than starting with a broken config.
 
 ---
 
@@ -298,6 +298,7 @@ Delta Exchange uses **integer contract lots** for `size` in orders (not fraction
 
 ```
 # Capital
+# WalletBalance.find_by_asset calls .all and finds by asset_symbol — confirmed present in gem
 available_usdt  = WalletBalance.find_by_asset('USDT').available_balance  # use available_balance, not balance
 capital_inr     = available_usdt × usd_to_inr_rate
 
@@ -363,7 +364,7 @@ Mode is set via `config/bot.yml` `mode:` key or `BOT_MODE` env var (env var take
 Trade opened (LONG):
   🟢 LONG BTCUSDT opened
   Entry: $45,000 (₹38,25,000) | 44 lots (~0.044 BTC)
-  Leverage: 10x | Margin: ₹37,740 ($444)
+  Leverage: 10x | Margin: ₹16,830 ($198)
   Risk: ₹637 | Trail Stop: $44,325 (₹37,67,625)
   [DRY RUN] appended if mode is dry_run
 
