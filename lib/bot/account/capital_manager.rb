@@ -5,6 +5,8 @@ require "delta_exchange"
 module Bot
   module Account
     class CapitalManager
+      attr_reader :usd_to_inr_rate
+
       def initialize(usd_to_inr_rate:)
         @usd_to_inr_rate = usd_to_inr_rate
       end

@@ -52,8 +52,7 @@ module Bot
           lots: lots,
           entry_price: fill_price,
           leverage: leverage,
-          trail_pct: @config.trailing_stop_pct,
-          entry_time: Time.now.utc
+          trail_pct: @config.trailing_stop_pct
         )
 
         @logger.info("trade_opened", symbol: symbol, side: signal.side, entry_usd: fill_price,
@@ -73,7 +72,17 @@ module Bot
         pos = @position_tracker.get(symbol)
         return unless pos
 
-        place_close_order(symbol, pos[:side], pos[:lots]) unless @config.dry_run?
+        unless @config.dry_run?
+          begin
+            place_close_order(symbol, pos[:side], pos[:lots])
+          rescue DeltaExchange::RateLimitError => e
+            @logger.warn("close_rate_limited", symbol: symbol, retry_after: e.retry_after_seconds)
+            return nil
+          rescue DeltaExchange::ApiError => e
+            @logger.error("close_failed", symbol: symbol, message: e.message)
+            return nil
+          end
+        end
 
         @position_tracker.close(symbol)
 
@@ -138,9 +147,10 @@ module Bot
       def trade_closed_message(symbol, exit_price, pnl_usd, duration_secs, reason)
         hours   = duration_secs / 3600
         minutes = (duration_secs % 3600) / 60
-        pnl_inr = (pnl_usd * 85).round(0)
+        pnl_inr = (pnl_usd * @capital_manager.usd_to_inr_rate).round(0)
         sign    = pnl_usd >= 0 ? "+" : ""
-        "🔴 #{symbol} closed — #{reason}\nExit: $#{format('%.2f', exit_price)}\nPnL: #{sign}$#{format('%.2f', pnl_usd)} (#{sign}₹#{pnl_inr})\nDuration: #{hours}h #{minutes}m"
+        emoji   = pnl_usd >= 0 ? "🟢" : "🔴"
+        "#{emoji} #{symbol} closed — #{reason}\nExit: $#{format('%.2f', exit_price)}\nPnL: #{sign}$#{format('%.2f', pnl_usd)} (#{sign}₹#{pnl_inr})\nDuration: #{hours}h #{minutes}m"
       end
     end
   end

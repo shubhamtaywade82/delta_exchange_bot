@@ -15,7 +15,7 @@ RSpec.describe Bot::Execution::OrderManager do
 
   let(:position_tracker) { Bot::Execution::PositionTracker.new }
   let(:risk_calculator)  { double("RiskCalculator", compute: 44) }
-  let(:capital_manager)  { double("CapitalManager", available_usdt: 500.0) }
+  let(:capital_manager)  { double("CapitalManager", available_usdt: 500.0, usd_to_inr_rate: 85.0) }
   let(:logger)           { double("Logger", info: nil, warn: nil, error: nil) }
   let(:notifier)         { double("TelegramNotifier", send_message: nil) }
 
@@ -73,9 +73,20 @@ RSpec.describe Bot::Execution::OrderManager do
       expect(position_tracker.open?("BTCUSDT")).to be(false)
     end
 
-    it "sends Telegram notification on close" do
-      expect(notifier).to receive(:send_message).with(a_string_including("BTCUSDT"))
+    it "does not call Order.create in dry-run mode" do
+      expect(DeltaExchange::Models::Order).not_to receive(:create)
       manager.close_position("BTCUSDT", exit_price: 45_500.0, reason: :trail_stop)
+    end
+
+    it "sends Telegram notification including USD and INR PnL" do
+      expect(notifier).to receive(:send_message).with(
+        a_string_including("BTCUSDT").and(a_string_including("$")).and(a_string_including("₹"))
+      )
+      manager.close_position("BTCUSDT", exit_price: 45_500.0, reason: :trail_stop)
+    end
+
+    it "returns nil without error when symbol has no open position" do
+      expect(manager.close_position("NONEXISTENT", exit_price: 100.0, reason: :trail_stop)).to be_nil
     end
   end
 end
