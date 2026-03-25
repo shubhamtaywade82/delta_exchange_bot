@@ -75,11 +75,11 @@ module Bot
         return [] unless raw.is_a?(Array)
 
         raw.map do |c|
-          { open:      c[:open]      || c["open"].to_f,
-            high:      c[:high]      || c["high"].to_f,
-            low:       c[:low]       || c["low"].to_f,
-            close:     c[:close]     || c["close"].to_f,
-            timestamp: c[:timestamp] || c["timestamp"] || c["time"].to_i }
+          { open:      (c[:open]      || c["open"])&.to_f      || raise("missing open in candle"),
+            high:      (c[:high]      || c["high"])&.to_f      || raise("missing high in candle"),
+            low:       (c[:low]       || c["low"])&.to_f       || raise("missing low in candle"),
+            close:     (c[:close]     || c["close"])&.to_f     || raise("missing close in candle"),
+            timestamp: (c[:timestamp] || c["timestamp"] || c["time"])&.to_i || raise("missing timestamp in candle") }
         end
       rescue StandardError => e
         @logger.error("candle_fetch_failed", symbol: symbol, resolution: resolution, message: e.message)
