@@ -10,20 +10,21 @@ module Bot
 
       def open(attrs)
         @mutex.synchronize do
+          symbol    = attrs.fetch(:symbol)
           trail_pct = attrs.fetch(:trail_pct).to_f / 100.0
           entry     = attrs.fetch(:entry_price).to_f
           side      = attrs.fetch(:side)
           stop      = side == :long ? entry * (1.0 - trail_pct) : entry * (1.0 + trail_pct)
 
-          @positions[attrs.fetch(:symbol)] = {
-            symbol:     attrs.fetch(:symbol),
+          @positions[symbol] = {
+            symbol:     symbol,
             side:       side,
             entry:      entry,
             lots:       attrs.fetch(:lots),
             trail_pct:  attrs.fetch(:trail_pct).to_f,
             peak_price: entry,
             stop_price: stop,
-            entry_time: Time.now
+            entry_time: Time.now.utc
           }
         end
       end
