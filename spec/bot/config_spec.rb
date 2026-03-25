@@ -22,7 +22,7 @@ RSpec.describe Bot::Config do
         "usd_to_inr_rate" => 85.0
       },
       "symbols" => [
-        { "symbol" => "BTCUSDT", "leverage" => 10 }
+        { "symbol" => "BTCUSD", "leverage" => 10 }
       ],
       "notifications" => {
         "telegram" => { "enabled" => false, "bot_token" => "", "chat_id" => "" },
@@ -39,7 +39,7 @@ RSpec.describe Bot::Config do
   end
 
   it "exposes symbols with leverage" do
-    expect(config.symbols).to eq([{ symbol: "BTCUSDT", leverage: 10 }])
+    expect(config.symbols).to eq([{ symbol: "BTCUSD", leverage: 10 }])
   end
 
   it "memoizes symbols" do
@@ -73,7 +73,7 @@ RSpec.describe Bot::Config do
   end
 
   it "exposes leverage for a symbol" do
-    expect(config.leverage_for("BTCUSDT")).to eq(10)
+    expect(config.leverage_for("BTCUSD")).to eq(10)
   end
 
   # ---------------------------------------------------------------------------

@@ -13,7 +13,7 @@ A standalone Ruby automated futures trading bot for Delta Exchange India. Trades
 
 ## Goals
 
-- Trade multiple crypto perpetual futures (BTCUSDT, ETHUSDT, SOLUSDT, etc.) automatically
+- Trade multiple crypto perpetual futures (BTCUSD, ETHUSD, SOLUSD, etc.) automatically
 - Use MTF confluence (1H trend → 15M confirm → 5M entry) for high-confidence signals
 - Risk-based position sizing using available capital and configured leverage
 - Percentage-based trailing stop exits
@@ -77,12 +77,12 @@ delta_exchange_bot/
 
 Four threads managed by the Supervisor:
 
-| Thread | Responsibility | Restart on crash |
-|---|---|---|
-| WebSocket thread | Streams LTP ticks via EventMachine → updates PriceStore | Yes |
-| Strategy thread | Runs every 5 minutes — fetches OHLCV via REST, evaluates MTF signals, triggers orders | Yes |
-| Trailing stop thread | Polls PriceStore every 15s — updates peak price, triggers exit if stop hit | Yes |
-| Main / Supervisor | Monitors all threads, handles SIGINT/SIGTERM gracefully | N/A |
+| Thread               | Responsibility                                                                        | Restart on crash |
+| -------------------- | ------------------------------------------------------------------------------------- | ---------------- |
+| WebSocket thread     | Streams LTP ticks via EventMachine → updates PriceStore                               | Yes              |
+| Strategy thread      | Runs every 5 minutes — fetches OHLCV via REST, evaluates MTF signals, triggers orders | Yes              |
+| Trailing stop thread | Polls PriceStore every 15s — updates peak price, triggers exit if stop hit            | Yes              |
+| Main / Supervisor    | Monitors all threads, handles SIGINT/SIGTERM gracefully                               | N/A              |
 
 **Thread safety:**
 - `PriceStore` — protected by a `Mutex`; written by WebSocket thread, read by Trailing Stop thread
@@ -137,11 +137,11 @@ risk:
   usd_to_inr_rate: 85.0             # fallback rate
 
 symbols:
-  - symbol: BTCUSDT
+  - symbol: BTCUSD
     leverage: 10
-  - symbol: ETHUSDT
+  - symbol: ETHUSD
     leverage: 15
-  - symbol: SOLUSDT
+  - symbol: SOLUSD
     leverage: 20
 
 notifications:
@@ -160,22 +160,22 @@ logging:
 
 Required fields and valid ranges enforced at startup — bot exits on invalid config:
 
-| Field | Type | Valid values |
-|---|---|---|
-| `mode` | String | `dry_run`, `testnet`, `live` |
-| `strategy.supertrend.atr_period` | Integer | 1–50 |
-| `strategy.supertrend.multiplier` | Float | 0.5–10.0 |
-| `strategy.adx.period` | Integer | 1–50 |
-| `strategy.adx.threshold` | Integer | 10–50 |
-| `strategy.trailing_stop_pct` | Float | 0.1–20.0 |
-| `strategy.candles_lookback` | Integer | 50–500 |
-| `strategy.min_candles_required` | Integer | >= atr_period + adx_period |
-| `risk.risk_per_trade_pct` | Float | 0.1–10.0 |
-| `risk.max_concurrent_positions` | Integer | 1–20 |
-| `risk.max_margin_per_position_pct` | Float | 5–100 |
-| `risk.usd_to_inr_rate` | Float | > 0 |
-| `symbols` | Array | non-empty, each has `symbol` (String) and `leverage` (Integer 1–200) |
-| `notifications.daily_summary_time` | String | HH:MM format |
+| Field                              | Type    | Valid values                                                         |
+| ---------------------------------- | ------- | -------------------------------------------------------------------- |
+| `mode`                             | String  | `dry_run`, `testnet`, `live`                                         |
+| `strategy.supertrend.atr_period`   | Integer | 1–50                                                                 |
+| `strategy.supertrend.multiplier`   | Float   | 0.5–10.0                                                             |
+| `strategy.adx.period`              | Integer | 1–50                                                                 |
+| `strategy.adx.threshold`           | Integer | 10–50                                                                |
+| `strategy.trailing_stop_pct`       | Float   | 0.1–20.0                                                             |
+| `strategy.candles_lookback`        | Integer | 50–500                                                               |
+| `strategy.min_candles_required`    | Integer | >= atr_period + adx_period                                           |
+| `risk.risk_per_trade_pct`          | Float   | 0.1–10.0                                                             |
+| `risk.max_concurrent_positions`    | Integer | 1–20                                                                 |
+| `risk.max_margin_per_position_pct` | Float   | 5–100                                                                |
+| `risk.usd_to_inr_rate`             | Float   | > 0                                                                  |
+| `symbols`                          | Array   | non-empty, each has `symbol` (String) and `leverage` (Integer 1–200) |
+| `notifications.daily_summary_time` | String  | HH:MM format                                                         |
 
 ---
 
@@ -294,7 +294,7 @@ Default: trail_pct = 1.5%
 
 ## Risk & Position Sizing
 
-Delta Exchange uses **integer contract lots** for `size` in orders (not fractional BTC). Each product has a `contract_value` (e.g. 0.001 BTC per lot for BTCUSDT). All sizing is computed in lots.
+Delta Exchange uses **integer contract lots** for `size` in orders (not fractional BTC). Each product has a `contract_value` (e.g. 0.001 BTC per lot for BTCUSD). All sizing is computed in lots.
 
 ```
 # Capital
@@ -321,7 +321,7 @@ final_lots      = leveraged_lots.floor                      # Integer, no partia
 - Concurrent positions >= `max_concurrent_positions` → skip
 - Symbol already has open position → skip
 
-**Example (BTCUSDT, $45,000, 10x leverage, 1.5% risk, 1.5% trail, contract_value=0.001 BTC):**
+**Example (BTCUSD, $45,000, 10x leverage, 1.5% risk, 1.5% trail, contract_value=0.001 BTC):**
 ```
 available_usdt = 500
 capital_inr    = 500 × 85  = ₹42,500
@@ -337,18 +337,18 @@ Notional = 111 × 0.001 × $45,000 = $4,995
 Margin   = $4,995 / 10            = $499.5  (within 40% cap: 500 × 40% = $200 → cap applies)
 Capped   = floor(200 × 10 / (0.001 × 45000)) = floor(200/4.5) = 44 lots
 
-Telegram: "Opened LONG BTCUSDT | 44 lots | ~0.044 BTC | Entry: $45,000 (₹38,25,000)"
+Telegram: "Opened LONG BTCUSD | 44 lots | ~0.044 BTC | Entry: $45,000 (₹38,25,000)"
 ```
 
 ---
 
 ## Execution Modes
 
-| Mode | Order placement | Candle fetch | WebSocket LTP |
-|---|---|---|---|
+| Mode      | Order placement                 | Candle fetch           | WebSocket LTP               |
+| --------- | ------------------------------- | ---------------------- | --------------------------- |
 | `dry_run` | Simulated locally, no API calls | Real REST (production) | Real WebSocket (production) |
-| `testnet` | Delta Exchange testnet API | Testnet REST | Testnet WebSocket |
-| `live` | Delta Exchange production API | Production REST | Production WebSocket |
+| `testnet` | Delta Exchange testnet API      | Testnet REST           | Testnet WebSocket           |
+| `live`    | Delta Exchange production API   | Production REST        | Production WebSocket        |
 
 Mode is set via `config/bot.yml` `mode:` key or `BOT_MODE` env var (env var takes precedence).
 
@@ -362,14 +362,14 @@ Mode is set via `config/bot.yml` `mode:` key or `BOT_MODE` env var (env var take
 
 ```
 Trade opened (LONG):
-  🟢 LONG BTCUSDT opened
+  🟢 LONG BTCUSD opened
   Entry: $45,000 (₹38,25,000) | 44 lots (~0.044 BTC)
   Leverage: 10x | Margin: ₹16,830 ($198)
   Risk: ₹637 | Trail Stop: $44,325 (₹37,67,625)
   [DRY RUN] appended if mode is dry_run
 
 Trade closed (trail stop):
-  🔴 BTCUSDT closed — Trail Stop Hit
+  🔴 BTCUSD closed — Trail Stop Hit
   Exit: $45,800 (₹38,93,000)
   PnL: +$35.2 (+₹2,992)
   Duration: 2h 15m
@@ -391,8 +391,8 @@ Daily summary (sent at daily_summary_time IST):
 ### Log Format (JSON lines → `logs/bot.log`)
 
 ```json
-{"ts":"2026-03-26T10:15:00Z","level":"info","event":"trade_opened","symbol":"BTCUSDT","side":"long","entry_usd":45000,"entry_inr":3825000,"lots":44,"leverage":10,"risk_inr":637,"stop_usd":44325,"mode":"testnet"}
-{"ts":"2026-03-26T12:30:00Z","level":"info","event":"trade_closed","symbol":"BTCUSDT","exit_usd":45800,"pnl_usd":35.2,"pnl_inr":2992,"reason":"trail_stop","duration_seconds":8100}
+{"ts":"2026-03-26T10:15:00Z","level":"info","event":"trade_opened","symbol":"BTCUSD","side":"long","entry_usd":45000,"entry_inr":3825000,"lots":44,"leverage":10,"risk_inr":637,"stop_usd":44325,"mode":"testnet"}
+{"ts":"2026-03-26T12:30:00Z","level":"info","event":"trade_closed","symbol":"BTCUSD","exit_usd":45800,"pnl_usd":35.2,"pnl_inr":2992,"reason":"trail_stop","duration_seconds":8100}
 ```
 
 ---

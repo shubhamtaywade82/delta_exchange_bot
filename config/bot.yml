@@ -1,4 +1,4 @@
-mode: testnet  # dry_run | testnet | live
+mode: testnet # dry_run | testnet | live
 
 strategy:
   supertrend:
@@ -22,11 +22,11 @@ risk:
   usd_to_inr_rate: 85.0
 
 symbols:
-  - symbol: BTCUSDT
+  - symbol: BTCUSD
     leverage: 10
-  - symbol: ETHUSDT
+  - symbol: ETHUSD
     leverage: 15
-  - symbol: SOLUSDT
+  - symbol: SOLUSD
     leverage: 20
 
 notifications:

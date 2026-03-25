@@ -21,7 +21,7 @@ RSpec.describe Bot::Execution::OrderManager do
 
   let(:signal) do
     Bot::Strategy::Signal.new(
-      symbol: "BTCUSDT", side: :long, entry_price: 45_000.0, candle_ts: 1_000_000
+      symbol: "BTCUSD", side: :long, entry_price: 45_000.0, candle_ts: 1_000_000
     )
   end
 
@@ -44,7 +44,7 @@ RSpec.describe Bot::Execution::OrderManager do
   describe "#execute_signal" do
     it "records position in tracker on dry-run" do
       manager.execute_signal(signal)
-      expect(position_tracker.open?("BTCUSDT")).to be(true)
+      expect(position_tracker.open?("BTCUSD")).to be(true)
     end
 
     it "does not call Order.create in dry-run mode" do
@@ -69,20 +69,20 @@ RSpec.describe Bot::Execution::OrderManager do
     before { manager.execute_signal(signal) }
 
     it "removes position from tracker in dry-run" do
-      manager.close_position("BTCUSDT", exit_price: 45_500.0, reason: :trail_stop)
-      expect(position_tracker.open?("BTCUSDT")).to be(false)
+      manager.close_position("BTCUSD", exit_price: 45_500.0, reason: :trail_stop)
+      expect(position_tracker.open?("BTCUSD")).to be(false)
     end
 
     it "does not call Order.create in dry-run mode" do
       expect(DeltaExchange::Models::Order).not_to receive(:create)
-      manager.close_position("BTCUSDT", exit_price: 45_500.0, reason: :trail_stop)
+      manager.close_position("BTCUSD", exit_price: 45_500.0, reason: :trail_stop)
     end
 
     it "sends Telegram notification including USD and INR PnL" do
       expect(notifier).to receive(:send_message).with(
-        a_string_including("BTCUSDT").and(a_string_including("$")).and(a_string_including("₹"))
+        a_string_including("BTCUSD").and(a_string_including("$")).and(a_string_including("₹"))
       )
-      manager.close_position("BTCUSDT", exit_price: 45_500.0, reason: :trail_stop)
+      manager.close_position("BTCUSD", exit_price: 45_500.0, reason: :trail_stop)
     end
 
     it "returns nil without error when symbol has no open position" do

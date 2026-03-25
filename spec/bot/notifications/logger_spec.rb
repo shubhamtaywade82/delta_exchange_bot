@@ -15,12 +15,12 @@ RSpec.describe Bot::Notifications::Logger do
   end
 
   it "writes a JSON line to the log file" do
-    logger.info("trade_opened", symbol: "BTCUSDT", side: "long")
+    logger.info("trade_opened", symbol: "BTCUSD", side: "long")
     lines = File.readlines(log_file)
     expect(lines.size).to eq(1)
     entry = JSON.parse(lines.first)
     expect(entry["event"]).to eq("trade_opened")
-    expect(entry["symbol"]).to eq("BTCUSDT")
+    expect(entry["symbol"]).to eq("BTCUSD")
     expect(entry["level"]).to eq("info")
     expect(entry["ts"]).to match(/\d{4}-\d{2}-\d{2}T/)
   end

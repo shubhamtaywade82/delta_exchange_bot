@@ -51,9 +51,9 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
     end
 
     it "emits a LONG signal" do
-      signal = mtf.evaluate("BTCUSDT", current_price: 208.0)
+      signal = mtf.evaluate("BTCUSD", current_price: 208.0)
       expect(signal&.side).to eq(:long)
-      expect(signal&.symbol).to eq("BTCUSDT")
+      expect(signal&.symbol).to eq("BTCUSD")
     end
   end
 
@@ -67,7 +67,7 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
     end
 
     it "returns nil (no confluent signal)" do
-      expect(mtf.evaluate("BTCUSDT", current_price: 208.0)).to be_nil
+      expect(mtf.evaluate("BTCUSD", current_price: 208.0)).to be_nil
     end
   end
 
@@ -85,7 +85,7 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
 
     it "returns nil and logs a warning" do
       expect(logger).to receive(:warn).with("insufficient_candles", anything)
-      expect(mtf.evaluate("BTCUSDT", current_price: 100.0)).to be_nil
+      expect(mtf.evaluate("BTCUSD", current_price: 100.0)).to be_nil
     end
   end
 
@@ -95,8 +95,8 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
     end
 
     it "does not re-emit a signal for the same candle timestamp" do
-      first  = mtf.evaluate("BTCUSDT", current_price: 208.0)
-      second = mtf.evaluate("BTCUSDT", current_price: 208.0)
+      first  = mtf.evaluate("BTCUSD", current_price: 208.0)
+      second = mtf.evaluate("BTCUSD", current_price: 208.0)
       expect(first&.side).to eq(:long)
       expect(second).to be_nil
     end

@@ -12,28 +12,28 @@
 
 ## File Map
 
-| File | Responsibility |
-|---|---|
-| `bin/run` | Entry point — loads env, boots Config, builds all components, starts Supervisor |
-| `config/bot.yml` | All runtime configuration with sensible defaults |
-| `.env.example` | Template for API keys and credentials |
-| `Gemfile` | Dependencies |
-| `lib/bot/config.rb` | Loads `bot.yml`, validates all fields, exposes typed accessors |
-| `lib/bot/product_cache.rb` | Fetches products at startup, builds forward+inverse symbol↔product_id maps |
-| `lib/bot/supervisor.rb` | Spawns and monitors threads, exponential backoff restart, circuit breaker, graceful shutdown |
-| `lib/bot/feed/price_store.rb` | Mutex-protected hash of `symbol → ltp`; written by WebSocket thread, read by trailing stop thread |
-| `lib/bot/feed/websocket_feed.rb` | Wraps `DeltaExchange::Websocket::Client`, subscribes to `v2/ticker`, updates PriceStore |
-| `lib/bot/strategy/supertrend.rb` | Pure function: array of OHLCV hashes → array of `{direction:, line:}` using Wilder's ATR + band carry-forward |
-| `lib/bot/strategy/adx.rb` | Pure function: array of OHLCV hashes → array of `{adx:, plus_di:, minus_di:}` using Wilder's smoothing |
-| `lib/bot/strategy/signal.rb` | Value object: `symbol, side, entry_price, candle_ts` |
-| `lib/bot/strategy/multi_timeframe.rb` | Fetches OHLCV for 3 timeframes, runs indicators, checks MTF confluence, returns Signal or nil |
-| `lib/bot/execution/risk_calculator.rb` | Pure function: capital + config + entry_price → `final_lots` integer, with margin cap guard |
-| `lib/bot/execution/position_tracker.rb` | Mutex-protected open position state per symbol: entry, side, peak, stop, lots, entry_time |
-| `lib/bot/execution/order_manager.rb` | Places/simulates orders via delta_exchange gem; updates PositionTracker on fill |
-| `lib/bot/account/capital_manager.rb` | Fetches `WalletBalance.find_by_asset('USDT').available_balance`, converts to INR |
-| `lib/bot/notifications/logger.rb` | Writes JSON-line entries to `logs/bot.log` |
-| `lib/bot/notifications/telegram_notifier.rb` | Sends Telegram messages; no-ops gracefully if disabled |
-| `lib/bot/runner.rb` | Wires all components together and delegates to Supervisor |
+| File                                         | Responsibility                                                                                                |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `bin/run`                                    | Entry point — loads env, boots Config, builds all components, starts Supervisor                               |
+| `config/bot.yml`                             | All runtime configuration with sensible defaults                                                              |
+| `.env.example`                               | Template for API keys and credentials                                                                         |
+| `Gemfile`                                    | Dependencies                                                                                                  |
+| `lib/bot/config.rb`                          | Loads `bot.yml`, validates all fields, exposes typed accessors                                                |
+| `lib/bot/product_cache.rb`                   | Fetches products at startup, builds forward+inverse symbol↔product_id maps                                    |
+| `lib/bot/supervisor.rb`                      | Spawns and monitors threads, exponential backoff restart, circuit breaker, graceful shutdown                  |
+| `lib/bot/feed/price_store.rb`                | Mutex-protected hash of `symbol → ltp`; written by WebSocket thread, read by trailing stop thread             |
+| `lib/bot/feed/websocket_feed.rb`             | Wraps `DeltaExchange::Websocket::Client`, subscribes to `v2/ticker`, updates PriceStore                       |
+| `lib/bot/strategy/supertrend.rb`             | Pure function: array of OHLCV hashes → array of `{direction:, line:}` using Wilder's ATR + band carry-forward |
+| `lib/bot/strategy/adx.rb`                    | Pure function: array of OHLCV hashes → array of `{adx:, plus_di:, minus_di:}` using Wilder's smoothing        |
+| `lib/bot/strategy/signal.rb`                 | Value object: `symbol, side, entry_price, candle_ts`                                                          |
+| `lib/bot/strategy/multi_timeframe.rb`        | Fetches OHLCV for 3 timeframes, runs indicators, checks MTF confluence, returns Signal or nil                 |
+| `lib/bot/execution/risk_calculator.rb`       | Pure function: capital + config + entry_price → `final_lots` integer, with margin cap guard                   |
+| `lib/bot/execution/position_tracker.rb`      | Mutex-protected open position state per symbol: entry, side, peak, stop, lots, entry_time                     |
+| `lib/bot/execution/order_manager.rb`         | Places/simulates orders via delta_exchange gem; updates PositionTracker on fill                               |
+| `lib/bot/account/capital_manager.rb`         | Fetches `WalletBalance.find_by_asset('USDT').available_balance`, converts to INR                              |
+| `lib/bot/notifications/logger.rb`            | Writes JSON-line entries to `logs/bot.log`                                                                    |
+| `lib/bot/notifications/telegram_notifier.rb` | Sends Telegram messages; no-ops gracefully if disabled                                                        |
+| `lib/bot/runner.rb`                          | Wires all components together and delegates to Supervisor                                                     |
 
 ---
 
@@ -102,11 +102,11 @@ risk:
   usd_to_inr_rate: 85.0
 
 symbols:
-  - symbol: BTCUSDT
+  - symbol: BTCUSD
     leverage: 10
-  - symbol: ETHUSDT
+  - symbol: ETHUSD
     leverage: 15
-  - symbol: SOLUSDT
+  - symbol: SOLUSD
     leverage: 20
 
 notifications:
@@ -179,7 +179,7 @@ RSpec.describe Bot::Config do
         "usd_to_inr_rate" => 85.0
       },
       "symbols" => [
-        { "symbol" => "BTCUSDT", "leverage" => 10 }
+        { "symbol" => "BTCUSD", "leverage" => 10 }
       ],
       "notifications" => {
         "telegram" => { "enabled" => false, "bot_token" => "", "chat_id" => "" },
@@ -196,7 +196,7 @@ RSpec.describe Bot::Config do
   end
 
   it "exposes symbols with leverage" do
-    expect(config.symbols).to eq([{ symbol: "BTCUSDT", leverage: 10 }])
+    expect(config.symbols).to eq([{ symbol: "BTCUSD", leverage: 10 }])
   end
 
   it "exposes supertrend config" do
@@ -222,7 +222,7 @@ RSpec.describe Bot::Config do
   end
 
   it "exposes leverage for a symbol" do
-    expect(config.leverage_for("BTCUSDT")).to eq(10)
+    expect(config.leverage_for("BTCUSD")).to eq(10)
   end
 
   context "with invalid mode" do
@@ -393,12 +393,12 @@ RSpec.describe Bot::Notifications::Logger do
   after { File.delete(log_file) if File.exist?(log_file) }
 
   it "writes a JSON line to the log file" do
-    logger.info("trade_opened", symbol: "BTCUSDT", side: "long")
+    logger.info("trade_opened", symbol: "BTCUSD", side: "long")
     lines = File.readlines(log_file)
     expect(lines.size).to eq(1)
     entry = JSON.parse(lines.first)
     expect(entry["event"]).to eq("trade_opened")
-    expect(entry["symbol"]).to eq("BTCUSDT")
+    expect(entry["symbol"]).to eq("BTCUSD")
     expect(entry["level"]).to eq("info")
     expect(entry["ts"]).to match(/\d{4}-\d{2}-\d{2}T/)
   end
@@ -575,26 +575,26 @@ RSpec.describe Bot::Feed::PriceStore do
   subject(:store) { described_class.new }
 
   it "returns nil for unknown symbol" do
-    expect(store.get("BTCUSDT")).to be_nil
+    expect(store.get("BTCUSD")).to be_nil
   end
 
   it "stores and retrieves LTP" do
-    store.update("BTCUSDT", 45_000.0)
-    expect(store.get("BTCUSDT")).to eq(45_000.0)
+    store.update("BTCUSD", 45_000.0)
+    expect(store.get("BTCUSD")).to eq(45_000.0)
   end
 
   it "overwrites with latest value" do
-    store.update("BTCUSDT", 45_000.0)
-    store.update("BTCUSDT", 46_000.0)
-    expect(store.get("BTCUSDT")).to eq(46_000.0)
+    store.update("BTCUSD", 45_000.0)
+    store.update("BTCUSD", 46_000.0)
+    expect(store.get("BTCUSD")).to eq(46_000.0)
   end
 
   it "is thread-safe under concurrent writes" do
     threads = 10.times.map do |i|
-      Thread.new { store.update("ETHUSDT", i * 100.0) }
+      Thread.new { store.update("ETHUSD", i * 100.0) }
     end
     threads.each(&:join)
-    expect(store.get("ETHUSDT")).not_to be_nil
+    expect(store.get("ETHUSD")).not_to be_nil
   end
 end
 ```
@@ -1054,28 +1054,28 @@ require "bot/product_cache"
 RSpec.describe Bot::ProductCache do
   let(:products) do
     [
-      double("Product", id: 1, symbol: "BTCUSDT", contract_value: 0.001),
-      double("Product", id: 2, symbol: "ETHUSDT", contract_value: 0.01)
+      double("Product", id: 1, symbol: "BTCUSD", contract_value: 0.001),
+      double("Product", id: 2, symbol: "ETHUSD", contract_value: 0.01)
     ]
   end
 
-  subject(:cache) { described_class.new(symbols: %w[BTCUSDT ETHUSDT], products: products) }
+  subject(:cache) { described_class.new(symbols: %w[BTCUSD ETHUSD], products: products) }
 
   it "looks up product_id by symbol" do
-    expect(cache.product_id_for("BTCUSDT")).to eq(1)
+    expect(cache.product_id_for("BTCUSD")).to eq(1)
   end
 
   it "looks up contract_value by symbol" do
-    expect(cache.contract_value_for("BTCUSDT")).to eq(0.001)
+    expect(cache.contract_value_for("BTCUSD")).to eq(0.001)
   end
 
   it "looks up symbol by product_id (inverse lookup)" do
-    expect(cache.symbol_for(2)).to eq("ETHUSDT")
+    expect(cache.symbol_for(2)).to eq("ETHUSD")
   end
 
   it "raises if a configured symbol is not found in products" do
     expect {
-      described_class.new(symbols: %w[BTCUSDT UNKNOWN], products: products)
+      described_class.new(symbols: %w[BTCUSD UNKNOWN], products: products)
     }.to raise_error(Bot::ProductCache::MissingProductError, /UNKNOWN/)
   end
 end
@@ -1155,7 +1155,7 @@ require "bot/execution/risk_calculator"
 RSpec.describe Bot::Execution::RiskCalculator do
   subject(:calculator) { described_class.new(usd_to_inr_rate: 85.0) }
 
-  # BTCUSDT: $45,000 entry, 10x leverage, 1.5% risk, 1.5% trail, 0.001 contract_value
+  # BTCUSD: $45,000 entry, 10x leverage, 1.5% risk, 1.5% trail, 0.001 contract_value
   # available_usdt = 500
   # capital_inr = 42500, risk_inr = 637.5, risk_usd = 7.5
   # trail_distance = 675, loss_per_lot = 0.675
@@ -1175,7 +1175,7 @@ RSpec.describe Bot::Execution::RiskCalculator do
     }
   end
 
-  it "returns 44 lots after margin cap for BTCUSDT example" do
+  it "returns 44 lots after margin cap for BTCUSD example" do
     expect(calculator.compute(**params)).to eq(44)
   end
 
@@ -1291,7 +1291,7 @@ RSpec.describe Bot::Execution::PositionTracker do
 
   let(:position) do
     {
-      symbol: "BTCUSDT",
+      symbol: "BTCUSD",
       side: :long,
       lots: 44,
       entry_price: 45_000.0,
@@ -1304,12 +1304,12 @@ RSpec.describe Bot::Execution::PositionTracker do
   describe "#open" do
     it "records a new position" do
       tracker.open(position)
-      expect(tracker.open?("BTCUSDT")).to be(true)
+      expect(tracker.open?("BTCUSD")).to be(true)
     end
 
     it "sets peak_price and stop_price on open" do
       tracker.open(position)
-      pos = tracker.get("BTCUSDT")
+      pos = tracker.get("BTCUSD")
       expect(pos[:peak_price]).to eq(45_000.0)
       expect(pos[:stop_price]).to eq(45_000.0 * (1 - 0.015))
     end
@@ -1319,27 +1319,27 @@ RSpec.describe Bot::Execution::PositionTracker do
     before { tracker.open(position) }
 
     it "raises peak and stop when price moves in favour (long)" do
-      tracker.update_trailing_stop("BTCUSDT", 46_000.0)
-      pos = tracker.get("BTCUSDT")
+      tracker.update_trailing_stop("BTCUSD", 46_000.0)
+      pos = tracker.get("BTCUSD")
       expect(pos[:peak_price]).to eq(46_000.0)
       expect(pos[:stop_price]).to be_within(0.01).of(46_000.0 * 0.985)
     end
 
     it "does not lower peak when price drops (long)" do
-      tracker.update_trailing_stop("BTCUSDT", 46_000.0)
-      tracker.update_trailing_stop("BTCUSDT", 44_000.0)
-      pos = tracker.get("BTCUSDT")
+      tracker.update_trailing_stop("BTCUSD", 46_000.0)
+      tracker.update_trailing_stop("BTCUSD", 44_000.0)
+      pos = tracker.get("BTCUSD")
       expect(pos[:peak_price]).to eq(46_000.0)
     end
 
     it "returns :exit when stop is hit" do
-      tracker.update_trailing_stop("BTCUSDT", 46_000.0)
-      result = tracker.update_trailing_stop("BTCUSDT", 45_000.0 * 0.984)
+      tracker.update_trailing_stop("BTCUSD", 46_000.0)
+      result = tracker.update_trailing_stop("BTCUSD", 45_000.0 * 0.984)
       expect(result).to eq(:exit)
     end
 
     it "returns nil when stop is not hit" do
-      result = tracker.update_trailing_stop("BTCUSDT", 45_500.0)
+      result = tracker.update_trailing_stop("BTCUSD", 45_500.0)
       expect(result).to be_nil
     end
   end
@@ -1347,8 +1347,8 @@ RSpec.describe Bot::Execution::PositionTracker do
   describe "#close" do
     it "removes the position" do
       tracker.open(position)
-      tracker.close("BTCUSDT")
-      expect(tracker.open?("BTCUSDT")).to be(false)
+      tracker.close("BTCUSD")
+      expect(tracker.open?("BTCUSD")).to be(false)
     end
   end
 
@@ -1362,7 +1362,7 @@ RSpec.describe Bot::Execution::PositionTracker do
   describe "#all" do
     it "returns a snapshot of all positions" do
       tracker.open(position)
-      expect(tracker.all.keys).to include("BTCUSDT")
+      expect(tracker.all.keys).to include("BTCUSD")
     end
   end
 end
@@ -1521,9 +1521,9 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
     end
 
     it "emits a LONG signal" do
-      signal = mtf.evaluate("BTCUSDT", current_price: 115.0)
+      signal = mtf.evaluate("BTCUSD", current_price: 115.0)
       expect(signal&.side).to eq(:long)
-      expect(signal&.symbol).to eq("BTCUSDT")
+      expect(signal&.symbol).to eq("BTCUSD")
     end
   end
 
@@ -1538,7 +1538,7 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
     end
 
     it "returns nil (no confluent signal)" do
-      expect(mtf.evaluate("BTCUSDT", current_price: 85.0)).to be_nil
+      expect(mtf.evaluate("BTCUSD", current_price: 85.0)).to be_nil
     end
   end
 
@@ -1549,7 +1549,7 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
 
     it "returns nil and logs a warning" do
       expect(logger).to receive(:warn).with("insufficient_candles", anything)
-      expect(mtf.evaluate("BTCUSDT", current_price: 100.0)).to be_nil
+      expect(mtf.evaluate("BTCUSD", current_price: 100.0)).to be_nil
     end
   end
 
@@ -1561,8 +1561,8 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
     end
 
     it "does not re-emit a signal for the same candle timestamp" do
-      first  = mtf.evaluate("BTCUSDT", current_price: 115.0)
-      second = mtf.evaluate("BTCUSDT", current_price: 115.0)
+      first  = mtf.evaluate("BTCUSD", current_price: 115.0)
+      second = mtf.evaluate("BTCUSD", current_price: 115.0)
       expect(first&.side).to eq(:long)
       expect(second).to be_nil
     end
@@ -1758,7 +1758,7 @@ RSpec.describe Bot::Execution::OrderManager do
 
   let(:signal) do
     Bot::Strategy::Signal.new(
-      symbol: "BTCUSDT", side: :long, entry_price: 45_000.0, candle_ts: 1_000_000
+      symbol: "BTCUSD", side: :long, entry_price: 45_000.0, candle_ts: 1_000_000
     )
   end
 
@@ -1781,7 +1781,7 @@ RSpec.describe Bot::Execution::OrderManager do
   describe "#execute_signal" do
     it "records position in tracker on dry-run" do
       manager.execute_signal(signal)
-      expect(position_tracker.open?("BTCUSDT")).to be(true)
+      expect(position_tracker.open?("BTCUSD")).to be(true)
     end
 
     it "does not call Order.create in dry-run mode" do
@@ -1806,13 +1806,13 @@ RSpec.describe Bot::Execution::OrderManager do
     before { manager.execute_signal(signal) }
 
     it "removes position from tracker in dry-run" do
-      manager.close_position("BTCUSDT", exit_price: 45_500.0, reason: :trail_stop)
-      expect(position_tracker.open?("BTCUSDT")).to be(false)
+      manager.close_position("BTCUSD", exit_price: 45_500.0, reason: :trail_stop)
+      expect(position_tracker.open?("BTCUSD")).to be(false)
     end
 
     it "sends Telegram notification on close" do
-      expect(notifier).to receive(:send_message).with(a_string_including("BTCUSDT"))
-      manager.close_position("BTCUSDT", exit_price: 45_500.0, reason: :trail_stop)
+      expect(notifier).to receive(:send_message).with(a_string_including("BTCUSD"))
+      manager.close_position("BTCUSD", exit_price: 45_500.0, reason: :trail_stop)
     end
   end
 end
@@ -2334,7 +2334,7 @@ BOT_MODE=dry_run bundle exec ruby -e "
 "
 ```
 
-Expected: `Config OK: mode=dry_run symbols=BTCUSDT,ETHUSDT,SOLUSDT`
+Expected: `Config OK: mode=dry_run symbols=BTCUSD,ETHUSD,SOLUSD`
 
 - [ ] **Step 3: Commit**
 

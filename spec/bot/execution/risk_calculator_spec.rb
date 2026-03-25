@@ -6,7 +6,7 @@ require "bot/execution/risk_calculator"
 RSpec.describe Bot::Execution::RiskCalculator do
   subject(:calculator) { described_class.new(usd_to_inr_rate: 85.0) }
 
-  # BTCUSDT example:
+  # BTCUSD example:
   # available_usdt=500, entry=$45000, 10x leverage, 1.5% risk, 1.5% trail, contract_value=0.001
   # capital_inr=42500, risk_inr=637.5, risk_usd=7.5
   # trail_distance=$675, loss_per_lot=$0.675
@@ -26,7 +26,7 @@ RSpec.describe Bot::Execution::RiskCalculator do
     }
   end
 
-  it "returns 44 lots after margin cap for BTCUSDT example" do
+  it "returns 44 lots after margin cap for BTCUSD example" do
     expect(calculator.compute(**params)).to eq(44)
   end
 
