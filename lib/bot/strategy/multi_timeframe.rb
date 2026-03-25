@@ -79,7 +79,7 @@ module Bot
             high:      c[:high]      || c["high"].to_f,
             low:       c[:low]       || c["low"].to_f,
             close:     c[:close]     || c["close"].to_f,
-            timestamp: c[:timestamp] || c["time"].to_i }
+            timestamp: c[:timestamp] || c["timestamp"] || c["time"].to_i }
         end
       rescue StandardError => e
         @logger.error("candle_fetch_failed", symbol: symbol, resolution: resolution, message: e.message)

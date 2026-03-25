@@ -97,14 +97,8 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
     it "does not re-emit a signal for the same candle timestamp" do
       first  = mtf.evaluate("BTCUSDT", current_price: 208.0)
       second = mtf.evaluate("BTCUSDT", current_price: 208.0)
-      # First call emits (flip detected)
-      # Second call must not re-emit for the same candle timestamp
-      if first
-        expect(second).to be_nil
-      else
-        # Both nil is also acceptable if no flip detected
-        expect(second).to be_nil
-      end
+      expect(first&.side).to eq(:long)
+      expect(second).to be_nil
     end
   end
 end
