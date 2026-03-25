@@ -32,7 +32,7 @@ RSpec.describe Bot::ProductCache do
   end
 
   it "raises MissingProductError (not KeyError) for unknown symbol lookup" do
-    expect { cache.product_id_for("UNKNOWN") }.to raise_error(Bot::ProductCache::MissingProductError)
+    expect { cache.product_id_for("UNKNOWN") }.to raise_error(Bot::ProductCache::MissingProductError, /UNKNOWN/)
   end
 
   it "returns nil for symbol_for with unconfigured product_id" do

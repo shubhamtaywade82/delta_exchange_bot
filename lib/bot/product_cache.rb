@@ -10,7 +10,7 @@ module Bot
 
       symbols.each do |sym|
         product = products.find { |p| p.symbol == sym }
-        raise MissingProductError, "Product not found for symbol: #{sym}" unless product
+        raise MissingProductError, "Unknown symbol: #{sym}" unless product
 
         @forward[sym] = { product_id: product.id, contract_value: product.contract_value.to_f }
         @inverse[product.id] = sym
