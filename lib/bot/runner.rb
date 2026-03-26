@@ -14,6 +14,7 @@ require_relative "execution/order_manager"
 require_relative "notifications/logger"
 require_relative "notifications/telegram_notifier"
 require_relative "persistence/db_writer"
+require_relative "persistence/state_publisher"
 
 module Bot
   class Runner
@@ -45,7 +46,8 @@ module Bot
         dry_run:           @config.dry_run?,
         paper_capital_inr: @config.paper_capital_inr
       )
-      @db_writer = Persistence::DbWriter.new if @config.dry_run?
+      @db_writer       = Persistence::DbWriter.new if @config.dry_run?
+      @state_publisher = Persistence::StatePublisher.new
       @risk_calculator  = Execution::RiskCalculator.new(usd_to_inr_rate: @config.usd_to_inr_rate)
 
       client       = DeltaExchange::Client.new
@@ -117,6 +119,7 @@ module Bot
           end
 
           signal = @mtf.evaluate(symbol, current_price: ltp)
+          @state_publisher.publish_strategy_state(symbol, @mtf.state_for(symbol))
           @order_manager.execute_signal(signal) if signal
         rescue DeltaExchange::RateLimitError => e
           @logger.warn("rate_limited", symbol: symbol, retry_after: e.retry_after_seconds)
@@ -157,6 +160,13 @@ module Bot
         available      = (total_capital - blocked_margin).round(2)
         unrealized     = snapshot[:unrealized_pnl]
         realized       = @order_manager.realized_pnl.round(2)
+
+        @state_publisher.publish_wallet(
+          available_usd:  total_capital,
+          paper_mode:     @config.dry_run?,
+          capital_inr:    @config.paper_capital_inr,
+          usd_to_inr_rate: @config.usd_to_inr_rate
+        )
 
         @logger.info("portfolio_snapshot",
           open_positions:       snapshot[:open_count],

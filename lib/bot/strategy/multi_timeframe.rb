@@ -8,10 +8,15 @@ module Bot
   module Strategy
     class MultiTimeframe
       def initialize(config:, market_data:, logger:)
-        @config      = config
-        @market_data = market_data
-        @logger      = logger
-        @last_acted  = {}  # symbol → candle_ts of last acted-on entry candle
+        @config         = config
+        @market_data    = market_data
+        @logger         = logger
+        @last_acted     = {}  # symbol → candle_ts of last acted-on entry candle
+        @signal_state   = {}  # symbol → last computed diagnostic state
+      end
+
+      def state_for(symbol)
+        @signal_state[symbol]
       end
 
       # Returns a Signal or nil
@@ -35,6 +40,15 @@ module Bot
         m5_prev_dir  = m5_st[-2]&.dig(:direction)
         m5_last_dir  = m5_st.last[:direction]
         m5_last_ts   = m5_candles.last[:timestamp].to_i
+
+        @signal_state[symbol] = {
+          h1_dir:     h1_dir&.to_s,
+          m15_dir:    m15_dir&.to_s,
+          m5_dir:     m5_last_dir&.to_s,
+          adx:        m15_adx_val&.round(2),
+          signal:     nil,
+          updated_at: Time.now.utc.iso8601
+        }
 
         if h1_dir.nil? || m15_dir.nil? || m5_last_dir.nil?
           @logger.debug("strategy_skip", symbol: symbol, reason: "nil_direction",
@@ -78,6 +92,7 @@ module Bot
         end
 
         @last_acted[symbol] = m5_last_ts
+        @signal_state[symbol] = @signal_state[symbol].merge(signal: side.to_s)
         @logger.info("signal_generated", symbol: symbol, side: side, candle_ts: m5_last_ts)
 
         Signal.new(symbol: symbol, side: side, entry_price: current_price, candle_ts: m5_last_ts)

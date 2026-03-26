@@ -7,6 +7,7 @@ ruby ">= 3.2.0"
 gem "delta_exchange", path: "../delta_exchange"
 gem "dotenv"
 gem "pg"
+gem "redis"
 gem "telegram-bot-ruby"
 gem "tzinfo"
 
