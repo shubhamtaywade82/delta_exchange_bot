@@ -1,5 +1,6 @@
 class Api::DashboardController < ApplicationController
   def index
+    redis  = Redis.new
     prices = Bot::Feed::PriceStore.new.all
     config = Bot::Config.load
     

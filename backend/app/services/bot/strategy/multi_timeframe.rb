@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require_relative "adx"
+require_relative "supertrend"
+require "redis"
 
 module Bot
   module Strategy
@@ -9,6 +12,7 @@ module Bot
         @market_data = market_data
         @logger      = logger
         @last_acted  = {}  # symbol → candle_ts of last acted-on entry candle
+        @redis       = Redis.new
       end
 
       # Returns a Signal or nil
@@ -32,6 +36,14 @@ module Bot
         m5_prev_dir  = m5_st[-2]&.dig(:direction)
         m5_last_dir  = m5_st.last[:direction]
         m5_last_ts   = m5_candles.last[:timestamp].to_i
+
+        persist_symbol_state(symbol, {
+          h1_dir: h1_dir,
+          m15_dir: m15_dir,
+          m5_dir: m5_last_dir,
+          adx: m15_adx_val,
+          updated_at: Time.current.iso8601
+        })
 
         if h1_dir.nil? || m15_dir.nil? || m5_last_dir.nil?
           @logger.debug("strategy_skip", symbol: symbol, reason: "nil_direction",
@@ -138,6 +150,13 @@ module Bot
         when "w" then value * 604800
         else value * 60
         end
+      end
+
+      def persist_symbol_state(symbol, data)
+        # Using the same key as the StrategyStatusController
+        @redis.hset("delta:strategy:state", symbol, data.to_json)
+      rescue StandardError => e
+        @logger.error("strategy_persistence_failed", symbol: symbol, message: e.message)
       end
     end
   end

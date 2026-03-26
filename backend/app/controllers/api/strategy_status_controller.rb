@@ -47,7 +47,8 @@ module Api
     private
 
     def live_symbol_states(configured_symbols)
-      raw = Redis.current.hgetall(STRATEGY_KEY)
+      redis = Redis.new
+      raw   = redis.hgetall(STRATEGY_KEY)
 
       configured_symbols.map do |sym|
         state = raw[sym] ? JSON.parse(raw[sym], symbolize_names: true) : {}
