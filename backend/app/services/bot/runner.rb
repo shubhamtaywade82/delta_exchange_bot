@@ -3,7 +3,7 @@
 
 module Bot
   class Runner
-    STRATEGY_INTERVAL_SECONDS      = 15    # Reduced for testing/faster signals
+    STRATEGY_INTERVAL_SECONDS = 300 # 5-minute periodic scan for futures
     TRAILING_STOP_INTERVAL_SECONDS = 5     # Faster tracking
     PORTFOLIO_LOG_INTERVAL_SECONDS = 10    # Faster status updates for UI
 
@@ -39,7 +39,7 @@ module Bot
       client       = DeltaExchange::Client.new
       @market_data = client.market_data
 
-      @mtf = Strategy::MultiTimeframe.new(config: @config, market_data: @market_data, logger: @logger)
+      @mtf_scanner = Strategy::ScanningService.new(config: @config, market_data: @market_data, logger: @logger)
 
       @order_manager = Execution::OrderManager.new(
         config:           @config,
@@ -113,23 +113,15 @@ module Bot
 
     def run_strategy_loop
       loop do
-        @config.symbol_names.each do |symbol|
-          next if @position_tracker.open?(symbol)
-          next if @position_tracker.count >= @config.max_concurrent_positions
-
-          ltp = @price_store.get(symbol)
-          unless ltp
-            @logger.warn("skip_no_ltp", symbol: symbol)
-            next
-          end
-
-          signal = @mtf.evaluate(symbol, current_price: ltp)
-          @order_manager.execute_signal(signal) if signal
-        rescue DeltaExchange::RateLimitError => e
-          @logger.warn("rate_limited", symbol: symbol, retry_after: e.retry_after_seconds)
-          sleep(e.retry_after_seconds)
-        rescue StandardError => e
-          @logger.error("strategy_error", symbol: symbol, message: e.message)
+        @logger.info("strategy_loop_tick")
+        current_prices = @price_store.all
+        
+        # Staggered scan of all symbols
+        signals = @mtf_scanner.scan(@config.symbol_names, current_prices: current_prices)
+        
+        signals.each do |signal|
+          next if @position_tracker.open?(signal.symbol)
+          @order_manager.execute_signal(signal)
         end
 
         sleep STRATEGY_INTERVAL_SECONDS
@@ -159,13 +151,19 @@ module Bot
         sleep PORTFOLIO_LOG_INTERVAL_SECONDS
 
         snapshot       = @position_tracker.snapshot(@price_store.all)
-        total_capital  = @capital_manager.available_usdt
+        total_capital  = @capital_manager.available_usdt(
+          blocked_margin: snapshot[:blocked_margin],
+          unrealized_pnl: snapshot[:unrealized_pnl]
+        )
         blocked_margin = snapshot[:blocked_margin]
         available      = (total_capital - blocked_margin).round(2)
         unrealized     = snapshot[:unrealized_pnl]
         realized       = @order_manager.realized_pnl.round(2)
 
-        @capital_manager.persist_state
+        @capital_manager.persist_state(
+          blocked_margin: snapshot[:blocked_margin],
+          unrealized_pnl: snapshot[:unrealized_pnl]
+        )
 
         @logger.info("portfolio_snapshot",
           open_positions:       snapshot[:open_count],

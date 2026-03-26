@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_26_152825) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_26_190554) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -51,6 +51,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_26_152825) do
     t.string "side"
     t.decimal "size"
     t.string "status"
+    t.decimal "stop_price"
     t.string "symbol"
     t.decimal "trail_pct"
     t.datetime "updated_at", null: false

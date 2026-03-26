@@ -16,15 +16,17 @@ module Bot
         @redis                  = Redis.new
       end
 
-      def available_usdt
+      def available_usdt(blocked_margin: 0.0, unrealized_pnl: 0.0)
         # Delta Exchange India uses "USD" as the margin asset for USD-settled
         # perpetuals; try USDT first then fall back to USD.
         balance = DeltaExchange::Models::WalletBalance.find_by_asset("USDT") ||
                   DeltaExchange::Models::WalletBalance.find_by_asset("USD")
         result = balance&.available_balance.to_f || 0.0
-        # In dry_run mode use simulated capital when real balance is too small to trade
+        
+        # In dry_run mode use simulated capital minus blocked margin plus net PnL
         if @dry_run && result < 1.0
-          (@simulated_capital_inr / @usd_to_inr_rate).round(2)
+          usd_cap = (@simulated_capital_inr / @usd_to_inr_rate).round(2)
+          (usd_cap - blocked_margin + unrealized_pnl).round(2)
         else
           result
         end
@@ -34,14 +36,16 @@ module Bot
         available_usdt * @usd_to_inr_rate
       end
 
-      def persist_state
+      def persist_state(blocked_margin: 0.0, unrealized_pnl: 0.0)
+        usd_available = available_usdt(blocked_margin: blocked_margin, unrealized_pnl: unrealized_pnl)
+        
         data = {
-          available_usd: available_usdt.round(2),
-          available_inr: available_inr.round(0),
-          capital_inr: (available_usdt * @usd_to_inr_rate).round(0), # Simplified for now
-          paper_mode: @dry_run,
-          updated_at: Time.current.iso8601,
-          stale: false
+          available_usd: usd_available,
+          available_inr: (usd_available * @usd_to_inr_rate).round(0),
+          capital_inr:   @simulated_capital_inr.round(0),
+          paper_mode:    @dry_run,
+          updated_at:    Time.current.iso8601,
+          stale:         false
         }
         @redis.set(REDIS_KEY, data.to_json)
       rescue StandardError => e

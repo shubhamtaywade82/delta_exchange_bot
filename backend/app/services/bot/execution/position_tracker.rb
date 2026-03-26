@@ -142,6 +142,13 @@ module Bot
             open_count:       positions.size
           }
         end
+      def persist_state(prices)
+        @mutex.synchronize do
+          data = snapshot(prices)
+          Redis.new.set("delta:positions:live", data.to_json)
+        rescue StandardError => e
+          puts "Error persisting positions to Redis: #{e.message}"
+        end
       end
 
       private
