@@ -16,7 +16,7 @@ require_relative "notifications/telegram_notifier"
 
 module Bot
   class Runner
-    STRATEGY_INTERVAL_SECONDS      = 60    # Reduced for testing/faster signals
+    STRATEGY_INTERVAL_SECONDS      = 15    # Reduced for testing/faster signals
     TRAILING_STOP_INTERVAL_SECONDS = 5     # Faster tracking
 
     def initialize(config:)
@@ -38,7 +38,8 @@ module Bot
 
       @price_store      = Feed::PriceStore.new
       @position_tracker = Execution::PositionTracker.new
-      @capital_manager  = Account::CapitalManager.new(usd_to_inr_rate: @config.usd_to_inr_rate)
+      @capital_manager  = Account::CapitalManager.new(usd_to_inr_rate: @config.usd_to_inr_rate,
+                                                       dry_run: @config.dry_run?)
       @risk_calculator  = Execution::RiskCalculator.new(usd_to_inr_rate: @config.usd_to_inr_rate)
 
       client       = DeltaExchange::Client.new

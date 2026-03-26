@@ -36,14 +36,34 @@ module Bot
         m5_last_dir  = m5_st.last[:direction]
         m5_last_ts   = m5_candles.last[:timestamp].to_i
 
-        return nil if h1_dir.nil? || m15_dir.nil? || m5_last_dir.nil?
-        return nil if m15_adx_val.nil? || m15_adx_val < @config.adx_threshold
+        if h1_dir.nil? || m15_dir.nil? || m5_last_dir.nil?
+          @logger.debug("strategy_skip", symbol: symbol, reason: "nil_direction",
+                        h1: h1_dir, m15: m15_dir, m5: m5_last_dir)
+          return nil
+        end
+
+        if m15_adx_val.nil? || m15_adx_val < @config.adx_threshold
+          @logger.debug("strategy_skip", symbol: symbol, reason: "adx_below_threshold",
+                        adx: m15_adx_val&.round(2), threshold: @config.adx_threshold)
+          return nil
+        end
 
         # Check for fresh flip on 5M — previous direction must differ from current
         just_flipped = m5_prev_dir && m5_last_dir != m5_prev_dir
 
-        return nil unless just_flipped
-        return nil if @last_acted[symbol] == m5_last_ts
+        # In dry_run the flip requirement is relaxed so test signals fire on directional
+        # alignment alone — in testnet/live a genuine 5M flip is required.
+        unless just_flipped || @config.dry_run?
+          @logger.debug("strategy_skip", symbol: symbol, reason: "no_5m_flip",
+                        m5_prev: m5_prev_dir, m5_last: m5_last_dir,
+                        h1: h1_dir, m15: m15_dir, adx: m15_adx_val&.round(2))
+          return nil
+        end
+
+        if @last_acted[symbol] == m5_last_ts
+          @logger.debug("strategy_skip", symbol: symbol, reason: "stale_candle", candle_ts: m5_last_ts)
+          return nil
+        end
 
         side = if h1_dir == :bullish && m15_dir == :bullish && m5_last_dir == :bullish
                  :long
@@ -51,7 +71,11 @@ module Bot
                  :short
                end
 
-        return nil unless side
+        unless side
+          @logger.debug("strategy_skip", symbol: symbol, reason: "no_confluence",
+                        h1: h1_dir, m15: m15_dir, m5: m5_last_dir)
+          return nil
+        end
 
         @last_acted[symbol] = m5_last_ts
         @logger.info("signal_generated", symbol: symbol, side: side, candle_ts: m5_last_ts)
