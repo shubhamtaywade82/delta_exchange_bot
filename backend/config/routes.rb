@@ -4,6 +4,7 @@ Rails.application.routes.draw do
     resources :positions, only: [:index]
     resources :trades, only: [:index]
     resources :settings, only: [:index, :update]
+    resources :trading_sessions, only: [:index, :create, :destroy]
   end
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
 

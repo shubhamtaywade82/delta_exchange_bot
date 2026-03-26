@@ -6,11 +6,12 @@ require_relative "delta_ws_patch"
 module Bot
   module Feed
     class WebsocketFeed
-      def initialize(symbols:, price_store:, logger:, testnet: false)
+      def initialize(symbols:, price_store:, logger:, testnet: false, on_tick: nil)
         @symbols     = symbols
         @price_store = price_store
         @logger      = logger
         @testnet     = testnet
+        @on_tick     = on_tick
         @client      = nil
         @running     = false
         @generation  = 0
@@ -64,6 +65,7 @@ module Bot
               if symbol && price && price.positive?
                 @price_store.update(symbol, price)
                 @logger.debug("ltp_update", symbol: symbol, price: price)
+                @on_tick&.call(symbol, price, Time.now.to_i)
               end
             when "subscriptions"
               @logger.info("ws_subscribed", channels: data["channels"])
