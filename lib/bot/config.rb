@@ -108,6 +108,11 @@ module Bot
       val.to_f
     end
 
+    def paper_capital_inr
+      val = @raw.dig("risk", "paper_capital_inr")
+      val&.to_f
+    end
+
     def telegram_enabled?  = @raw.dig("notifications", "telegram", "enabled") == true
     def telegram_token     = @raw.dig("notifications", "telegram", "bot_token")
     def telegram_chat_id   = @raw.dig("notifications", "telegram", "chat_id").to_s

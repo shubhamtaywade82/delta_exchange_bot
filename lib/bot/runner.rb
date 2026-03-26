@@ -13,6 +13,7 @@ require_relative "execution/position_tracker"
 require_relative "execution/order_manager"
 require_relative "notifications/logger"
 require_relative "notifications/telegram_notifier"
+require_relative "persistence/db_writer"
 
 module Bot
   class Runner
@@ -39,8 +40,12 @@ module Bot
 
       @price_store      = Feed::PriceStore.new
       @position_tracker = Execution::PositionTracker.new
-      @capital_manager  = Account::CapitalManager.new(usd_to_inr_rate: @config.usd_to_inr_rate,
-                                                       dry_run: @config.dry_run?)
+      @capital_manager  = Account::CapitalManager.new(
+        usd_to_inr_rate:   @config.usd_to_inr_rate,
+        dry_run:           @config.dry_run?,
+        paper_capital_inr: @config.paper_capital_inr
+      )
+      @db_writer = Persistence::DbWriter.new if @config.dry_run?
       @risk_calculator  = Execution::RiskCalculator.new(usd_to_inr_rate: @config.usd_to_inr_rate)
 
       client       = DeltaExchange::Client.new
@@ -55,7 +60,8 @@ module Bot
         risk_calculator:  @risk_calculator,
         capital_manager:  @capital_manager,
         logger:           @logger,
-        notifier:         @notifier
+        notifier:         @notifier,
+        db_writer:        @db_writer
       )
 
       @ws_feed = Feed::WebsocketFeed.new(
@@ -209,6 +215,7 @@ module Bot
       @logger.info("bot_stopping")
       supervisor.stop_all
       @ws_feed&.stop
+      @db_writer&.close
       exit 0
     end
   end

@@ -8,7 +8,7 @@ module Bot
       attr_reader :realized_pnl
 
       def initialize(config:, product_cache:, position_tracker:, risk_calculator:,
-                     capital_manager:, logger:, notifier:)
+                     capital_manager:, logger:, notifier:, db_writer: nil)
         @config           = config
         @product_cache    = product_cache
         @position_tracker = position_tracker
@@ -16,6 +16,7 @@ module Bot
         @capital_manager  = capital_manager
         @logger           = logger
         @notifier         = notifier
+        @db_writer        = db_writer
         @realized_pnl     = 0.0
       end
 
@@ -59,6 +60,16 @@ module Bot
           trail_pct:      @config.trailing_stop_pct
         )
 
+        @db_writer&.record_opened(
+          symbol:         symbol,
+          side:           signal.side,
+          lots:           lots,
+          entry_price:    fill_price,
+          leverage:       leverage,
+          contract_value: contract_value,
+          trail_pct:      @config.trailing_stop_pct
+        )
+
         @logger.info("trade_opened", symbol: symbol, side: signal.side, entry_usd: fill_price,
                      lots: lots, leverage: leverage, mode: current_mode)
         @notifier.send_message(trade_opened_message(symbol, signal.side, fill_price, lots, leverage))
@@ -93,6 +104,18 @@ module Bot
         pnl_usd       = calculate_pnl(pos, exit_price)
         @realized_pnl += pnl_usd
         duration       = (Time.now.utc - pos[:entry_time]).to_i
+        pnl_inr        = (pnl_usd * @capital_manager.usd_to_inr_rate).round(2)
+
+        @db_writer&.record_closed(
+          symbol:           symbol,
+          side:             pos[:side],
+          lots:             pos[:lots],
+          entry_price:      pos[:entry],
+          exit_price:       exit_price,
+          pnl_usd:          pnl_usd.round(4),
+          pnl_inr:          pnl_inr,
+          duration_seconds: duration
+        )
 
         @logger.info("trade_closed", symbol: symbol, exit_usd: exit_price,
                      pnl_usd: pnl_usd.round(2), realized_pnl_usd: @realized_pnl.round(2),

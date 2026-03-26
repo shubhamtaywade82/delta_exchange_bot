@@ -1,4 +1,4 @@
-mode: testnet # dry_run | testnet | live
+mode: dry_run # dry_run | testnet | live
 
 strategy:
   supertrend:
@@ -17,9 +17,10 @@ strategy:
 
 risk:
   risk_per_trade_pct: 1.5
-  max_concurrent_positions: 5
+  max_concurrent_positions: 3
   max_margin_per_position_pct: 40
-  usd_to_inr_rate: 85.0
+  usd_to_inr_rate: 84.0
+  paper_capital_inr: 10000
 
 symbols:
   - symbol: BTCUSD

@@ -7,11 +7,20 @@ module Bot
     class CapitalManager
       attr_reader :usd_to_inr_rate
 
-      DRY_RUN_SIMULATED_CAPITAL_USD = 10_000.0
+      DEFAULT_DRY_RUN_CAPITAL_USD = 10_000.0
 
-      def initialize(usd_to_inr_rate:, dry_run: false)
-        @usd_to_inr_rate = usd_to_inr_rate
-        @dry_run         = dry_run
+      def initialize(usd_to_inr_rate:, dry_run: false, paper_capital_inr: nil)
+        @usd_to_inr_rate      = usd_to_inr_rate
+        @dry_run              = dry_run
+        @paper_capital_inr    = paper_capital_inr
+      end
+
+      def dry_run_capital_usd
+        if @paper_capital_inr
+          (@paper_capital_inr / @usd_to_inr_rate).round(2)
+        else
+          DEFAULT_DRY_RUN_CAPITAL_USD
+        end
       end
 
       def available_usdt
@@ -20,8 +29,8 @@ module Bot
         balance = DeltaExchange::Models::WalletBalance.find_by_asset("USDT") ||
                   DeltaExchange::Models::WalletBalance.find_by_asset("USD")
         result = balance&.available_balance.to_f || 0.0
-        # In dry_run mode use simulated capital when real balance is too small to trade
-        @dry_run && result < 1.0 ? DRY_RUN_SIMULATED_CAPITAL_USD : result
+        # In dry_run mode use paper capital when real balance is too small to trade
+        @dry_run && result < 1.0 ? dry_run_capital_usd : result
       end
 
       def available_inr
