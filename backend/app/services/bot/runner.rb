@@ -29,8 +29,11 @@ module Bot
 
       @price_store      = Feed::PriceStore.new
       @position_tracker = Execution::PositionTracker.new
-      @capital_manager  = Account::CapitalManager.new(usd_to_inr_rate: @config.usd_to_inr_rate,
-                                                       dry_run: @config.dry_run?)
+      @capital_manager  = Account::CapitalManager.new(
+        usd_to_inr_rate:        @config.usd_to_inr_rate,
+        dry_run:                @config.dry_run?,
+        simulated_capital_inr:  @config.simulated_capital_inr
+      )
       @risk_calculator  = Execution::RiskCalculator.new(usd_to_inr_rate: @config.usd_to_inr_rate)
 
       client       = DeltaExchange::Client.new
