@@ -16,8 +16,8 @@ require_relative "notifications/telegram_notifier"
 
 module Bot
   class Runner
-    STRATEGY_INTERVAL_SECONDS      = 300   # 5 minutes
-    TRAILING_STOP_INTERVAL_SECONDS = 15
+    STRATEGY_INTERVAL_SECONDS      = 60    # Reduced for testing/faster signals
+    TRAILING_STOP_INTERVAL_SECONDS = 5     # Faster tracking
 
     def initialize(config:)
       @config = config
@@ -71,11 +71,18 @@ module Bot
       supervisor.register(:strategy)      { run_strategy_loop }
       supervisor.register(:trailing_stop) { run_trailing_stop_loop }
 
-      trap("INT")  { graceful_shutdown(supervisor) }
-      trap("TERM") { graceful_shutdown(supervisor) }
+      @shutdown_requested = false
+      trap("INT")  { @shutdown_requested = true }
+      trap("TERM") { @shutdown_requested = true }
 
       supervisor.start_all
-      supervisor.monitor
+      
+      until @shutdown_requested
+        supervisor.monitor
+        sleep 1
+      end
+
+      graceful_shutdown(supervisor)
     end
 
     private
@@ -130,27 +137,33 @@ module Bot
     end
 
     def reconcile_open_positions
+      return if @config.dry_run?
       adopted = 0
 
       @config.symbol_names.each do |symbol|
-        product_id = @product_cache.product_id_for(symbol)
-        pos = DeltaExchange::Models::Position.find(product_id)
-        next unless pos && pos.size.to_i > 0
+        begin
+          product_id = @product_cache.product_id_for(symbol)
+          # Fetch positions for this specific product to avoid "bad_schema" errors
+          # that occur when calling Position.all without filters.
+          positions = DeltaExchange::Models::Position.all(product_id: product_id) || []
+          pos = positions.find { |p| p.product_id == product_id }
+          next unless pos && pos.size.to_i.positive?
 
-        side     = pos.side == "buy" ? :long : :short
-        leverage = @config.leverage_for(symbol)
+          side     = pos.side == "buy" ? :long : :short
+          leverage = @config.leverage_for(symbol)
 
-        @position_tracker.open(
-          symbol:      symbol,
-          side:        side,
-          lots:        pos.size.to_i,
-          entry_price: pos.entry_price.to_f,
-          leverage:    leverage,
-          trail_pct:   @config.trailing_stop_pct
-        )
-        adopted += 1
-      rescue StandardError => e
-        @logger.warn("reconcile_failed", symbol: symbol, message: e.message)
+          @position_tracker.open(
+            symbol:      symbol,
+            side:        side,
+            lots:        pos.size.to_i,
+            entry_price: pos.entry_price.to_f,
+            leverage:    leverage,
+            trail_pct:   @config.trailing_stop_pct
+          )
+          adopted += 1
+        rescue StandardError => e
+          @logger.warn("reconcile_failed", symbol: symbol, message: e.message)
+        end
       end
 
       return unless adopted.positive?

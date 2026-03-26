@@ -32,7 +32,7 @@ module Bot
       def log(level, event, payload)
         return if LEVELS.index(level) < @min_level
 
-        entry = { ts: Time.now.utc.iso8601, level: level, event: event }.merge(payload)
+        entry = { ts: Time.now.utc.strftime("%Y-%m-%dT%H:%M:%SZ"), level: level, event: event }.merge(payload)
         @mutex.synchronize { @io.write("#{entry.to_json}\n") }
       end
     end

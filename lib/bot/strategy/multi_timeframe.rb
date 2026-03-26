@@ -63,7 +63,7 @@ module Bot
 
       def fetch_candles(symbol, resolution)
         end_ts   = Time.now.to_i
-        start_ts = end_ts - (resolution.to_i * 60 * @config.candles_lookback)
+        start_ts = end_ts - (resolution_to_seconds(resolution) * @config.candles_lookback)
 
         raw = @market_data.candles({
           "symbol"     => symbol,
@@ -72,15 +72,24 @@ module Bot
           "end"        => end_ts
         })
 
-        return [] unless raw.is_a?(Array)
+        # Handle nested result array if present
+        candles_payload = if raw.is_a?(Hash) && raw.key?("result")
+                           raw["result"]
+                         elsif raw.is_a?(Hash) && raw.key?(:result)
+                           raw[:result]
+                         else
+                           raw
+                         end
 
-        raw.map do |c|
+        return [] unless candles_payload.is_a?(Array)
+
+        candles_payload.map do |c|
           { open:      (c[:open]      || c["open"])&.to_f      || raise("missing open in candle"),
             high:      (c[:high]      || c["high"])&.to_f      || raise("missing high in candle"),
             low:       (c[:low]       || c["low"])&.to_f       || raise("missing low in candle"),
             close:     (c[:close]     || c["close"])&.to_f     || raise("missing close in candle"),
-            timestamp: (c[:timestamp] || c["timestamp"] || c["time"])&.to_i || raise("missing timestamp in candle") }
-        end
+            timestamp: (c[:timestamp] || c["timestamp"] || c[:time] || c["time"])&.to_i || raise("missing timestamp in candle") }
+        end.sort_by { |c| c[:timestamp] }
       rescue StandardError => e
         @logger.error("candle_fetch_failed", symbol: symbol, resolution: resolution, message: e.message)
         []
@@ -92,6 +101,22 @@ module Bot
           return false
         end
         true
+      end
+
+      def resolution_to_seconds(resolution)
+        match = resolution.match(/(\d+)([smhdw])/)
+        return resolution.to_i * 60 unless match # fallback for backward compatibility
+
+        value = match[1].to_i
+        unit  = match[2]
+        case unit
+        when "s" then value
+        when "m" then value * 60
+        when "h" then value * 3600
+        when "d" then value * 86400
+        when "w" then value * 604800
+        else value * 60
+        end
       end
     end
   end

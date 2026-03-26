@@ -9,9 +9,9 @@ strategy:
     threshold: 25
   trailing_stop_pct: 1.5
   timeframes:
-    trend: "60"
-    confirm: "15"
-    entry: "5"
+    trend: "1h"
+    confirm: "15m"
+    entry: "5m"
   candles_lookback: 100
   min_candles_required: 30
 
@@ -37,5 +37,5 @@ notifications:
   daily_summary_time: "18:00"
 
 logging:
-  level: info
+  level: debug
   file: logs/bot.log

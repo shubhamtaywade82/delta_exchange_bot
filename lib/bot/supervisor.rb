@@ -22,13 +22,10 @@ module Bot
     end
 
     def monitor
-      until @stop
-        @threads.each do |name, meta|
-          next if meta[:thread]&.alive?
+      @threads.each do |name, meta|
+        next if meta[:thread]&.alive?
 
-          handle_crash(name)
-        end
-        sleep 5
+        handle_crash(name)
       end
     end
 
