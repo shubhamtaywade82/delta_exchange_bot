@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
-import { LayoutDashboard, History, Settings, Activity } from 'lucide-react';
+import { LayoutDashboard, History, Activity, Terminal as TerminalIcon } from 'lucide-react';
 
 const API_BASE = 'http://localhost:3000/api';
+const WS_URL = 'wss://socket.delta.exchange';
 
 interface DashboardStats {
   open_positions: number;
@@ -10,6 +11,10 @@ interface DashboardStats {
   total_pnl_usd: number;
   total_pnl_inr: number;
   win_rate: number;
+  daily_pnl: number;
+  weekly_pnl: number;
+  equity_curve: number[];
+  market: { symbol: string; price: number; leverage: number }[];
 }
 
 interface Position {
@@ -20,6 +25,8 @@ interface Position {
   size: string;
   leverage: number;
   pnl_usd: string;
+  ltp: number;
+  unrealized_pnl: number;
   entry_time: string;
 }
 
@@ -33,19 +40,101 @@ interface Trade {
   closed_at: string;
 }
 
+interface TickerData {
+  symbol: string;
+  price: number;
+  change: number;
+  timestamp: number;
+}
+
+const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT'];
+
 function App() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tickers, setTickers] = useState<Record<string, TickerData>>({});
+  const [logs, setLogs] = useState<string[]>([]);
+  const ws = useRef<WebSocket | null>(null);
+  const pingInterval = useRef<number | null>(null);
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 10000); // Refresh every 10s
-    return () => clearInterval(interval);
+    fetchInitialData();
+    connectWebSocket();
+    const interval = setInterval(fetchInitialData, 15000); 
+    return () => {
+      clearInterval(interval);
+      if (pingInterval.current) clearInterval(pingInterval.current);
+      ws.current?.close();
+    };
   }, []);
 
-  const fetchData = async () => {
+  const addLog = (msg: string) => {
+    setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 50));
+  };
+
+  const connectWebSocket = () => {
+    try {
+      addLog('INITIATING WEBSOCKET CONNECTION...');
+      ws.current = new WebSocket(WS_URL);
+
+      ws.current.onopen = () => {
+        addLog('STREAMS_CONNECTED_SUCCESSFULLY');
+        ws.current?.send(JSON.stringify({
+          type: 'subscribe',
+          payload: {
+            channels: [
+              {
+                name: 'v2/ticker',
+                symbols: SYMBOLS
+              }
+            ]
+          }
+        }));
+
+        // Set up heartbeat
+        pingInterval.current = window.setInterval(() => {
+          if (ws.current?.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, 15000);
+      };
+
+      ws.current.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'v2/ticker' || data.channel === 'v2/ticker') {
+          const payload = data.data || data;
+          if (payload.symbol && payload.mark_price) {
+            setTickers(prev => ({
+              ...prev,
+              [payload.symbol]: {
+                symbol: payload.symbol,
+                price: parseFloat(payload.mark_price),
+                change: parseFloat(payload.price_change_24h || 0),
+                timestamp: Date.now()
+              }
+            }));
+          }
+        }
+      };
+
+      ws.current.onerror = (err) => {
+        addLog(`CRITICAL_WS_ERROR: CONNECTION_REFUSED`);
+        console.error('WS Error:', err);
+      };
+
+      ws.current.onclose = (event) => {
+        addLog(`CONNECTION_CLOSED_CODE: ${event.code}`);
+        if (pingInterval.current) clearInterval(pingInterval.current);
+        setTimeout(connectWebSocket, 5000);
+      };
+    } catch (e) {
+      addLog('FAILED_TO_CONSTRUCT_WEBSOCKET');
+    }
+  };
+
+  const fetchInitialData = async () => {
     try {
       const [statsRes, posRes, tradesRes] = await Promise.all([
         axios.get(`${API_BASE}/dashboard`),
@@ -57,131 +146,197 @@ function App() {
       setTrades(tradesRes.data);
       setLoading(false);
     } catch (error) {
+      addLog('ERROR FETCHING API DATA');
       console.error('Error fetching data:', error);
     }
   };
 
   if (loading) {
-    return <div className="loading">Loading Delta Bot...</div>;
+    return (
+      <div className="terminal-loading">
+        <div className="scanner"></div>
+        <code>INITIALIZING SYSTEM...</code>
+      </div>
+    );
   }
 
   return (
-    <div className="container">
-      <header>
-        <h1>Delta Exchange Bot</h1>
-        <div className="status">
-          <Activity size={16} /> Live
+    <div className="terminal-container">
+      {/* Real-time Ticker Bar */}
+      <div className="ticker-bar">
+        {SYMBOLS.map(symbol => {
+          const data = tickers[symbol];
+          return (
+            <div key={symbol} className="ticker-item">
+              <span className="symbol">{symbol.replace('USD', '')}</span>
+              <span className={`price ${data?.price ? 'pop' : ''}`}>
+                ${data?.price?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '---'}
+              </span>
+              <span className={`change ${data?.change >= 0 ? 'pos' : 'neg'}`}>
+                {data?.change ? `${data.change > 0 ? '+' : ''}${data.change.toFixed(2)}%` : '--'}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      <header className="terminal-header">
+        <div className="brand">
+          <TerminalIcon size={24} className="icon-pulse" />
+          <div>
+            <h1>DELTA_BOT_CORE_v2.0</h1>
+            <span className="system-status">SYSTEM_STATUS: <span className="status-online">ONLINE</span></span>
+          </div>
+        </div>
+        <div className="session-stats">
+          <div className="mini-stat">
+            <label>WIN_RATE</label>
+            <span className="value">{stats?.win_rate}%</span>
+          </div>
+          <div className="mini-stat">
+            <label>TOTAL_PNL</label>
+            <span className={`value ${(stats?.total_pnl_usd ?? 0) >= 0 ? 'pos' : 'neg'}`}>
+              ${stats?.total_pnl_usd?.toFixed(2) ?? '0.00'}
+            </span>
+          </div>
         </div>
       </header>
 
-      <div className="stats-grid">
-        <div className="stat-card">
-          <label>Open Positions</label>
-          <div className="value">{stats?.open_positions}</div>
-        </div>
-        <div className="stat-card">
-          <label>Total PnL (USD)</label>
-          <div className={`value ${stats?.total_pnl_usd && stats.total_pnl_usd >= 0 ? 'positive' : 'negative'}`}>
-            ${stats?.total_pnl_usd}
-          </div>
-        </div>
-        <div className="stat-card">
-          <label>Total PnL (INR)</label>
-          <div className={`value ${stats?.total_pnl_inr && stats.total_pnl_inr >= 0 ? 'positive' : 'negative'}`}>
-            ₹{stats?.total_pnl_inr}
-          </div>
-        </div>
-        <div className="stat-card">
-          <label>Win Rate</label>
-          <div className="value">{stats?.win_rate}%</div>
-        </div>
-      </div>
+      <main className="terminal-grid">
+        {/* Left Column: Positions & History */}
+        <div className="grid-left">
+          <section className="terminal-section">
+            <div className="section-header">
+              <LayoutDashboard size={18} />
+              <h2>ACTIVE_POSITIONS</h2>
+            </div>
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>SYMBOL</th>
+                    <th>SIDE</th>
+                    <th>ENTRY</th>
+                    <th>LTP</th>
+                    <th>SIZE</th>
+                    <th>PNL_UNREALIZED</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {positions.map((pos) => (
+                    <tr key={pos.id} className="row-hover">
+                      <td className="font-bold">{pos.symbol}</td>
+                      <td><span className={`side-badge ${pos.side}`}>{pos.side.toUpperCase()}</span></td>
+                      <td>${parseFloat(pos.entry_price).toFixed(2)}</td>
+                      <td className="live-ltp">${pos.ltp?.toFixed(2) || '---'}</td>
+                      <td>{pos.size}</td>
+                      <td className={pos.unrealized_pnl >= 0 ? 'pos' : 'neg'}>
+                        ${pos.unrealized_pnl?.toFixed(2) || '0.00'}
+                      </td>
+                    </tr>
+                  ))}
+                  {positions.length === 0 && (
+                    <tr><td colSpan={6} className="empty-row">NO_ACTIVE_POSITIONS_FOUND</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
 
-      <section>
-        <h2><LayoutDashboard size={20} /> Open Positions</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Side</th>
-              <th>Entry</th>
-              <th>Size</th>
-              <th>Lev</th>
-              <th>PnL (Est)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {positions.map((pos) => (
-              <tr key={pos.id}>
-                <td>{pos.symbol}</td>
-                <td><span className={`badge ${pos.side}`}>{pos.side.toUpperCase()}</span></td>
-                <td>${pos.entry_price}</td>
-                <td>{pos.size}</td>
-                <td>{pos.leverage}x</td>
-                <td className={parseFloat(pos.pnl_usd) >= 0 ? 'positive' : 'negative'}>
-                  ${pos.pnl_usd || '0.00'}
-                </td>
-              </tr>
-            ))}
-            {positions.length === 0 && (
-              <tr><td colSpan={6} style={{ textAlign: 'center' }}>No open positions</td></tr>
-            )}
-          </tbody>
-        </table>
-      </section>
+          <section className="terminal-section">
+            <div className="section-header">
+              <History size={18} />
+              <h2>TRADE_HISTORY</h2>
+            </div>
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>SYMBOL</th>
+                    <th>SIDE</th>
+                    <th>ENTRY</th>
+                    <th>EXIT</th>
+                    <th>PNL_REALIZED</th>
+                    <th>TIMESTAMP</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trades.map((trade) => (
+                    <tr key={trade.id}>
+                      <td>{trade.symbol}</td>
+                      <td><span className={`side-badge ${trade.side}`}>{trade.side.toUpperCase()}</span></td>
+                      <td>${parseFloat(trade.entry_price).toFixed(2)}</td>
+                      <td>${parseFloat(trade.exit_price).toFixed(2)}</td>
+                      <td className={parseFloat(trade.pnl_usd) >= 0 ? 'pos' : 'neg'}>
+                        ${parseFloat(trade.pnl_usd).toFixed(2)}
+                      </td>
+                      <td className="timestamp">{new Date(trade.closed_at).toLocaleTimeString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
 
-      <section>
-        <h2><History size={20} /> Trade History</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Side</th>
-              <th>Entry</th>
-              <th>Exit</th>
-              <th>PnL</th>
-              <th>Time</th>
-            </tr>
-          </thead>
-          <tbody>
-            {trades.map((trade) => (
-              <tr key={trade.id}>
-                <td>{trade.symbol}</td>
-                <td><span className={`badge ${trade.side}`}>{trade.side.toUpperCase()}</span></td>
-                <td>${trade.entry_price}</td>
-                <td>${trade.exit_price}</td>
-                <td className={parseFloat(trade.pnl_usd) >= 0 ? 'positive' : 'negative'}>
-                  ${trade.pnl_usd}
-                </td>
-                <td>{new Date(trade.closed_at).toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+        {/* Right Column: Console/Logs & Quick Actions */}
+        <div className="grid-right">
+          <section className="terminal-section console-section">
+            <div className="section-header">
+              <Activity size={18} />
+              <h2>SYSTEM_LOGS</h2>
+            </div>
+            <div className="console-output">
+              {logs.map((log, i) => (
+                <div key={i} className="log-entry">
+                  <span className="timestamp">[{new Date().toLocaleTimeString()}]</span>
+                  <span className="message">{log}</span>
+                </div>
+              ))}
+              <div className="log-cursor">_</div>
+            </div>
+          </section>
 
-      <style>{`
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
-        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
-        h1 { margin: 0; font-size: 1.5rem; color: #38bdf8; }
-        .status { background: #064e3b; color: #4ade80; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.875rem; display: flex; align-items: center; gap: 0.5rem; }
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
-        .stat-card { background: #1e293b; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid #334155; }
-        .stat-card label { font-size: 0.875rem; color: #94a3b8; display: block; margin-bottom: 0.5rem; }
-        .stat-card .value { font-size: 1.5rem; font-weight: bold; }
-        section { background: #1e293b; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid #334155; margin-bottom: 2rem; }
-        h2 { font-size: 1.25rem; margin-top: 0; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem; color: #94a3b8; }
-        table { width: 100%; border-collapse: collapse; }
-        th { text-align: left; padding: 0.75rem; border-bottom: 1px solid #334155; color: #64748b; font-size: 0.875rem; }
-        td { padding: 0.75rem; border-bottom: 1px solid #334155; font-size: 0.875rem; }
-        .positive { color: #4ade80; }
-        .negative { color: #f87171; }
-        .badge { padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: bold; }
-        .badge.long { background: #064e3b; color: #4ade80; }
-        .badge.short { background: #7f1d1d; color: #f87171; }
-        .loading { display: flex; justify-content: center; align-items: center; height: 100vh; font-size: 1.5rem; color: #38bdf8; }
-      `}</style>
+          <section className="performance-card">
+            <div className="chart-mock">
+              <div className="label">EQUITY_CURVE_7D</div>
+              <div className="bars">
+                {stats?.equity_curve?.map((val, i) => {
+                  const max = Math.max(...stats.equity_curve, 1);
+                  const h = Math.max((val / max) * 100, 5); // min 5% height
+                  return <div key={i} className={`bar ${val >= 0 ? 'pos-bar' : 'neg-bar'}`} style={{ height: `${Math.abs(h)}%` }}></div>;
+                })}
+              </div>
+            </div>
+            <div className="pnl-summary">
+              <div className="pnl-item">
+                <label>DAILY_EST</label>
+                <div className={`value ${(stats?.daily_pnl ?? 0) >= 0 ? 'pos' : 'neg'}`}>
+                  {stats?.daily_pnl && stats.daily_pnl >= 0 ? '+' : ''}${stats?.daily_pnl?.toFixed(2) ?? '0.00'}
+                </div>
+              </div>
+              <div className="pnl-item">
+                <label>WEEKLY_EST</label>
+                <div className={`value ${(stats?.weekly_pnl ?? 0) >= 0 ? 'pos' : 'neg'}`}>
+                  {stats?.weekly_pnl && stats.weekly_pnl >= 0 ? '+' : ''}${stats?.weekly_pnl?.toFixed(2) ?? '0.00'}
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      <footer className="terminal-footer">
+        <div className="command-line">
+          <span className="prompt">admin@delta-bot:~$</span>
+          <input type="text" placeholder="Awaiting command..." disabled />
+        </div>
+        <div className="system-metrics">
+          <span>LATENCY: 24ms</span>
+          <span>CPU: 12%</span>
+          <span>MEM: 420MB</span>
+        </div>
+      </footer>
     </div>
   );
 }

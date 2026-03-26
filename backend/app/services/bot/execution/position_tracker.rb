@@ -37,7 +37,8 @@ module Bot
             peak_price:     entry,
             stop_price:     stop,
             trail_pct:      attrs.fetch(:trail_pct).to_f,
-            product_id:     attrs.fetch(:product_id, nil)
+            product_id:     attrs.fetch(:product_id, nil),
+            contract_value: attrs.fetch(:contract_value).to_f
           )
 
           @positions[symbol] = pos_to_hash(pos)
@@ -152,7 +153,7 @@ module Bot
           entry:          pos.entry_price.to_f,
           lots:           pos.size.to_i,
           leverage:       pos.leverage.to_f,
-          contract_value: 0.0, # Will be set by reconciler or caller if needed
+          contract_value: pos.contract_value.to_f,
           trail_pct:      pos.trail_pct.to_f,
           peak_price:     pos.peak_price.to_f,
           stop_price:     pos.stop_price.to_f,
