@@ -1,0 +1,30 @@
+# Ignore all log files and temp files.
+/log/*
+/tmp/*
+!/log/.keep
+!/tmp/.keep
+
+# Ignore pidfiles, but keep the directory.
+/tmp/pids/*
+!/tmp/pids/.keep
+
+# Ignore storage (SQLite/ActiveStorage)
+/storage/*
+!/storage/.keep
+/db/*.sqlite3
+/db/*.sqlite3-journal
+/db/*.sqlite3-wal
+
+# Ignore node_modules (if any)
+/node_modules
+/vendor/bundle
+
+# Ignore ENV files
+.env*
+
+# Ignore master key for decrypting credentials and symlinks
+/config/master.key
+/config/credentials/*.key
+
+# Ignore development/test logs
+*.log
