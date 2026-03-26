@@ -5,6 +5,8 @@ require "delta_exchange"
 module Bot
   module Execution
     class OrderManager
+      attr_reader :realized_pnl
+
       def initialize(config:, product_cache:, position_tracker:, risk_calculator:,
                      capital_manager:, logger:, notifier:)
         @config           = config
@@ -14,6 +16,7 @@ module Bot
         @capital_manager  = capital_manager
         @logger           = logger
         @notifier         = notifier
+        @realized_pnl     = 0.0
       end
 
       def execute_signal(signal)
@@ -43,16 +46,17 @@ module Bot
           return nil
         end
 
-        fill_price = place_order(symbol, signal.side, lots, signal)
+        fill_price     = place_order(symbol, signal.side, lots, signal)
         return nil unless fill_price
 
         @position_tracker.open(
-          symbol: symbol,
-          side: signal.side,
-          lots: lots,
-          entry_price: fill_price,
-          leverage: leverage,
-          trail_pct: @config.trailing_stop_pct
+          symbol:         symbol,
+          side:           signal.side,
+          lots:           lots,
+          entry_price:    fill_price,
+          leverage:       leverage,
+          contract_value: contract_value,
+          trail_pct:      @config.trailing_stop_pct
         )
 
         @logger.info("trade_opened", symbol: symbol, side: signal.side, entry_usd: fill_price,
@@ -86,11 +90,13 @@ module Bot
 
         @position_tracker.close(symbol)
 
-        pnl_usd  = calculate_pnl(pos, exit_price)
-        duration = (Time.now.utc - pos[:entry_time]).to_i
+        pnl_usd       = calculate_pnl(pos, exit_price)
+        @realized_pnl += pnl_usd
+        duration       = (Time.now.utc - pos[:entry_time]).to_i
 
         @logger.info("trade_closed", symbol: symbol, exit_usd: exit_price,
-                     pnl_usd: pnl_usd.round(2), reason: reason, duration_seconds: duration)
+                     pnl_usd: pnl_usd.round(2), realized_pnl_usd: @realized_pnl.round(2),
+                     reason: reason, duration_seconds: duration)
         @notifier.send_message(trade_closed_message(symbol, exit_price, pnl_usd, duration, reason))
       end
 

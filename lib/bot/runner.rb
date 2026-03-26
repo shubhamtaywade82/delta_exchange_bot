@@ -18,6 +18,7 @@ module Bot
   class Runner
     STRATEGY_INTERVAL_SECONDS      = 15    # Reduced for testing/faster signals
     TRAILING_STOP_INTERVAL_SECONDS = 5     # Faster tracking
+    PORTFOLIO_LOG_INTERVAL_SECONDS = 30    # Portfolio snapshot frequency
 
     def initialize(config:)
       @config = config
@@ -71,6 +72,7 @@ module Bot
       supervisor.register(:websocket)     { @ws_feed.start }
       supervisor.register(:strategy)      { run_strategy_loop }
       supervisor.register(:trailing_stop) { run_trailing_stop_loop }
+      supervisor.register(:portfolio_log) { run_portfolio_log_loop }
 
       @shutdown_requested = false
       trap("INT")  { @shutdown_requested = true }
@@ -139,6 +141,32 @@ module Bot
       end
     end
 
+    def run_portfolio_log_loop
+      loop do
+        sleep PORTFOLIO_LOG_INTERVAL_SECONDS
+
+        snapshot       = @position_tracker.snapshot(@price_store.all)
+        total_capital  = @capital_manager.available_usdt
+        blocked_margin = snapshot[:blocked_margin]
+        available      = (total_capital - blocked_margin).round(2)
+        unrealized     = snapshot[:unrealized_pnl]
+        realized       = @order_manager.realized_pnl.round(2)
+
+        @logger.info("portfolio_snapshot",
+          open_positions:       snapshot[:open_count],
+          total_capital_usd:    total_capital.round(2),
+          blocked_margin_usd:   blocked_margin,
+          available_margin_usd: available,
+          realized_pnl_usd:     realized,
+          unrealized_pnl_usd:   unrealized,
+          total_pnl_usd:        (realized + unrealized).round(2),
+          positions:            snapshot[:positions].values
+        )
+      rescue StandardError => e
+        @logger.error("portfolio_log_error", message: e.message)
+      end
+    end
+
     def reconcile_open_positions
       return if @config.dry_run?
       adopted = 0
@@ -152,16 +180,18 @@ module Bot
           pos = positions.find { |p| p.product_id == product_id }
           next unless pos && pos.size.to_i.positive?
 
-          side     = pos.side == "buy" ? :long : :short
-          leverage = @config.leverage_for(symbol)
+          side           = pos.side == "buy" ? :long : :short
+          leverage       = @config.leverage_for(symbol)
+          contract_value = @product_cache.contract_value_for(symbol)
 
           @position_tracker.open(
-            symbol:      symbol,
-            side:        side,
-            lots:        pos.size.to_i,
-            entry_price: pos.entry_price.to_f,
-            leverage:    leverage,
-            trail_pct:   @config.trailing_stop_pct
+            symbol:         symbol,
+            side:           side,
+            lots:           pos.size.to_i,
+            entry_price:    pos.entry_price.to_f,
+            leverage:       leverage,
+            contract_value: contract_value,
+            trail_pct:      @config.trailing_stop_pct
           )
           adopted += 1
         rescue StandardError => e

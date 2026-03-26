@@ -15,6 +15,10 @@ module Bot
       def get(symbol)
         @mutex.synchronize { @prices[symbol] }
       end
+
+      def all
+        @mutex.synchronize { @prices.dup }
+      end
     end
   end
 end
