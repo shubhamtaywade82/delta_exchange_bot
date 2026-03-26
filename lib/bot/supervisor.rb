@@ -36,6 +36,12 @@ module Bot
 
     private
 
+    def backoff_for_attempt(attempt)
+      # attempts 1 & 2 → first entry; each subsequent attempt advances one step; capped at last entry
+      index = [[attempt - 2, 0].max, BACKOFF_SEQUENCE.size - 1].min
+      BACKOFF_SEQUENCE[index]
+    end
+
     def spawn_thread(name)
       @threads[name][:thread] = Thread.new do
         @threads[name][:block].call
@@ -61,8 +67,8 @@ module Bot
         exit 1
       end
 
-      backoff = BACKOFF_SEQUENCE[[[meta[:crashes].size - 2, 0].max, BACKOFF_SEQUENCE.size - 1].min]
       attempt = meta[:crashes].size
+      backoff = backoff_for_attempt(attempt)
 
       @logger.warn("thread_restarting", thread: name.to_s, backoff: backoff, attempt: attempt)
       @notifier.send_message("⚠️ #{name} crashed. Restarting in #{backoff}s... (attempt #{attempt}/#{MAX_CRASHES})")

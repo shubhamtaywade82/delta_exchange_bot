@@ -90,8 +90,8 @@ module Bot
 
     def setup_delta_exchange
       DeltaExchange.configure do |c|
-        c.api_key    = ENV.fetch("DELTA_API_KEY")
-        c.api_secret = ENV.fetch("DELTA_API_SECRET")
+        c.api_key    = ENV["DELTA_API_KEY"]    or raise "Missing env var: DELTA_API_KEY"
+        c.api_secret = ENV["DELTA_API_SECRET"] or raise "Missing env var: DELTA_API_SECRET"
         c.testnet    = @config.testnet?
       end
     end
@@ -131,6 +131,8 @@ module Bot
           next unless result == :exit
 
           @order_manager.close_position(symbol, exit_price: ltp, reason: :trail_stop)
+        rescue StandardError => e
+          @logger.error("trailing_stop_error", symbol: symbol, message: e.message)
         end
 
         sleep TRAILING_STOP_INTERVAL_SECONDS

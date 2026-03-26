@@ -7,7 +7,7 @@ strategy:
   adx:
     period: 14
     threshold: 20
-  trailing_stop_pct: 0.5
+  trailing_stop_pct: 0.2
   timeframes:
     trend: "1h"
     confirm: "15m"
