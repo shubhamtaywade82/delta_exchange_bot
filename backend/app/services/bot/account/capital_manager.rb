@@ -26,7 +26,8 @@ module Bot
         # In dry_run mode use simulated capital minus blocked margin plus net PnL
         if @dry_run && result < 1.0
           usd_cap = (@simulated_capital_inr / @usd_to_inr_rate).round(2)
-          (usd_cap - blocked_margin + unrealized_pnl).round(2)
+          val = (usd_cap - blocked_margin + unrealized_pnl).round(2)
+          [val, 0.0].max # Don't show negative available balance in simulation
         else
           result
         end

@@ -253,7 +253,7 @@ function App() {
           <div className="mini-stat">
             <label>TOTAL_PNL</label>
             <span className={`value ${(stats?.total_pnl_usd ?? 0) >= 0 ? 'pos' : 'neg'}`}>
-              ${stats?.total_pnl_usd?.toFixed(2) ?? '0.00'}
+              ₹{stats?.total_pnl_inr?.toLocaleString() ?? '0'}
             </span>
           </div>
           {wallet && (
@@ -360,22 +360,31 @@ function App() {
                     <th>ENTRY</th>
                     <th>LTP</th>
                     <th>SIZE</th>
-                    <th>PNL_UNREALIZED</th>
+                    <th>PNL_UNREALIZED (INR)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {positions.map((pos) => (
-                    <tr key={pos.id} className="row-hover">
-                      <td className="font-bold">{pos.symbol}</td>
-                      <td><span className={`side-badge ${pos.side}`}>{pos.side.toUpperCase()}</span></td>
-                      <td>${parseFloat(pos.entry_price).toFixed(2)}</td>
-                      <td className="live-ltp">${pos.ltp?.toFixed(2) || '---'}</td>
-                      <td>{pos.size}</td>
-                      <td className={pos.unrealized_pnl >= 0 ? 'pos' : 'neg'}>
-                        ${pos.unrealized_pnl?.toFixed(2) || '0.00'}
-                      </td>
-                    </tr>
-                  ))}
+                  {positions.map((pos) => {
+                    const wsData = tickers[pos.symbol] || tickers[pos.symbol + 'T'];
+                    const ltp = wsData?.price || pos.ltp;
+                    const multiplier = pos.side === 'long' ? 1 : -1;
+                    const liveUpnl = ltp ? (ltp - parseFloat(pos.entry_price)) * parseFloat(pos.size) * multiplier : pos.unrealized_pnl;
+
+                    return (
+                      <tr key={pos.id} className="row-hover">
+                        <td className="font-bold">{pos.symbol}</td>
+                        <td><span className={`side-badge ${pos.side}`}>{pos.side.toUpperCase()}</span></td>
+                        <td>${parseFloat(pos.entry_price).toFixed(2)}</td>
+                        <td className={`live-ltp font-mono ${wsData ? 'pop' : ''}`}>
+                          ${ltp?.toFixed(2) || '---'}
+                        </td>
+                        <td>{pos.size}</td>
+                        <td className={`font-mono ${liveUpnl >= 0 ? 'pos' : 'neg'}`}>
+                          ₹{(liveUpnl * 85.0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {positions.length === 0 && (
                     <tr><td colSpan={6} className="empty-row">NO_ACTIVE_POSITIONS_FOUND</td></tr>
                   )}
@@ -412,7 +421,7 @@ function App() {
                       <td>${parseFloat(trade.entry_price).toFixed(2)}</td>
                       <td>${parseFloat(trade.exit_price).toFixed(2)}</td>
                       <td className={parseFloat(trade.pnl_usd) >= 0 ? 'pos' : 'neg'}>
-                        {parseFloat(trade.pnl_usd) >= 0 ? '+' : ''}${parseFloat(trade.pnl_usd).toFixed(2)}
+                        {parseFloat(trade.pnl_usd) >= 0 ? '+' : ''}₹{(parseFloat(trade.pnl_usd) * 85.0).toLocaleString()}
                       </td>
                       <td className="timestamp">{new Date(trade.closed_at).toLocaleTimeString()}</td>
                     </tr>

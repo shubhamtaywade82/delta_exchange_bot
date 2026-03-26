@@ -35,6 +35,10 @@ module Bot
         gen          = @generation   # captured in closures below
 
         ::EventMachine.next_tick do
+          if @generation > 1
+             @logger.warn("ws_reconnect_backoff", seconds: 10)
+             sleep 10
+          end
           @client = DeltaExchange::Websocket::Client.new(testnet: @testnet)
 
           @client.on(:open) do

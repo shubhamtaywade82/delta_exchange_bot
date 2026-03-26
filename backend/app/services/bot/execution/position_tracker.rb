@@ -142,6 +142,8 @@ module Bot
             open_count:       positions.size
           }
         end
+      end
+
       def persist_state(prices)
         @mutex.synchronize do
           data = snapshot(prices)
