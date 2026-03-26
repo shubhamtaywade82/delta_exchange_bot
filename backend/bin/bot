@@ -1,8 +1,20 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-require_relative "../config/environment"
+begin
+  require_relative "../config/environment"
+  puts "Environment loaded"
 
-config = Bot::Config.load
-runner = Bot::Runner.new(config: config)
-runner.start
+  config = Bot::Config.load
+  puts "Config loaded: mode=#{config.mode}"
+
+  runner = Bot::Runner.new(config: config)
+  puts "Runner initialized"
+
+  runner.start
+rescue StandardError => e
+  puts "FATAL ERROR during bot startup:"
+  puts e.message
+  puts e.backtrace.join("\n")
+  exit 1
+end

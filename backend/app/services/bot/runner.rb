@@ -19,9 +19,12 @@ module Bot
     end
 
     def start
+      puts "Starting runner..."
       @logger.info("bot_starting", mode: @config.mode, symbols: @config.symbol_names)
 
+      puts "Fetching products..."
       products       = DeltaExchange::Models::Product.all
+      puts "Products fetched: #{products&.size || 0}"
       @product_cache = ProductCache.new(symbols: @config.symbol_names, products: products)
 
       @price_store      = Feed::PriceStore.new
@@ -52,21 +55,27 @@ module Bot
         testnet:     @config.testnet?
       )
 
+      puts "Reconciling positions..."
       reconcile_open_positions
 
+      puts "Setting up supervisor..."
       supervisor = Supervisor.new(logger: @logger, notifier: @notifier)
 
+      puts "Registering threads..."
       supervisor.register(:websocket)     { @ws_feed.start }
       supervisor.register(:strategy)      { run_strategy_loop }
       supervisor.register(:trailing_stop) { run_trailing_stop_loop }
       supervisor.register(:portfolio_log) { run_portfolio_log_loop }
 
       @shutdown_requested = false
+      puts "Setting up traps..."
       trap("INT")  { @shutdown_requested = true }
       trap("TERM") { @shutdown_requested = true }
 
+      puts "Starting supervisor..."
       supervisor.start_all
       
+      puts "Bot is running. Monitoring..."
       until @shutdown_requested
         supervisor.monitor
         sleep 1

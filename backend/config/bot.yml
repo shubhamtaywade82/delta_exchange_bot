@@ -1,4 +1,4 @@
-mode: testnet # dry_run | testnet | live
+mode: live # dry_run | testnet | live
 
 strategy:
   supertrend:
