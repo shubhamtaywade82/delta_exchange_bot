@@ -1,0 +1,2 @@
+class SymbolConfig < ApplicationRecord
+end

@@ -1,1 +1,44 @@
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment files
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+
+# Ruby/Rails common ignores
+*.gem
+*.rbc
+lib/bundler/man/
+/log/*.log
+/tmp/
+
+# Ruby LSP and other IDEs
+.ruby-lsp/
+.vscode/
+.idea/
+
+# Node/React (Vite) common ignores
+node_modules/
+dist/
+dist-ssr/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Original bot logs
+logs/*.log
+!logs/.gitkeep
+
+# Ignore vendor/bundle for local development
+vendor/bundle
