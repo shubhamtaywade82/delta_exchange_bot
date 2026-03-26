@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { LayoutDashboard, History, Terminal as TerminalIcon, Cpu, Wallet } from 'lucide-react';
 
-const API_BASE = 'http://localhost:3000/api';
+const API_BASE = 'http://localhost:5000/api';
 const WS_URL = 'wss://socket.delta.exchange';
 
 interface DashboardStats {

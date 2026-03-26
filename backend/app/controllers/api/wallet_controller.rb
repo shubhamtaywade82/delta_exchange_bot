@@ -2,10 +2,9 @@
 
 module Api
   class WalletController < ApplicationController
-    WALLET_KEY = "delta:wallet:state"
-
     def index
-      raw = Redis.current.get(WALLET_KEY)
+      redis = Redis.new
+      raw   = redis.get(Bot::Account::CapitalManager::REDIS_KEY)
       if raw
         render json: JSON.parse(raw)
       else

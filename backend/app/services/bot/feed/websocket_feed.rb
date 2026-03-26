@@ -17,9 +17,9 @@ module Bot
 
       def start
         # Ensure EventMachine is running in its own thread
-        unless EM.reactor_running?
-          Thread.new { EM.run }
-          sleep 0.1 until EM.reactor_running?
+        unless ::EventMachine.reactor_running?
+          Thread.new { ::EventMachine.run }
+          sleep 0.1 until ::EventMachine.reactor_running?
         end
 
         # Close the previous Faye WS directly (avoids calling connection.stop
@@ -34,7 +34,7 @@ module Bot
         @generation += 1
         gen          = @generation   # captured in closures below
 
-        EM.next_tick do
+        ::EventMachine.next_tick do
           @client = DeltaExchange::Websocket::Client.new(testnet: @testnet)
 
           @client.on(:open) do

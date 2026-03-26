@@ -5,7 +5,7 @@ module Bot
   class Runner
     STRATEGY_INTERVAL_SECONDS      = 15    # Reduced for testing/faster signals
     TRAILING_STOP_INTERVAL_SECONDS = 5     # Faster tracking
-    PORTFOLIO_LOG_INTERVAL_SECONDS = 30    # Portfolio snapshot frequency
+    PORTFOLIO_LOG_INTERVAL_SECONDS = 10    # Faster status updates for UI
 
     def initialize(config:)
       @config = config
@@ -87,9 +87,23 @@ module Bot
     private
 
     def setup_delta_exchange
+      key    = ENV["DELTA_API_KEY"]
+      secret = ENV["DELTA_API_SECRET"]
+
+      if key.blank? || secret.blank?
+        puts "❌ ERROR: Missing Delta Exchange API credentials in .env"
+        puts "   Please set DELTA_API_KEY and DELTA_API_SECRET"
+        exit 1
+      end
+
+      # Basic length check to catch placeholder values
+      if key.length < 20 || secret.length < 40
+        puts "⚠️ WARNING: Delta API credentials look too short. Check if they are correct."
+      end
+
       DeltaExchange.configure do |c|
-        c.api_key    = ENV["DELTA_API_KEY"]    or raise "Missing env var: DELTA_API_KEY"
-        c.api_secret = ENV["DELTA_API_SECRET"] or raise "Missing env var: DELTA_API_SECRET"
+        c.api_key    = key
+        c.api_secret = secret
         c.testnet    = @config.testnet?
       end
     end
@@ -147,6 +161,8 @@ module Bot
         available      = (total_capital - blocked_margin).round(2)
         unrealized     = snapshot[:unrealized_pnl]
         realized       = @order_manager.realized_pnl.round(2)
+
+        @capital_manager.persist_state
 
         @logger.info("portfolio_snapshot",
           open_positions:       snapshot[:open_count],

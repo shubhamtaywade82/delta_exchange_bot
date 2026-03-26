@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+# Use foreman if available, otherwise fallback to simple background processes
+if command -v foreman &> /dev/null; then
+  echo "🚀 Starting all services with foreman..."
+  foreman start -f Procfile
+else
+  echo "⚠️ foreman not found. Falling back to sequential startup..."
+  (cd backend && bin/rails s) &
+  (cd backend && bin/bot) &
+  (cd frontend && npm run dev) &
+  wait
+fi
