@@ -40,6 +40,9 @@ module Trading
       EventBus.subscribe(:position_updated) do |event|
         Handlers::PositionHandler.new(event).call
       end
+      EventBus.subscribe(:tick_received) do |tick|
+        Handlers::TrailingStopHandler.new(tick, client: @client).call
+      end
     end
 
     def start_ws!

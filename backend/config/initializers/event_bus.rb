@@ -1,23 +1,24 @@
-# frozen_string_literal: true
+# Wire global EventBus subscriptions for broadcast to frontend.
 
-# Wire global EventBus subscriptions at boot.
-# These run independently of any session — they broadcast to the frontend
-# for all events regardless of which session produced them.
 Rails.application.config.after_initialize do
-  Trading::EventBus.subscribe(:position_updated) do |event|
-    ActionCable.server.broadcast("trading_channel", {
-      type:    "position_updated",
-      symbol:  event.symbol,
-      status:  event.status,
-      pnl:     event.unrealized_pnl
-    })
-  end
-
+  # Broadcast tick LTP to frontend
   Trading::EventBus.subscribe(:tick_received) do |event|
     ActionCable.server.broadcast("trading_channel", {
       type:   "ltp",
       symbol: event.symbol,
       price:  event.price
+    })
+  end
+
+  # Broadcast position updates
+  Trading::EventBus.subscribe(:position_updated) do |event|
+    ActionCable.server.broadcast("trading_channel", {
+      type:    "position_updated",
+      symbol:  event.symbol,
+      side:    event.side,
+      status:  event.status,
+      size:    event.size,
+      pnl:     event.unrealized_pnl
     })
   end
 end
