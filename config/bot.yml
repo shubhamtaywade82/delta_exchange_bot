@@ -7,6 +7,22 @@ strategy:
   adx:
     period: 14
     threshold: 20
+  rsi:
+    period: 14
+    overbought: 70
+    oversold: 30
+  vwap:
+    session_reset_hour_utc: 0
+  bos:
+    swing_lookback: 10
+  order_block:
+    min_impulse_pct: 0.3
+    max_ob_age: 20
+  filters:
+    funding_rate_threshold: 0.05
+    cvd_window: 50
+  derivatives:
+    oi_poll_interval: 30
   trailing_stop_pct: 0.2
   timeframes:
     trend: "1h"

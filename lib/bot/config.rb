@@ -62,6 +62,46 @@ module Bot
       val.to_f
     end
 
+    def rsi_period
+      @raw.dig("strategy", "rsi", "period")&.to_i || 14
+    end
+
+    def rsi_overbought
+      @raw.dig("strategy", "rsi", "overbought")&.to_f || 70.0
+    end
+
+    def rsi_oversold
+      @raw.dig("strategy", "rsi", "oversold")&.to_f || 30.0
+    end
+
+    def vwap_session_reset_hour_utc
+      @raw.dig("strategy", "vwap", "session_reset_hour_utc")&.to_i || 0
+    end
+
+    def bos_swing_lookback
+      @raw.dig("strategy", "bos", "swing_lookback")&.to_i || 10
+    end
+
+    def ob_min_impulse_pct
+      @raw.dig("strategy", "order_block", "min_impulse_pct")&.to_f || 0.3
+    end
+
+    def ob_max_age
+      @raw.dig("strategy", "order_block", "max_ob_age")&.to_i || 20
+    end
+
+    def funding_rate_threshold
+      @raw.dig("strategy", "filters", "funding_rate_threshold")&.to_f || 0.05
+    end
+
+    def cvd_window
+      @raw.dig("strategy", "filters", "cvd_window")&.to_i || 50
+    end
+
+    def oi_poll_interval
+      @raw.dig("strategy", "derivatives", "oi_poll_interval")&.to_i || 30
+    end
+
     def trailing_stop_pct
       val = @raw.dig("strategy", "trailing_stop_pct")
       error("strategy.trailing_stop_pct is required") if val.nil?
