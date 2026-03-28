@@ -7,6 +7,7 @@ Rails.application.routes.draw do
     resources :trading_sessions, only: [:index, :create, :destroy]
     get "strategy_status" => "strategy_status#index"
     get "wallet"          => "wallet#index"
+    get "symbols/:symbol/order_blocks" => "order_blocks#show"
   end
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
 
