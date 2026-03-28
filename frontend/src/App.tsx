@@ -375,15 +375,12 @@ function App() {
 
       <header className="terminal-header">
         <div className="brand">
-          <div className="icon-badge">
-            <TerminalIcon size={20} className="icon-pulse" />
-          </div>
           <div className="brand-text">
-            <h1>DELTA_BOT<span>v2.0</span></h1>
+            <TerminalIcon size={18} className="icon-pulse" />
+            <h1>DELTA_BOT</h1>
             <div className="system-status">
               <span className="dot online"></span>
-              <span className="status-label">SYS_READY_</span>
-              <span className="status-online">ONLINE_</span>
+              <span className="status-online">ONLINE_ v2.0</span>
               <span className="status-latency">12ms</span>
             </div>
           </div>
@@ -647,8 +644,8 @@ function App() {
             <div className="chart-mock">
               <div className="bars">
                 {stats?.equity_curve?.map((val, i) => {
-                  const max = Math.max(...(stats?.equity_curve ?? [1]), 1);
-                  const h = Math.max((Math.abs(val) / max) * 100, 5);
+                  const max = Math.max(...(stats?.equity_curve.map(Math.abs) ?? [1]), 1);
+                  const h = Math.max((Math.abs(val) / max) * 100, 15);
                   return (
                     <div key={i} className="bar-container">
                       <div className={`bar ${val >= 0 ? 'pos-bar' : 'neg-bar'}`} style={{ height: `${h}%` }}></div>

@@ -2,7 +2,13 @@
 
 require_relative "adx"
 require_relative "supertrend"
+require_relative "indicators/rsi"
+require_relative "indicators/vwap"
+require_relative "filters/momentum_filter"
+require_relative "filters/volume_filter"
+require_relative "filters/derivatives_filter"
 require "redis"
+require "active_support/core_ext/time"
 
 module Bot
   module Strategy
@@ -30,6 +36,10 @@ module Bot
         m15_adx = ADX.compute(m15_candles, period: @config.adx_period)
         m5_st   = Supertrend.compute(m5_candles,  atr_period: @config.supertrend_atr_period, multiplier: @config.supertrend_multiplier)
 
+        # New Indicators
+        m15_rsi  = Indicators::RSI.compute(m15_candles, period: 14)
+        m5_vwap  = Indicators::VWAP.compute(m5_candles)
+
         h1_dir       = h1_st.last[:direction]
         m15_dir      = m15_st.last[:direction]
         m15_adx_val  = m15_adx.last[:adx]
@@ -37,11 +47,39 @@ module Bot
         m5_last_dir  = m5_st.last[:direction]
         m5_last_ts   = m5_candles.last[:timestamp].to_i
 
+        # Current Values
+        current_rsi  = m15_rsi.last[:value]
+        current_vwap = m5_vwap.last
+
+        # Simulated/Placeholder for Volume & Derivatives (Normally from feed)
+        cvd_data     = { delta_trend: :bullish, delta: 1250 } # Placeholder
+        deriv_data   = { oi_trend: :rising, funding_rate: 0.0001, funding_extreme: false, oi_usd: 15_200_000 } # Placeholder
+
+        # Run Filters
+        # Note: We use the *potential* side to check filters even if confluence isn't fully there yet
+        potential_side = h1_dir == :bullish ? :long : :short
+        mom_f = Filters::MomentumFilter.check(potential_side, m15_rsi.last)
+        vol_f = Filters::VolumeFilter.check(potential_side, cvd_data, current_price, current_vwap)
+        der_f = Filters::DerivativesFilter.check(deriv_data)
+
         persist_symbol_state(symbol, {
           h1_dir: h1_dir,
           m15_dir: m15_dir,
           m5_dir: m5_last_dir,
           adx: m15_adx_val,
+          rsi: current_rsi,
+          vwap: current_vwap[:vwap],
+          vwap_deviation_pct: current_vwap[:deviation_pct],
+          cvd_trend: cvd_data[:delta_trend],
+          cvd_delta: cvd_data[:delta],
+          oi_trend: deriv_data[:oi_trend],
+          oi_usd: deriv_data[:oi_usd],
+          funding_rate: deriv_data[:funding_rate],
+          filters: {
+            momentum: mom_f,
+            volume: vol_f,
+            derivatives: der_f
+          },
           updated_at: Time.current.iso8601
         })
 
@@ -121,6 +159,7 @@ module Bot
             high:      (c[:high]      || c["high"])&.to_f      || raise("missing high in candle"),
             low:       (c[:low]       || c["low"])&.to_f       || raise("missing low in candle"),
             close:     (c[:close]     || c["close"])&.to_f     || raise("missing close in candle"),
+            volume:    (c[:volume]    || c["volume"])&.to_f    || 0.0,
             timestamp: (c[:timestamp] || c["timestamp"] || c[:time] || c["time"])&.to_i || raise("missing timestamp in candle") }
         end.sort_by { |c| c[:timestamp] }
       rescue StandardError => e
