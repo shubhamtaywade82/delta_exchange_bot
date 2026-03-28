@@ -146,68 +146,54 @@ function SignalQualityPanel({ sym, adxThreshold: _adxThreshold }: { sym: SymbolS
     allFilters.volume?.passed &&
     allFilters.derivatives?.passed;
 
-  const blockedFilter = allFilters && (
+  const blockedReason = allFilters && (
     (!allFilters.momentum?.passed && allFilters.momentum?.reason) ||
     (!allFilters.volume?.passed && allFilters.volume?.reason) ||
     (!allFilters.derivatives?.passed && allFilters.derivatives?.reason)
   );
 
   return (
-    <div className="signal-quality-panel">
-      <div className="sq-row sq-header">
-        <span className="sq-label">ENTRY_ANALYSIS</span>
-        <span className={`sq-status ${allPassed ? 'pos' : blockedFilter ? 'neg' : 'neutral'}`}>
-          {sym.signal ? 'SIGNAL_FIRED' : allPassed === false ? 'BLOCKED' : 'MONITORING'}
-        </span>
+    <div className="signal-analysis-card">
+      <div className="analysis-grid">
+        <div className="analysis-item">
+          <label>MOMENTUM</label>
+          <div className="item-content">
+            <span className="value">RSI: {sym.rsi?.toFixed(1) ?? '--'}</span>
+            {filterBadge(allFilters?.momentum)}
+          </div>
+        </div>
+        <div className="analysis-item">
+          <label>VOLUME (CVD/VWAP)</label>
+          <div className="item-content">
+            <span className="value">
+              {sym.cvd_trend ? `${trendArrow(sym.cvd_trend)} ${(sym.cvd_delta ?? 0).toFixed(0)}` : '--'}
+              <span className="divider">|</span>
+              {sym.vwap_deviation_pct?.toFixed(2) ?? '0'}%
+            </span>
+            {filterBadge(allFilters?.volume)}
+          </div>
+        </div>
+        <div className="analysis-item">
+          <label>DERIVATIVES</label>
+          <div className="item-content">
+            <span className="value">
+              OI: {sym.oi_usd ? `$${(sym.oi_usd / 1_000_000).toFixed(1)}M` : '--'}
+              <span className="divider">|</span>
+              {(sym.funding_rate ?? 0 * 100).toFixed(4)}%
+            </span>
+            {filterBadge(allFilters?.derivatives)}
+          </div>
+        </div>
+        <div className="analysis-item status-item">
+          <label>VERDICT</label>
+          <div className={`verdict-text ${allPassed ? 'pos' : blockedReason ? 'neg' : 'neutral'}`}>
+            {sym.signal ? 'EXECUTION_READY' : blockedReason ? 'BLOCKED' : 'QUALIFYING...'}
+          </div>
+        </div>
       </div>
-
-      {/* BOS */}
-      <div className="sq-row">
-        <span className="sq-label">BOS</span>
-        <span className={`sq-value ${sym.bos_direction === 'bullish' ? 'pos' : sym.bos_direction === 'bearish' ? 'neg' : ''}`}>
-          {sym.bos_direction ? `${sym.bos_direction.toUpperCase()} @ ${sym.bos_level?.toFixed(1) ?? '--'}` : '--'}
-        </span>
-      </div>
-
-      {/* RSI */}
-      <div className="sq-row">
-        <span className="sq-label">RSI</span>
-        <span className={`sq-value ${(sym.rsi ?? 50) > 70 ? 'neg' : (sym.rsi ?? 50) < 30 ? 'neg' : 'pos'}`}>
-          {sym.rsi?.toFixed(1) ?? '--'}
-        </span>
-        {filterBadge(allFilters?.momentum)}
-        <span className="sq-reason">{allFilters?.momentum?.reason ?? ''}</span>
-      </div>
-
-      {/* CVD + VWAP */}
-      <div className="sq-row">
-        <span className="sq-label">CVD</span>
-        <span className={`sq-value ${sym.cvd_trend === 'bullish' ? 'pos' : sym.cvd_trend === 'bearish' ? 'neg' : ''}`}>
-          {sym.cvd_trend ? `${trendArrow(sym.cvd_trend)} ${sym.cvd_delta?.toFixed(0) ?? ''}` : '--'}
-        </span>
-        <span className="sq-label">VWAP</span>
-        <span className="sq-value">
-          {sym.vwap ? `${sym.vwap.toFixed(0)} (${sym.vwap_deviation_pct?.toFixed(2) ?? '0'}%)` : '--'}
-        </span>
-        {filterBadge(allFilters?.volume)}
-      </div>
-
-      {/* OI + Funding */}
-      <div className="sq-row">
-        <span className="sq-label">OI</span>
-        <span className={`sq-value ${sym.oi_trend === 'rising' ? 'pos' : sym.oi_trend === 'falling' ? 'neg' : ''}`}>
-          {sym.oi_usd ? `${trendArrow(sym.oi_trend)} $${(sym.oi_usd / 1_000_000).toFixed(1)}M` : '--'}
-        </span>
-        <span className="sq-label">FUND</span>
-        <span className={`sq-value ${sym.funding_extreme ? 'neg' : 'pos'}`}>
-          {sym.funding_rate != null ? `${(sym.funding_rate * 100).toFixed(4)}%` : '--'}
-        </span>
-        {filterBadge(allFilters?.derivatives)}
-      </div>
-
-      {blockedFilter && (
-        <div className="sq-row sq-blocked">
-          <span className="neg">BLOCKED: {blockedFilter}</span>
+      {blockedReason && (
+        <div className="analysis-block-reason">
+          <span className="label">BLOCK_ERROR:</span> {blockedReason}
         </div>
       )}
     </div>
@@ -218,21 +204,23 @@ function DerivativesStrip({ symbols }: { symbols: SymbolState[] }) {
   if (symbols.length === 0) return null;
 
   return (
-    <div className="derivatives-strip">
-      {symbols.map(sym => (
-        <div key={sym.symbol} className="deriv-item">
-          <span className="deriv-symbol">{sym.symbol}</span>
-          <span className={`deriv-oi ${sym.oi_trend === 'rising' ? 'pos' : sym.oi_trend === 'falling' ? 'neg' : ''}`}>
-            OI {sym.oi_trend === 'rising' ? '▲' : sym.oi_trend === 'falling' ? '▼' : '--'}
-            {sym.oi_usd ? ` $${(sym.oi_usd / 1_000_000).toFixed(1)}M` : ''}
-          </span>
-          <span className={`deriv-fund ${sym.funding_extreme ? 'fund-extreme' : 'fund-normal'}`}>
-            {sym.funding_rate != null
-              ? `${sym.funding_rate >= 0 ? '+' : ''}${(sym.funding_rate * 100).toFixed(4)}%`
-              : 'FUND --'}
-          </span>
-        </div>
-      ))}
+    <div className="derivatives-marquee">
+      <div className="marquee-content">
+        {symbols.map(sym => (
+          <div key={sym.symbol} className="deriv-item-modern">
+            <span className="symbol-tag">{sym.symbol.replace('USDT', '')}</span>
+            <div className="metrics">
+              <span className={`trend ${sym.oi_trend === 'rising' ? 'pos' : 'neg'}`}>
+                OI {trendArrow(sym.oi_trend)}
+              </span>
+              <span className="sep"></span>
+              <span className={`fund ${sym.funding_extreme ? 'extreme' : ''}`}>
+                FUND {(sym.funding_rate ?? 0 * 100).toFixed(4)}%
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -387,10 +375,13 @@ function App() {
 
       <header className="terminal-header">
         <div className="brand">
-          <TerminalIcon size={28} className="icon-pulse" />
-          <div>
-            <h1>DELTA_BOT_CORE_v2.0</h1>
+          <div className="icon-badge">
+            <TerminalIcon size={20} className="icon-pulse" />
+          </div>
+          <div className="brand-text">
+            <h1>DELTA_BOT<span>v2.0</span></h1>
             <div className="system-status">
+              <span className="dot online"></span>
               <span className="status-label">SYS_READY_</span>
               <span className="status-online">ONLINE_</span>
               <span className="status-latency">12ms</span>
@@ -410,7 +401,7 @@ function App() {
           </div>
           {wallet && (
             <div className="mini-stat">
-              <label>CAPITAL</label>
+              <label>AVAILABLE_CAPITAL</label>
               <span className="value">
                 {wallet.paper_mode ? '📄 ' : ''}
                 {wallet.capital_inr ? `₹${wallet.capital_inr.toLocaleString()}` : wallet.available_usd ? `$${wallet.available_usd}` : '--'}
@@ -646,15 +637,23 @@ function App() {
             )}
           </section>
 
-          {/* Equity Curve */}
-          <section className="performance-card">
+          <section className="terminal-section performance-card">
+            <div className="section-header">
+              <div className="header-title-group">
+                <Cpu size={16} className="icon-accent" />
+                <h2>EQUITY_7D</h2>
+              </div>
+            </div>
             <div className="chart-mock">
-              <div className="label">EQUITY_CURVE_PERFORMANCE_7D</div>
               <div className="bars">
                 {stats?.equity_curve?.map((val, i) => {
                   const max = Math.max(...(stats?.equity_curve ?? [1]), 1);
-                  const h = Math.max((val / max) * 100, 5);
-                  return <div key={i} className={`bar ${val >= 0 ? 'pos-bar' : 'neg-bar'}`} style={{ height: `${Math.abs(h)}%` }}></div>;
+                  const h = Math.max((Math.abs(val) / max) * 100, 5);
+                  return (
+                    <div key={i} className="bar-container">
+                      <div className={`bar ${val >= 0 ? 'pos-bar' : 'neg-bar'}`} style={{ height: `${h}%` }}></div>
+                    </div>
+                  );
                 })}
               </div>
             </div>
