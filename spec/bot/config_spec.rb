@@ -13,7 +13,7 @@ RSpec.describe Bot::Config do
         "rsi" => { "period" => 14, "overbought" => 70, "oversold" => 30 },
         "vwap" => { "session_reset_hour_utc" => 0 },
         "bos" => { "swing_lookback" => 10 },
-        "order_block" => { "min_impulse_pct" => 0.3, "max_ob_age" => 20 },
+        "order_block" => { "min_impulse_pct" => 0.3, "ob_max_age" => 20 },
         "filters" => { "funding_rate_threshold" => 0.05, "cvd_window" => 50 },
         "derivatives" => { "oi_poll_interval" => 30 },
         "trailing_stop_pct" => 1.5,
@@ -327,6 +327,25 @@ RSpec.describe Bot::Config do
 
     it "exposes oi_poll_interval" do
       expect(config.oi_poll_interval).to eq(30)
+    end
+
+    context "when MWS strategy sections are absent" do
+      let(:minimal_yaml) do
+        valid_yaml.tap { |y| y["strategy"] = y["strategy"].reject { |k, _| ["rsi", "vwap", "bos", "order_block", "filters", "derivatives"].include?(k) } }
+      end
+      let(:minimal_config) { described_class.new(minimal_yaml) }
+
+      it "rsi_period defaults to 14" do
+        expect(minimal_config.rsi_period).to eq(14)
+      end
+
+      it "ob_max_age defaults to 20" do
+        expect(minimal_config.ob_max_age).to eq(20)
+      end
+
+      it "funding_rate_threshold defaults to 0.05" do
+        expect(minimal_config.funding_rate_threshold).to eq(0.05)
+      end
     end
   end
 end

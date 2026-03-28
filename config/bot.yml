@@ -17,7 +17,7 @@ strategy:
     swing_lookback: 10
   order_block:
     min_impulse_pct: 0.3
-    max_ob_age: 20
+    ob_max_age: 20
   filters:
     funding_rate_threshold: 0.05
     cvd_window: 50

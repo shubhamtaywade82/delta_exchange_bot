@@ -87,7 +87,7 @@ module Bot
     end
 
     def ob_max_age
-      @raw.dig("strategy", "order_block", "max_ob_age")&.to_i || 20
+      @raw.dig("strategy", "order_block", "ob_max_age")&.to_i || 20
     end
 
     def funding_rate_threshold
