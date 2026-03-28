@@ -85,7 +85,7 @@ module Bot
           m15_dir: m15_dir,
           m5_dir: m5_last_dir,
           adx: adx_val,
-          rsi: rsi_val,
+          rsi: rsi_val ? rsi_val[:value] : nil,
           vwap: current_vwap[:vwap],
           vwap_deviation_pct: current_vwap[:deviation_pct],
           cvd_trend: cvd_data[:delta_trend],
