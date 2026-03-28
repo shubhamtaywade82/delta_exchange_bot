@@ -7,12 +7,13 @@ module Bot
       attr_reader :realized_pnl
 
       def initialize(config:, product_cache:, position_tracker:, risk_calculator:,
-                     capital_manager:, logger:, notifier:)
+                     capital_manager:, price_store:, logger:, notifier:)
         @config           = config
         @product_cache    = product_cache
         @position_tracker = position_tracker
         @risk_calculator  = risk_calculator
         @capital_manager  = capital_manager
+        @price_store      = price_store
         @logger           = logger
         @notifier         = notifier
         @realized_pnl     = 0.0
@@ -26,9 +27,13 @@ module Bot
           return nil
         end
 
-        leverage       = @config.leverage_for(symbol)
-        available_usdt = @capital_manager.available_usdt
-        contract_value = @product_cache.contract_value_for(symbol)
+        leverage        = @config.leverage_for(symbol)
+        snapshot        = @position_tracker.snapshot(@price_store.all)
+        available_usdt  = @capital_manager.available_usdt(
+          blocked_margin: snapshot[:blocked_margin],
+          unrealized_pnl: snapshot[:unrealized_pnl]
+        )
+        contract_value  = @product_cache.contract_value_for(symbol)
 
         lots = @risk_calculator.compute(
           available_usdt: available_usdt,

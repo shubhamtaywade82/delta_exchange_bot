@@ -47,6 +47,7 @@ module Bot
         position_tracker: @position_tracker,
         risk_calculator:  @risk_calculator,
         capital_manager:  @capital_manager,
+        price_store:      @price_store,
         logger:           @logger,
         notifier:         @notifier
       )

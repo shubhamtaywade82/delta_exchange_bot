@@ -23,10 +23,11 @@ module Bot
                   DeltaExchange::Models::WalletBalance.find_by_asset("USD")
         result = balance&.available_balance.to_f || 0.0
         
-        # In dry_run mode use simulated capital minus blocked margin plus net PnL
-        if @dry_run && result < 1.0
+        # In dry_run mode use simulated capital + realized PnL - blocked margin + unrealized PnL
+        if @dry_run && (result < 1.0 || ENV["FORCE_DRY_RUN_BALANCE"] == "true")
+          realized_pnl = Trade.sum(:pnl_usd).to_f
           usd_cap = (@simulated_capital_inr / @usd_to_inr_rate).round(2)
-          val = (usd_cap - blocked_margin + unrealized_pnl).round(2)
+          val = (usd_cap + realized_pnl - blocked_margin + unrealized_pnl).round(2)
           [val, 0.0].max # Don't show negative available balance in simulation
         else
           result
