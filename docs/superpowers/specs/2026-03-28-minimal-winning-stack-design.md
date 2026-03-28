@@ -16,7 +16,7 @@ This is **not a replacement** — it is a surgical extension. The 1H/15M Supertr
 
 ## Signal Flow
 
-```
+```text
 1H Supertrend (macro bias)
   + 15M Supertrend + ADX > threshold (regime confirmation)
   ↓ both aligned?
@@ -45,7 +45,7 @@ Approach B — Indicator modules + filter pipeline. Each indicator is a standalo
 
 ### Layer Map
 
-```
+```text
 lib/bot/
   strategy/
     indicators/
@@ -82,16 +82,19 @@ frontend/
 ### Indicators (lib/bot/strategy/indicators/)
 
 #### rsi.rb
+
 - Input: candles array, period (default 14)
 - Output: `{value: Float, overbought: bool, oversold: bool}`
 - Algorithm: Wilder's smoothing of average gain/loss
 
 #### vwap.rb
+
 - Input: candles array (requires volume field)
 - Output: `{vwap: Float, deviation_pct: Float, price_above: bool}`
 - Algorithm: cumulative (price × volume) / cumulative volume, reset per session
 
 #### bos.rb
+
 - Input: candles array (5M timeframe)
 - Output: `{direction: :bullish|:bearish, level: Float, confirmed: bool}`
 - Algorithm: detect swing high/low, confirm when close breaks the level
@@ -99,6 +102,7 @@ frontend/
 - Bearish BOS: close breaks below most recent swing low
 
 #### order_block.rb
+
 - Input: candles array
 - Output: `[{side: :bull|:bear, high: Float, low: Float, fresh: bool, strength: Float}]`
 - Algorithm: identify last down-candle before a bullish impulse (bull OB) and last up-candle before bearish impulse (bear OB)
@@ -109,6 +113,7 @@ frontend/
 ### Data Stores (lib/bot/feed/)
 
 #### cvd_store.rb
+
 - Subscribes to `all_trades` WebSocket channel per symbol
 - Accumulates: `buy_volume += size` when side=buy, `sell_volume += size` when side=sell
 - Exposes: `{cumulative_delta: Float, delta_trend: :bullish|:bearish|:neutral}`
@@ -116,6 +121,7 @@ frontend/
 - Thread-safe (Mutex, same pattern as PriceStore)
 
 #### derivatives_store.rb
+
 - **Funding Rate**: subscribes to `funding_rate` WebSocket channel
 - **Open Interest**: polls `GET /v2/tickers/:symbol` every 30s (via background thread)
 - OI trend: compares current OI to previous sample — rising/falling
@@ -130,16 +136,19 @@ frontend/
 Each filter takes signal side (`:long`/`:short`), relevant store/indicator data, and returns `{passed: bool, reason: String}`.
 
 #### momentum_filter.rb
+
 - Block long if RSI > 70 (overbought)
 - Block short if RSI < 30 (oversold)
 - Pass otherwise
 
 #### volume_filter.rb
+
 - CVD check: `cvd_trend` must match signal side (bullish for long, bearish for short)
 - VWAP check: price above VWAP for longs, below for shorts
 - Both conditions must pass
 
 #### derivatives_filter.rb
+
 - OI check: `oi_trend` must be `:rising` (falling OI = divergence = potential trap)
 - Funding check: `funding_extreme` must be false
 - Both conditions must pass
@@ -149,14 +158,17 @@ Each filter takes signal side (`:long`/`:short`), relevant store/indicator data,
 ## Modified Files
 
 ### lib/bot/strategy/multi_timeframe.rb
+
 **Change:** Replace 5M Supertrend flip detection with BOS + Order Block check.
 
 Old entry logic:
+
 ```ruby
 m5_flip = m5_prev[:direction] != m5_current[:direction]
 ```
 
 New entry logic:
+
 ```ruby
 bos = Indicators::Bos.compute(m5_candles)
 obs = Indicators::OrderBlock.compute(m5_candles)
@@ -166,6 +178,7 @@ entry = bos[:confirmed] &&
 ```
 
 After entry triggers, run filter chain:
+
 ```ruby
 filters = [
   Filters::MomentumFilter.check(side, rsi),
@@ -176,10 +189,13 @@ return nil if filters.any? { |f| !f[:passed] }
 ```
 
 ### lib/bot/feed/websocket_feed.rb
+
 **Change:** Add subscriptions for `all_trades` and `funding_rate` channels. Route messages to `CvdStore` and `DerivativesStore` respectively.
 
 ### lib/bot/persistence/state_publisher.rb
+
 **Change:** Extend Redis payload with new indicator state:
+
 ```ruby
 {
   # existing fields unchanged...
@@ -208,14 +224,17 @@ return nil if filters.any? { |f| !f[:passed] }
 ## Backend (Rails)
 
 ### Mirror Services
+
 `backend/app/services/bot/strategy/indicators/` and `filters/` mirror the bot modules. Used for historical analysis and dashboard display — not live trading.
 
 ### New Endpoint
+
 `GET /api/symbols/:symbol/order_blocks`
 Returns array of current OB zones for chart overlay.
 Source: latest Redis state for the symbol, extracts `order_blocks` field.
 
 ### Existing Endpoints (no changes needed)
+
 `GET /api/strategy_status` — already reads from Redis, automatically includes new fields in response payload.
 
 ---
@@ -223,7 +242,9 @@ Source: latest Redis state for the symbol, extracts `order_blocks` field.
 ## Frontend (React)
 
 ### Signal Quality Panel
+
 Per-symbol card section showing:
+
 - Trend layer: 1H/15M direction badges + ADX value
 - Entry layer: BOS direction + level price
 - RSI row: value + pass/fail badge
@@ -234,14 +255,18 @@ Per-symbol card section showing:
 - Summary row: all-pass → "SIGNAL FIRED" (green) or first failure reason (red)
 
 ### Order Block Zones
+
 Horizontal rectangle overlay on price chart (if candlestick chart exists):
+
 - Bull OBs: green band (high/low of zone)
 - Bear OBs: red band
 - Faded opacity if `fresh: false`
 - Data from `/api/symbols/:symbol/order_blocks`
 
 ### Derivatives Strip
+
 Compact row below each symbol showing:
+
 - OI trend arrow (▲/▼) + USD value
 - Funding rate badge — green if normal, amber if extreme
 
@@ -280,27 +305,27 @@ strategy:
 
 ## Data Flow Summary
 
-```
-WS: all_trades    → CvdStore      ─┐
+```text
+WS: all_trades    → CvdStore         ─┐
 WS: funding_rate  → DerivativesStore ─┤
 REST: v2/tickers  → DerivativesStore ─┤
 REST: v2/candles  → MultiTimeframe   ─┤
-                                      ↓
-                              MultiTimeframe.evaluate()
-                                ├─ Supertrend 1H/15M (regime)
-                                ├─ ADX 15M (strength)
-                                ├─ BOS + OB 5M (entry)
-                                ├─ RSI (momentum gate)
-                                ├─ CVD + VWAP (volume gate)
-                                └─ OI + Funding (derivatives gate)
-                                      ↓
-                              Signal (or nil if any gate fails)
-                                      ↓
-                              OrderManager → execution (unchanged)
-                                      ↓
-                              StatePublisher → Redis
-                                      ↓
-                              Rails API → Frontend
+                                       ↓
+                               MultiTimeframe.evaluate()
+                                 ├─ Supertrend 1H/15M (regime)
+                                 ├─ ADX 15M (strength)
+                                 ├─ BOS + OB 5M (entry)
+                                 ├─ RSI (momentum gate)
+                                 ├─ CVD + VWAP (volume gate)
+                                 └─ OI + Funding (derivatives gate)
+                                       ↓
+                               Signal (or nil if any gate fails)
+                                       ↓
+                               OrderManager → execution (unchanged)
+                                       ↓
+                               StatePublisher → Redis
+                                       ↓
+                               Rails API → Frontend
 ```
 
 ---
