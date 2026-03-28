@@ -25,6 +25,8 @@ module Bot
           side      = attrs.fetch(:side)
           stop      = side == :long ? entry * (1.0 - trail_pct) : entry * (1.0 + trail_pct)
 
+          return nil if Position.exists?(symbol: symbol, status: "open")
+
           pos = Position.create!(
             symbol:         symbol,
             side:           side.to_s,

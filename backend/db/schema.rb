@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_26_190554) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_27_104051) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -55,6 +55,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_26_190554) do
     t.string "symbol"
     t.decimal "trail_pct"
     t.datetime "updated_at", null: false
+    t.index ["symbol"], name: "index_positions_on_symbol_when_open", unique: true, where: "((status)::text = 'open'::text)"
   end
 
   create_table "settings", force: :cascade do |t|

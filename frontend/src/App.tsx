@@ -24,6 +24,8 @@ interface Position {
   entry_price: string;
   size: string;
   leverage: number;
+  contract_value: string;
+  margin: string;
   pnl_usd: string;
   ltp: number;
   unrealized_pnl: number;
@@ -361,6 +363,7 @@ function App() {
                     <th>LTP</th>
                     <th>SIZE</th>
                     <th>PNL_UNREALIZED (INR)</th>
+                    <th>PNL_%</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -368,7 +371,9 @@ function App() {
                     const wsData = tickers[pos.symbol] || tickers[pos.symbol + 'T'];
                     const ltp = wsData?.price || pos.ltp;
                     const multiplier = pos.side === 'long' ? 1 : -1;
-                    const liveUpnl = ltp ? (ltp - parseFloat(pos.entry_price)) * parseFloat(pos.size) * multiplier : pos.unrealized_pnl;
+                    const liveUpnl = ltp ? (ltp - parseFloat(pos.entry_price)) * parseFloat(pos.size) * parseFloat(pos.contract_value || '1') * multiplier : pos.unrealized_pnl;
+                    const margin = parseFloat(pos.margin) || 0;
+                    const pnlPct = margin > 0 ? (liveUpnl / margin) * 100 : null;
 
                     return (
                       <tr key={pos.id} className="row-hover">
@@ -382,11 +387,14 @@ function App() {
                         <td className={`font-mono ${liveUpnl >= 0 ? 'pos' : 'neg'}`}>
                           ₹{(liveUpnl * 85.0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </td>
+                        <td className={`font-mono ${(pnlPct ?? 0) >= 0 ? 'pos' : 'neg'}`}>
+                          {pnlPct != null ? `${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%` : '---'}
+                        </td>
                       </tr>
                     );
                   })}
                   {positions.length === 0 && (
-                    <tr><td colSpan={6} className="empty-row">NO_ACTIVE_POSITIONS_FOUND</td></tr>
+                    <tr><td colSpan={7} className="empty-row">NO_ACTIVE_POSITIONS_FOUND</td></tr>
                   )}
                 </tbody>
               </table>
