@@ -125,9 +125,9 @@ interface WalletState {
 const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT'];
 
 function filterBadge(result?: FilterResult) {
-  if (!result) return <span className="dir-badge neutral">--</span>;
+  if (!result) return null;
   return (
-    <span className={`dir-badge ${result.passed ? 'bullish' : 'bearish'}`}
+    <span className={`dir-badge-sm ${result.passed ? 'bullish' : 'bearish'}`}
           title={result.reason}>
       {result.passed ? '✓' : '✗'}
     </span>
@@ -139,7 +139,7 @@ function trendArrow(trend?: string) {
   return trend === 'rising' || trend === 'bullish' ? '▲' : '▼';
 }
 
-function SignalQualityPanel({ sym, adxThreshold: _adxThreshold }: { sym: SymbolState; adxThreshold: number }) {
+function SignalQualityPanel({ sym }: { sym: SymbolState; adxThreshold: number }) {
   const allFilters = sym.filters;
   const allPassed = allFilters &&
     allFilters.momentum?.passed &&
@@ -158,17 +158,17 @@ function SignalQualityPanel({ sym, adxThreshold: _adxThreshold }: { sym: SymbolS
         <div className="analysis-item">
           <label>MOMENTUM</label>
           <div className="item-content">
-            <span className="value">RSI: {sym.rsi?.toFixed(1) ?? '--'}</span>
+            <span className="value">RSI {sym.rsi?.toFixed(0) ?? '--'}</span>
             {filterBadge(allFilters?.momentum)}
           </div>
         </div>
         <div className="analysis-item">
-          <label>VOLUME (CVD/VWAP)</label>
+          <label>VOLUME</label>
           <div className="item-content">
             <span className="value">
               {sym.cvd_trend ? `${trendArrow(sym.cvd_trend)} ${(sym.cvd_delta ?? 0).toFixed(0)}` : '--'}
               <span className="divider">|</span>
-              {sym.vwap_deviation_pct?.toFixed(2) ?? '0'}%
+              {(sym.vwap_deviation_pct ?? 0).toFixed(2)}%
             </span>
             {filterBadge(allFilters?.volume)}
           </div>
@@ -177,9 +177,9 @@ function SignalQualityPanel({ sym, adxThreshold: _adxThreshold }: { sym: SymbolS
           <label>DERIVATIVES</label>
           <div className="item-content">
             <span className="value">
-              OI: {sym.oi_usd ? `$${(sym.oi_usd / 1_000_000).toFixed(1)}M` : '--'}
+              OI {sym.oi_usd ? `$${(sym.oi_usd / 1_000_000).toFixed(1)}M` : '--'}
               <span className="divider">|</span>
-              {(sym.funding_rate ?? 0 * 100).toFixed(4)}%
+              {((sym.funding_rate ?? 0) * 100).toFixed(4)}%
             </span>
             {filterBadge(allFilters?.derivatives)}
           </div>
@@ -187,7 +187,7 @@ function SignalQualityPanel({ sym, adxThreshold: _adxThreshold }: { sym: SymbolS
         <div className="analysis-item status-item">
           <label>VERDICT</label>
           <div className={`verdict-text ${allPassed ? 'pos' : blockedReason ? 'neg' : 'neutral'}`}>
-            {sym.signal ? 'EXECUTION_READY' : blockedReason ? 'BLOCKED' : 'QUALIFYING...'}
+            {sym.signal ? 'EXECUTION_READY' : allPassed === false ? 'BLOCKED' : 'QUALIFYING'}
           </div>
         </div>
       </div>
