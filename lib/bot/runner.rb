@@ -5,6 +5,8 @@ require_relative "config"
 require_relative "product_cache"
 require_relative "supervisor"
 require_relative "feed/price_store"
+require_relative "feed/cvd_store"
+require_relative "feed/derivatives_store"
 require_relative "feed/websocket_feed"
 require_relative "strategy/multi_timeframe"
 require_relative "account/capital_manager"
@@ -40,6 +42,13 @@ module Bot
       @product_cache = ProductCache.new(symbols: @config.symbol_names, products: products)
 
       @price_store      = Feed::PriceStore.new
+      @cvd_store         = Feed::CvdStore.new(window: @config.cvd_window)
+      @derivatives_store = Feed::DerivativesStore.new(
+        products:      DeltaExchange::Client.new.products,
+        symbols:       @config.symbol_names,
+        poll_interval: @config.oi_poll_interval,
+        logger:        @logger
+      )
       @position_tracker = Execution::PositionTracker.new
       @capital_manager  = Account::CapitalManager.new(
         usd_to_inr_rate:   @config.usd_to_inr_rate,
@@ -53,7 +62,13 @@ module Bot
       client       = DeltaExchange::Client.new
       @market_data = client.market_data
 
-      @mtf = Strategy::MultiTimeframe.new(config: @config, market_data: @market_data, logger: @logger)
+      @mtf = Strategy::MultiTimeframe.new(
+        config:            @config,
+        market_data:       @market_data,
+        logger:            @logger,
+        cvd_store:         @cvd_store,
+        derivatives_store: @derivatives_store
+      )
 
       @order_manager = Execution::OrderManager.new(
         config:           @config,
@@ -67,10 +82,12 @@ module Bot
       )
 
       @ws_feed = Feed::WebsocketFeed.new(
-        symbols:     @config.symbol_names,
-        price_store: @price_store,
-        logger:      @logger,
-        testnet:     @config.testnet?
+        symbols:           @config.symbol_names,
+        price_store:       @price_store,
+        logger:            @logger,
+        testnet:           @config.testnet?,
+        cvd_store:         @cvd_store,
+        derivatives_store: @derivatives_store
       )
 
       reconcile_open_positions
@@ -81,6 +98,8 @@ module Bot
       supervisor.register(:strategy)      { run_strategy_loop }
       supervisor.register(:trailing_stop) { run_trailing_stop_loop }
       supervisor.register(:portfolio_log) { run_portfolio_log_loop }
+
+      @derivatives_store.start_polling
 
       @shutdown_requested = false
       trap("INT")  { @shutdown_requested = true }
