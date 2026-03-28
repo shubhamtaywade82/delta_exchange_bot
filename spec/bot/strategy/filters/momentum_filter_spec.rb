@@ -18,6 +18,7 @@ RSpec.describe Bot::Strategy::Filters::MomentumFilter do
       result = described_class.check(:long, rsi(75.0))
       expect(result[:passed]).to eq(false)
       expect(result[:reason]).to include("RSI")
+      expect(result[:reason]).to include("overbought")
     end
 
     it "passes for short when RSI is neutral" do
@@ -29,6 +30,7 @@ RSpec.describe Bot::Strategy::Filters::MomentumFilter do
       result = described_class.check(:short, rsi(25.0))
       expect(result[:passed]).to eq(false)
       expect(result[:reason]).to include("RSI")
+      expect(result[:reason]).to include("oversold")
     end
 
     it "passes for short when RSI is overbought" do
@@ -43,6 +45,12 @@ RSpec.describe Bot::Strategy::Filters::MomentumFilter do
 
     it "passes when rsi_result is nil (store not yet populated)" do
       result = described_class.check(:long, nil)
+      expect(result[:passed]).to eq(true)
+      expect(result[:reason]).to include("unavailable")
+    end
+
+    it "passes when rsi_result has no :value key" do
+      result = described_class.check(:long, { overbought: false, oversold: false })
       expect(result[:passed]).to eq(true)
       expect(result[:reason]).to include("unavailable")
     end
