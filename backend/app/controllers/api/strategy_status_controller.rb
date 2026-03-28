@@ -7,7 +7,7 @@ module Api
     TIMEFRAMES = [
       { tf: "1H",  role: "Trend filter",   indicator: "Supertrend direction" },
       { tf: "15M", role: "Confirmation",   indicator: "Supertrend + ADX strength" },
-      { tf: "5M",  role: "Entry trigger",  indicator: "Supertrend flip" }
+      { tf: "5M",  role: "Entry trigger",  indicator: "BOS + Order Block zone" }
     ].freeze
 
     def index
@@ -32,8 +32,10 @@ module Api
             "1H Supertrend must be bullish (long) or bearish (short)",
             "15M Supertrend must agree with 1H direction",
             "15M ADX ≥ #{bot_config.dig(:strategy, :adx_threshold)} (trending, not ranging)",
-            "5M Supertrend must flip to match (in live mode)",
-            "All three timeframes aligned → signal fires"
+            "5M BOS confirmed in trend direction + fresh Order Block present",
+            "MomentumFilter: RSI not extreme (not overbought for longs / oversold for shorts)",
+            "VolumeFilter: CVD agrees with direction + price on correct side of VWAP",
+            "DerivativesFilter: OI rising (no divergence) + funding rate within ±0.05%"
           ],
           exit_rules: [
             "#{bot_config.dig(:strategy, :trail_pct)}% trailing stop checked every 5 seconds",
