@@ -20,7 +20,14 @@ module Bot
       end
 
       # Publish per-symbol strategy evaluation state.
-      # state: { h1_dir:, m15_dir:, m5_dir:, adx:, signal:, updated_at: }
+      # state: {
+      #   h1_dir, m15_dir, adx, signal, updated_at,         # existing
+      #   bos_direction, bos_level, rsi, vwap,               # new indicators
+      #   vwap_deviation_pct, order_blocks,
+      #   cvd_trend, cvd_delta,                              # volume
+      #   oi_usd, oi_trend, funding_rate, funding_extreme,   # derivatives
+      #   filters: { momentum:, volume:, derivatives: }      # filter verdicts
+      # }
       def publish_strategy_state(symbol, state)
         return unless @redis && state
 
