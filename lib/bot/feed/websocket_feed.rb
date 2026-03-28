@@ -73,11 +73,20 @@ module Bot
               end
             when "all_trades"
               symbol = data["symbol"]
-              side   = data["buyer_role"] == "taker" ? "buy" : "sell"
-              size   = data["size"]&.to_f || data["quantity"]&.to_f
-              if symbol && side && size&.positive?
-                @cvd_store&.record_trade(symbol, side: side, size: size)
+              side = if data["buyer_role"] == "taker" || data["side"] == "buy"
+                       "buy"
+                     elsif data["buyer_role"] == "maker" || data["side"] == "sell"
+                       "sell"
+                     else
+                       @logger.warn("all_trades_unknown_direction", symbol: symbol)
+                       next
+                     end
+              size = data["size"]&.to_f || data["quantity"]&.to_f
+              if size.nil? || size <= 0
+                @logger.debug("all_trades_missing_size", symbol: symbol)
+                next
               end
+              @cvd_store&.record_trade(symbol, side: side, size: size) if symbol
 
             when "funding_rate"
               symbol = data["symbol"]
