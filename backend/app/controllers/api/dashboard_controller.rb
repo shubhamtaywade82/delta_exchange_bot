@@ -47,6 +47,8 @@ class Api::DashboardController < ApplicationController
       stats: {
         total_pnl_usd: total_pnl_usd,
         total_pnl_inr: (total_pnl_usd * 85.0).round(0),
+        total_equity_usd: (10000.0 / 85.0 + Trade.sum(:pnl_usd).to_f + unrealized).round(2),
+        total_equity_inr: (10000.0 + (Trade.sum(:pnl_usd).to_f + unrealized) * 85.0).round(0),
         win_rate: win_rate,
         daily_pnl: daily_pnl,
         weekly_pnl: weekly_pnl,

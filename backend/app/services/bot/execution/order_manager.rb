@@ -29,7 +29,7 @@ module Bot
 
         leverage        = @config.leverage_for(symbol)
         snapshot        = @position_tracker.snapshot(@price_store.all)
-        available_usdt  = @capital_manager.available_usdt(
+        available_usdt  = @capital_manager.spendable_usdt(
           blocked_margin: snapshot[:blocked_margin],
           unrealized_pnl: snapshot[:unrealized_pnl]
         )

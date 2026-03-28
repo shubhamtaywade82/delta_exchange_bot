@@ -40,20 +40,18 @@ module Bot
         # New Indicators
         m15_rsi  = Indicators::RSI.compute(m15_candles, period: 14)
         m5_vwap  = Indicators::VWAP.compute(m5_candles)
-
+        
+        current_vwap = m5_vwap.last
+        rsi_val      = m15_rsi.last
+        adx_val      = m15_adx.last[:adx]
         h1_dir       = h1_st.last[:direction]
         m15_dir      = m15_st.last[:direction]
-        m15_adx_val  = m15_adx.last[:adx]
         m5_prev_dir  = m5_st[-2]&.dig(:direction)
         m5_last_dir  = m5_st.last[:direction]
         m5_last_ts   = m5_candles.last[:timestamp].to_i
 
         # Real-time Metrics from Delta Exchange API
-        # Using Ticker model for OI and Funding
         ticker = DeltaExchange::Models::Ticker.find(symbol) rescue nil
-        
-        # Using market_data resource for recent trade delta (CVD)
-        # Fetching last 100 trades to compute immediate buying/selling pressure
         raw_trades = @market_data.trades(symbol, { limit: 100 }) rescue nil
         trades = if raw_trades.is_a?(Hash) && raw_trades.key?("result")
                    raw_trades["result"]
@@ -62,12 +60,11 @@ module Bot
                  else
                    raw_trades
                  end
-                 
         cvd_data = Indicators::CVDCalculator.compute(trades)
         
         deriv_data = if ticker
                        {
-                         oi_trend: :neutral, # Would need historical ticker to calculate trend
+                         oi_trend: :neutral,
                          funding_rate: ticker.funding_rate.to_f,
                          funding_extreme: ticker.funding_rate.to_f.abs > 0.0005,
                          oi_usd: ticker.oi_value_usd.to_f
@@ -78,16 +75,17 @@ module Bot
 
         # Run Filters with Real Data
         potential_side = h1_dir == :bullish ? :long : :short
-        mom_f = Filters::MomentumFilter.check(potential_side, m15_rsi.last)
+        mom_f = Filters::MomentumFilter.check(potential_side, rsi_val)
         vol_f = Filters::VolumeFilter.check(potential_side, cvd_data, current_price, current_vwap)
         der_f = Filters::DerivativesFilter.check(deriv_data)
 
+        # MANDATORY: Update UI even if we skip trade logic
         persist_symbol_state(symbol, {
           h1_dir: h1_dir,
           m15_dir: m15_dir,
           m5_dir: m5_last_dir,
-          adx: m15_adx_val,
-          rsi: current_rsi,
+          adx: adx_val,
+          rsi: rsi_val,
           vwap: current_vwap[:vwap],
           vwap_deviation_pct: current_vwap[:deviation_pct],
           cvd_trend: cvd_data[:delta_trend],
@@ -104,32 +102,25 @@ module Bot
           updated_at: Time.current.iso8601
         })
 
+        # --- TRADE LOGIC ---
         if h1_dir.nil? || m15_dir.nil? || m5_last_dir.nil?
-          @logger.debug("strategy_skip", symbol: symbol, reason: "nil_direction",
-                        h1: h1_dir, m15: m15_dir, m5: m5_last_dir)
+          @logger.debug("strategy_skip", symbol: symbol, reason: "nil_direction")
           return nil
         end
 
-        if m15_adx_val.nil? || m15_adx_val < @config.adx_threshold
-          @logger.debug("strategy_skip", symbol: symbol, reason: "adx_below_threshold",
-                        adx: m15_adx_val&.round(2), threshold: @config.adx_threshold)
+        if adx_val.nil? || adx_val < @config.adx_threshold
+          @logger.debug("strategy_skip", symbol: symbol, reason: "adx_below_threshold", adx: adx_val)
           return nil
         end
 
-        # Check for fresh flip on 5M — previous direction must differ from current
+        # Flip logic: In dry_run we allow continuation, in live we strictly want the fresh flip
         just_flipped = m5_prev_dir && m5_last_dir != m5_prev_dir
-
-        # In dry_run the flip requirement is relaxed so test signals fire on directional
-        # alignment alone — in testnet/live a genuine 5M flip is required.
         unless just_flipped || @config.dry_run?
-          @logger.debug("strategy_skip", symbol: symbol, reason: "no_5m_flip",
-                        m5_prev: m5_prev_dir, m5_last: m5_last_dir,
-                        h1: h1_dir, m15: m15_dir, adx: m15_adx_val&.round(2))
+          @logger.debug("strategy_skip", symbol: symbol, reason: "no_5m_flip")
           return nil
         end
 
         if @last_acted[symbol] == m5_last_ts
-          @logger.debug("strategy_skip", symbol: symbol, reason: "stale_candle", candle_ts: m5_last_ts)
           return nil
         end
 
@@ -140,13 +131,18 @@ module Bot
                end
 
         unless side
-          @logger.debug("strategy_skip", symbol: symbol, reason: "no_confluence",
-                        h1: h1_dir, m15: m15_dir, m5: m5_last_dir)
+          @logger.debug("strategy_skip", symbol: symbol, reason: "no_confluence")
+          return nil
+        end
+
+        # CVD and Momentum checks
+        unless mom_f && vol_f
+          @logger.debug("strategy_skip", symbol: symbol, reason: "filters_failed", mom: mom_f, vol: vol_f)
           return nil
         end
 
         @last_acted[symbol] = m5_last_ts
-        @logger.info("signal_generated", symbol: symbol, side: side, candle_ts: m5_last_ts)
+        @logger.info("signal_generated", symbol: symbol, side: side, price: current_price)
 
         Signal.new(symbol: symbol, side: side, entry_price: current_price, candle_ts: m5_last_ts)
       end

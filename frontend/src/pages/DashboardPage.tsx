@@ -206,7 +206,11 @@ const DashboardPage: React.FC = () => {
               <label>AVAILABLE_CAPITAL</label>
               <span className="value">
                 {wallet.paper_mode ? '📄 ' : ''}
-                {wallet.capital_inr ? `₹${wallet.capital_inr.toLocaleString()}` : wallet.available_usd ? `$${wallet.available_usd}` : '--'}
+                {wallet.total_equity_inr != null 
+                  ? `₹${Math.round(wallet.total_equity_inr).toLocaleString()}` 
+                  : wallet.available_usd != null 
+                    ? `$${wallet.available_usd.toFixed(2)}` 
+                    : '--'}
               </span>
             </div>
           )}
@@ -381,27 +385,27 @@ const DashboardPage: React.FC = () => {
             </div>
             <div className="wallet-grid">
               <div className="wallet-item">
-                <label>CAPITAL (INR)</label>
+                <label>TOTAL EQUITY</label>
                 <div className="wallet-value">
-                  {wallet?.capital_inr != null ? `₹${wallet.capital_inr.toLocaleString()}` : '--'}
+                  {wallet?.total_equity_inr != null ? `₹${wallet.total_equity_inr.toLocaleString()}` : '--'}
                 </div>
               </div>
               <div className="wallet-item">
-                <label>AVAILABLE (USD)</label>
+                <label>SPENDABLE (USD)</label>
                 <div className="wallet-value pos">
                   {wallet?.available_usd != null ? `$${wallet.available_usd.toFixed(2)}` : '--'}
                 </div>
               </div>
               <div className="wallet-item">
-                <label>AVAILABLE (INR)</label>
+                <label>SPENDABLE (INR)</label>
                 <div className="wallet-value pos">
-                  ₹100
+                  {wallet?.available_inr != null ? `₹${wallet.available_inr.toLocaleString()}` : '--'}
                 </div>
               </div>
               <div className="wallet-item">
                 <label>LAST_SYNC</label>
                 <div className="wallet-value timestamp">
-                  9s ago
+                  {wallet?.updated_at ? timeAgo(wallet.updated_at) : '--'}
                 </div>
               </div>
             </div>

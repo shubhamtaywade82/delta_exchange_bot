@@ -152,12 +152,12 @@ module Bot
         sleep PORTFOLIO_LOG_INTERVAL_SECONDS
 
         snapshot       = @position_tracker.snapshot(@price_store.all)
-        total_capital  = @capital_manager.available_usdt(
-          blocked_margin: snapshot[:blocked_margin],
+        equity_usd     = @capital_manager.total_equity_usdt(unrealized_pnl: snapshot[:unrealized_pnl])
+        blocked_margin = snapshot[:blocked_margin]
+        available_usd  = @capital_manager.spendable_usdt(
+          blocked_margin: blocked_margin,
           unrealized_pnl: snapshot[:unrealized_pnl]
         )
-        blocked_margin = snapshot[:blocked_margin]
-        available      = (total_capital - blocked_margin).round(2)
         unrealized     = snapshot[:unrealized_pnl]
         realized       = @order_manager.realized_pnl.round(2)
 
@@ -168,9 +168,9 @@ module Bot
 
         @logger.info("portfolio_snapshot",
           open_positions:       snapshot[:open_count],
-          total_capital_usd:    total_capital.round(2),
+          total_equity_usd:     equity_usd.round(2),
           blocked_margin_usd:   blocked_margin,
-          available_margin_usd: available,
+          available_margin_usd: available_usd.round(2),
           realized_pnl_usd:     realized,
           unrealized_pnl_usd:   unrealized,
           total_pnl_usd:        (realized + unrealized).round(2),
