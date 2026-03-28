@@ -24,13 +24,13 @@ module Bot
       end
 
       def available_usdt
+        return dry_run_capital_usd if @dry_run
+
         # Delta Exchange India uses "USD" as the margin asset for USD-settled
         # perpetuals; try USDT first then fall back to USD.
         balance = DeltaExchange::Models::WalletBalance.find_by_asset("USDT") ||
                   DeltaExchange::Models::WalletBalance.find_by_asset("USD")
-        result = balance&.available_balance.to_f || 0.0
-        # In dry_run mode use paper capital when real balance is too small to trade
-        @dry_run && result < 1.0 ? dry_run_capital_usd : result
+        balance&.available_balance.to_f || 0.0
       end
 
       def available_inr

@@ -65,6 +65,8 @@ module Bot
           [symbol, side.to_s, entry_price, exit_price, lots,
            pnl_usd, pnl_inr, duration_seconds, now.iso8601]
         )
+      rescue PG::UniqueViolation
+        # Ignore duplicate trade records to ensure data integrity without crashing.
       rescue PG::Error => e
         warn "[DbWriter] record_closed failed for #{symbol}: #{e.message}"
       end
