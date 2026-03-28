@@ -4,6 +4,7 @@ require_relative "adx"
 require_relative "supertrend"
 require_relative "indicators/rsi"
 require_relative "indicators/vwap"
+require_relative "indicators/cvd_calculator"
 require_relative "filters/momentum_filter"
 require_relative "filters/volume_filter"
 require_relative "filters/derivatives_filter"
@@ -47,16 +48,35 @@ module Bot
         m5_last_dir  = m5_st.last[:direction]
         m5_last_ts   = m5_candles.last[:timestamp].to_i
 
-        # Current Values
-        current_rsi  = m15_rsi.last[:value]
-        current_vwap = m5_vwap.last
+        # Real-time Metrics from Delta Exchange API
+        # Using Ticker model for OI and Funding
+        ticker = DeltaExchange::Models::Ticker.find(symbol) rescue nil
+        
+        # Using market_data resource for recent trade delta (CVD)
+        # Fetching last 100 trades to compute immediate buying/selling pressure
+        raw_trades = @market_data.trades(symbol, { limit: 100 }) rescue nil
+        trades = if raw_trades.is_a?(Hash) && raw_trades.key?("result")
+                   raw_trades["result"]
+                 elsif raw_trades.is_a?(Hash) && raw_trades.key?(:result)
+                   raw_trades[:result]
+                 else
+                   raw_trades
+                 end
+                 
+        cvd_data = Indicators::CVDCalculator.compute(trades)
+        
+        deriv_data = if ticker
+                       {
+                         oi_trend: :neutral, # Would need historical ticker to calculate trend
+                         funding_rate: ticker.funding_rate.to_f,
+                         funding_extreme: ticker.funding_rate.to_f.abs > 0.0005,
+                         oi_usd: ticker.oi_value_usd.to_f
+                       }
+                     else
+                       { oi_trend: :neutral, funding_rate: 0.0, funding_extreme: false, oi_usd: 0.0 }
+                     end
 
-        # Simulated/Placeholder for Volume & Derivatives (Normally from feed)
-        cvd_data     = { delta_trend: :bullish, delta: 1250 } # Placeholder
-        deriv_data   = { oi_trend: :rising, funding_rate: 0.0001, funding_extreme: false, oi_usd: 15_200_000 } # Placeholder
-
-        # Run Filters
-        # Note: We use the *potential* side to check filters even if confluence isn't fully there yet
+        # Run Filters with Real Data
         potential_side = h1_dir == :bullish ? :long : :short
         mom_f = Filters::MomentumFilter.check(potential_side, m15_rsi.last)
         vol_f = Filters::VolumeFilter.check(potential_side, cvd_data, current_price, current_vwap)
@@ -72,6 +92,7 @@ module Bot
           vwap_deviation_pct: current_vwap[:deviation_pct],
           cvd_trend: cvd_data[:delta_trend],
           cvd_delta: cvd_data[:delta],
+          cvd_delta_pct: cvd_data[:delta_pct],
           oi_trend: deriv_data[:oi_trend],
           oi_usd: deriv_data[:oi_usd],
           funding_rate: deriv_data[:funding_rate],
