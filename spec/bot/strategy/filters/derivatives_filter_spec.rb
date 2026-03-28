@@ -27,7 +27,7 @@ RSpec.describe Bot::Strategy::Filters::DerivativesFilter do
       expect(result[:reason]).to include("funding")
     end
 
-    it "blocks on both violations and mentions both" do
+    it "blocks when both OI and funding violations are present" do
       result = described_class.check(deriv(oi_trend: :falling, funding_extreme: true))
       expect(result[:passed]).to eq(false)
     end
