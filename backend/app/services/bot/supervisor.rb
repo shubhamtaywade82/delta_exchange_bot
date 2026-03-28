@@ -4,7 +4,7 @@ module Bot
   class Supervisor
     MAX_CRASHES      = 5
     CRASH_WINDOW_SEC = 600  # 10 minutes
-    BACKOFF_SEQUENCE = [5, 10, 30, 60].freeze
+    BACKOFF_SEQUENCE = [10, 30, 60, 300].freeze
 
     def initialize(logger:, notifier:)
       @logger   = logger

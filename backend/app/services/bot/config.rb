@@ -27,10 +27,17 @@ module Bot
     def live?              = mode == "live"
 
     def symbols
-      @symbols ||= (@raw["symbols"] || []).map { |s| { symbol: s["symbol"], leverage: s["leverage"] } }
+      @symbols ||= begin
+        db_symbols = SymbolConfig.where(enabled: true).map { |s| { symbol: s.symbol, leverage: s.leverage } }
+        if db_symbols.any?
+          db_symbols
+        else
+          (@raw["symbols"] || []).map { |s| { symbol: s["symbol"], leverage: s["leverage"] } }
+        end
+      end
     end
 
-    def symbol_names       = symbols.map { |s| s[:symbol] }
+    def symbol_names = symbols.map { |s| s[:symbol] }
 
     def leverage_for(symbol)
       entry = symbols.find { |s| s[:symbol] == symbol }
@@ -126,10 +133,15 @@ module Bot
       error("mode is required") if mode.nil?
       error("mode must be one of: #{VALID_MODES.join(', ')}") unless VALID_MODES.include?(mode)
 
-      error("symbols must not be empty") if symbols.empty?
+      # Skip validation for symbols if they are already in the DB and validated there
+      # But we still check names and leverage ranges for safety
+      if symbols.empty?
+        error("watchlist must not be empty (add symbols via UI or bot.yml)")
+      end
+      
       symbols.each do |s|
         error("symbol name must not be blank") if s[:symbol].to_s.strip.empty?
-        error("leverage for #{s[:symbol]} must be 1–200") unless s[:leverage].between?(1, 200)
+        error("leverage for #{s[:symbol]} must be 1–200") unless s[:leverage].to_i.between?(1, 200)
       end
 
       error("risk_per_trade_pct must be between 0.1 and 10") unless risk_per_trade_pct.between?(0.1, 10.0)

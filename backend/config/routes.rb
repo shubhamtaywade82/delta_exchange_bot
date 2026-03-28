@@ -8,6 +8,10 @@ Rails.application.routes.draw do
     get "strategy_status" => "strategy_status#index"
     get "wallet"          => "wallet#index"
     get "symbols/:symbol/order_blocks" => "order_blocks#show"
+    
+    # New catalog and watchlist
+    resources :products, only: [:index]
+    resources :symbol_configs, only: [:index, :create, :update, :destroy]
   end
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
 
