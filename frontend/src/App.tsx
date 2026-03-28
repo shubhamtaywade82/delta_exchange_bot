@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { LayoutDashboard, History, Terminal as TerminalIcon, Cpu, Wallet } from 'lucide-react';
 
@@ -49,14 +49,47 @@ interface TickerData {
   timestamp: number;
 }
 
+interface FilterResult {
+  passed: boolean;
+  reason: string;
+}
+
+interface OrderBlock {
+  side: 'bull' | 'bear';
+  high: number;
+  low: number;
+  fresh: boolean;
+}
+
 interface SymbolState {
   symbol: string;
+  // existing
   h1_dir?: string;
   m15_dir?: string;
-  m5_dir?: string;
   adx?: number;
   signal?: string;
   updated_at?: string;
+  // new indicators
+  bos_direction?: string;
+  bos_level?: number;
+  rsi?: number;
+  vwap?: number;
+  vwap_deviation_pct?: number;
+  order_blocks?: OrderBlock[];
+  // volume
+  cvd_trend?: string;
+  cvd_delta?: number;
+  // derivatives
+  oi_usd?: number;
+  oi_trend?: string;
+  funding_rate?: number;
+  funding_extreme?: boolean;
+  // filter verdicts
+  filters?: {
+    momentum?: FilterResult;
+    volume?: FilterResult;
+    derivatives?: FilterResult;
+  };
 }
 
 interface StrategyParams {
@@ -90,6 +123,119 @@ interface WalletState {
 }
 
 const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT'];
+
+function filterBadge(result?: FilterResult) {
+  if (!result) return <span className="dir-badge neutral">--</span>;
+  return (
+    <span className={`dir-badge ${result.passed ? 'bullish' : 'bearish'}`}
+          title={result.reason}>
+      {result.passed ? '✓' : '✗'}
+    </span>
+  );
+}
+
+function trendArrow(trend?: string) {
+  if (!trend) return '--';
+  return trend === 'rising' || trend === 'bullish' ? '▲' : '▼';
+}
+
+function SignalQualityPanel({ sym, adxThreshold: _adxThreshold }: { sym: SymbolState; adxThreshold: number }) {
+  const allFilters = sym.filters;
+  const allPassed = allFilters &&
+    allFilters.momentum?.passed &&
+    allFilters.volume?.passed &&
+    allFilters.derivatives?.passed;
+
+  const blockedFilter = allFilters && (
+    (!allFilters.momentum?.passed && allFilters.momentum?.reason) ||
+    (!allFilters.volume?.passed && allFilters.volume?.reason) ||
+    (!allFilters.derivatives?.passed && allFilters.derivatives?.reason)
+  );
+
+  return (
+    <div className="signal-quality-panel">
+      <div className="sq-row sq-header">
+        <span className="sq-label">ENTRY_ANALYSIS</span>
+        <span className={`sq-status ${allPassed ? 'pos' : blockedFilter ? 'neg' : 'neutral'}`}>
+          {sym.signal ? 'SIGNAL_FIRED' : allPassed === false ? 'BLOCKED' : 'MONITORING'}
+        </span>
+      </div>
+
+      {/* BOS */}
+      <div className="sq-row">
+        <span className="sq-label">BOS</span>
+        <span className={`sq-value ${sym.bos_direction === 'bullish' ? 'pos' : sym.bos_direction === 'bearish' ? 'neg' : ''}`}>
+          {sym.bos_direction ? `${sym.bos_direction.toUpperCase()} @ ${sym.bos_level?.toFixed(1) ?? '--'}` : '--'}
+        </span>
+      </div>
+
+      {/* RSI */}
+      <div className="sq-row">
+        <span className="sq-label">RSI</span>
+        <span className={`sq-value ${(sym.rsi ?? 50) > 70 ? 'neg' : (sym.rsi ?? 50) < 30 ? 'neg' : 'pos'}`}>
+          {sym.rsi?.toFixed(1) ?? '--'}
+        </span>
+        {filterBadge(allFilters?.momentum)}
+        <span className="sq-reason">{allFilters?.momentum?.reason ?? ''}</span>
+      </div>
+
+      {/* CVD + VWAP */}
+      <div className="sq-row">
+        <span className="sq-label">CVD</span>
+        <span className={`sq-value ${sym.cvd_trend === 'bullish' ? 'pos' : sym.cvd_trend === 'bearish' ? 'neg' : ''}`}>
+          {sym.cvd_trend ? `${trendArrow(sym.cvd_trend)} ${sym.cvd_delta?.toFixed(0) ?? ''}` : '--'}
+        </span>
+        <span className="sq-label">VWAP</span>
+        <span className="sq-value">
+          {sym.vwap ? `${sym.vwap.toFixed(0)} (${sym.vwap_deviation_pct?.toFixed(2) ?? '0'}%)` : '--'}
+        </span>
+        {filterBadge(allFilters?.volume)}
+      </div>
+
+      {/* OI + Funding */}
+      <div className="sq-row">
+        <span className="sq-label">OI</span>
+        <span className={`sq-value ${sym.oi_trend === 'rising' ? 'pos' : sym.oi_trend === 'falling' ? 'neg' : ''}`}>
+          {sym.oi_usd ? `${trendArrow(sym.oi_trend)} $${(sym.oi_usd / 1_000_000).toFixed(1)}M` : '--'}
+        </span>
+        <span className="sq-label">FUND</span>
+        <span className={`sq-value ${sym.funding_extreme ? 'neg' : 'pos'}`}>
+          {sym.funding_rate != null ? `${(sym.funding_rate * 100).toFixed(4)}%` : '--'}
+        </span>
+        {filterBadge(allFilters?.derivatives)}
+      </div>
+
+      {blockedFilter && (
+        <div className="sq-row sq-blocked">
+          <span className="neg">BLOCKED: {blockedFilter}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DerivativesStrip({ symbols }: { symbols: SymbolState[] }) {
+  if (symbols.length === 0) return null;
+
+  return (
+    <div className="derivatives-strip">
+      {symbols.map(sym => (
+        <div key={sym.symbol} className="deriv-item">
+          <span className="deriv-symbol">{sym.symbol}</span>
+          <span className={`deriv-oi ${sym.oi_trend === 'rising' ? 'pos' : sym.oi_trend === 'falling' ? 'neg' : ''}`}>
+            OI {sym.oi_trend === 'rising' ? '▲' : sym.oi_trend === 'falling' ? '▼' : '--'}
+            {sym.oi_usd ? ` $${(sym.oi_usd / 1_000_000).toFixed(1)}M` : ''}
+          </span>
+          <span className={`deriv-fund ${sym.funding_extreme ? 'fund-extreme' : 'fund-normal'}`}>
+            {sym.funding_rate != null
+              ? `${sym.funding_rate >= 0 ? '+' : ''}${(sym.funding_rate * 100).toFixed(4)}%`
+              : 'FUND --'}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function dirBadge(dir?: string) {
   if (!dir) return <span className="dir-badge neutral">--</span>;
@@ -235,6 +381,10 @@ function App() {
         })}
       </div>
 
+      {strategyStatus && (
+        <DerivativesStrip symbols={strategyStatus.symbols} />
+      )}
+
       <header className="terminal-header">
         <div className="brand">
           <TerminalIcon size={28} className="icon-pulse" />
@@ -309,24 +459,35 @@ function App() {
                       <th>1H_DIR</th>
                       <th>15M_CONF</th>
                       <th>ADX_PWR</th>
-                      <th>5M_TRIG</th>
+                      <th>BOS</th>
                       <th>SIGNAL</th>
                       <th>LAST_UPD</th>
                     </tr>
                   </thead>
                   <tbody>
                     {strategyStatus.symbols.map(sym => (
-                      <tr key={sym.symbol} className="row-hover">
-                        <td className="font-bold">{sym.symbol}</td>
-                        <td>{dirBadge(sym.h1_dir)}</td>
-                        <td>{dirBadge(sym.m15_dir)}</td>
-                        <td className={sym.adx != null && sym.adx >= (strategyStatus.strategy.params.adx_threshold ?? 20) ? 'pos' : 'neg'}>
-                          {sym.adx != null ? sym.adx.toFixed(1) : '--'}
-                        </td>
-                        <td>{dirBadge(sym.m5_dir)}</td>
-                        <td>{signalBadge(sym.signal)}</td>
-                        <td className="timestamp">{timeAgo(sym.updated_at)}</td>
-                      </tr>
+                      <React.Fragment key={sym.symbol}>
+                        <tr className="row-hover">
+                          <td className="font-bold">{sym.symbol}</td>
+                          <td>{dirBadge(sym.h1_dir)}</td>
+                          <td>{dirBadge(sym.m15_dir)}</td>
+                          <td className={sym.adx != null && sym.adx >= (strategyStatus.strategy.params.adx_threshold ?? 20) ? 'pos' : 'neg'}>
+                            {sym.adx != null ? sym.adx.toFixed(1) : '--'}
+                          </td>
+                          <td>
+                            {sym.bos_direction
+                              ? <span className={`dir-badge ${sym.bos_direction}`}>{sym.bos_direction.toUpperCase()}</span>
+                              : <span className="dir-badge neutral">--</span>}
+                          </td>
+                          <td>{signalBadge(sym.signal)}</td>
+                          <td className="timestamp">{timeAgo(sym.updated_at)}</td>
+                        </tr>
+                        <tr>
+                          <td colSpan={7} style={{ padding: 0 }}>
+                            <SignalQualityPanel sym={sym} adxThreshold={strategyStatus.strategy.params.adx_threshold ?? 20} />
+                          </td>
+                        </tr>
+                      </React.Fragment>
                     ))}
                     {strategyStatus.symbols.length === 0 && (
                       <tr><td colSpan={7} className="empty-row">AWAITING_STRATEGY_EVALUATION...</td></tr>
