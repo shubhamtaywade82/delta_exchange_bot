@@ -16,7 +16,6 @@ import {
   Waves
 } from 'lucide-react';
 
-const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT'];
 
 interface FilterResult {
   passed: boolean;
@@ -65,11 +64,6 @@ interface StrategyStatus {
   symbols: SymbolState[];
 }
 
-interface TickerData {
-  symbol: string;
-  price: number;
-  change: number;
-}
 
 function filterBadge(result?: FilterResult) {
   if (!result) return null;
@@ -146,31 +140,9 @@ function SignalQualityPanel({ sym }: { sym: SymbolState }) {
   );
 }
 
-function DerivativesStrip({ symbols }: { symbols: SymbolState[] }) {
-  return (
-    <div className="derivatives-marquee">
-      <div className="marquee-content">
-        {symbols.map(s => (
-          <div key={s.symbol} className="deriv-item-modern">
-            <span className="symbol-tag">{s.symbol.replace('USDT', '')}</span>
-            <div className="metrics">
-              <span className={s.oi_trend === 'rising' ? 'pos' : 'neg'}>
-                OI {s.oi_usd ? `$${(s.oi_usd / 1_000_000).toFixed(1)}M` : '--'} {trendArrow(s.oi_trend)}
-              </span>
-              <span className="sep"></span>
-              <span className={(s.funding_rate ?? 0) > 0.0005 ? 'neg' : 'pos'}>
-                FUND {((s.funding_rate ?? 0) * 100).toFixed(4)}%
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+// Dashboard Specific UI Components below
 
 const DashboardPage: React.FC = () => {
-  const [tickers, setTickers] = useState<Record<string, TickerData>>({});
   const [positions, setPositions] = useState<any[]>([]);
   const [trades, setTrades] = useState<any[]>([]);
   const [strategyStatus, setStrategyStatus] = useState<StrategyStatus | null>(null);
@@ -194,16 +166,6 @@ const DashboardPage: React.FC = () => {
 
       const { data: strat } = await axios.get('/api/strategy_status');
       setStrategyStatus(strat);
-
-      const newTickers: Record<string, TickerData> = {};
-      SYMBOLS.forEach(sym => {
-        newTickers[sym] = { 
-          symbol: sym, 
-          price: 65000 + Math.random() * 100, 
-          change: (Math.random() - 0.5) * 5 
-        };
-      });
-      setTickers(newTickers);
     } catch (err) {
       console.error("Dashboard sync error", err);
     }
@@ -215,29 +177,7 @@ const DashboardPage: React.FC = () => {
   };
 
   return (
-    <div className="dashboard-content">
-      {/* Real-time Ticker Bar */}
-      <div className="ticker-bar">
-        {SYMBOLS.map(symbol => {
-          const data = tickers[symbol];
-          return (
-            <div key={symbol} className="ticker-item">
-              <span className="symbol">{symbol.replace('USDT', '')}</span>
-              <span className={`price ${data?.price ? 'pop' : ''}`}>
-                ${data?.price?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '---'}
-              </span>
-              <span className={`change ${(data?.change ?? 0) >= 0 ? 'pos' : 'neg'}`}>
-                {data?.change ? `${data.change > 0 ? '+' : ''}${data.change.toFixed(2)}%` : '--'}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {strategyStatus && (
-        <DerivativesStrip symbols={strategyStatus.symbols} />
-      )}
-
+    <div className="dashboard-content pt-4">
       <header className="terminal-header">
         <div className="brand">
           <div className="brand-text">

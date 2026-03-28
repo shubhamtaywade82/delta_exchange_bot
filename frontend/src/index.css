@@ -23,8 +23,9 @@
   --header-height: 72px;
   --footer-height: 48px;
   --ticker-height: 42px;
+  --fund-height: 32px;
   --navbar-height: 48px;
-  --sticky-top: calc(var(--header-height) + var(--ticker-height) + var(--navbar-height) + 1.5rem);
+  --sticky-top: calc(var(--ticker-height) + var(--fund-height) + var(--navbar-height) + var(--header-height) + 1.5rem);
 
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-header: 'Space Grotesk', var(--font-sans);
@@ -124,7 +125,7 @@ body::after {
   display: flex;
   align-items: center;
   position: sticky;
-  top: var(--ticker-height);
+  top: calc(var(--ticker-height) + var(--fund-height));
   z-index: 101;
 }
 
@@ -168,7 +169,7 @@ body::after {
   border-bottom: 1px solid var(--border-glass);
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
   position: sticky;
-  top: calc(var(--ticker-height) + 48px);
+  top: calc(var(--ticker-height) + var(--fund-height) + 48px);
   z-index: 99;
 }
 
@@ -505,10 +506,13 @@ td {
   background: #000;
   border-bottom: 1px solid var(--border-glass);
   overflow: hidden;
-  height: 32px;
+  height: var(--fund-height);
   display: flex;
   align-items: center;
   justify-content: center;
+  position: sticky;
+  top: var(--ticker-height);
+  z-index: 100;
 }
 
 .marquee-content {
