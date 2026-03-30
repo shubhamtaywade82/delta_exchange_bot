@@ -38,5 +38,5 @@ notifications:
   daily_summary_time: "18:00"
 
 logging:
-  level: debug
+  level: info
   file: logs/bot.log
