@@ -1,11 +1,11 @@
 FactoryBot.define do
   factory :position do
-    symbol { "MyString" }
-    side { "MyString" }
-    status { "MyString" }
+    symbol { "BTCUSD" }
+    side { "buy" }
+    status { "init" }
     entry_price { "9.99" }
     exit_price { "9.99" }
-    size { "9.99" }
+    size { "1.0" }
     leverage { 1 }
     margin { "9.99" }
     pnl_usd { "9.99" }

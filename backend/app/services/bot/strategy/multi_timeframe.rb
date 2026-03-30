@@ -24,6 +24,7 @@ module Bot
 
       # Returns a Signal or nil
       def evaluate(symbol, current_price:)
+        @logger.info("evaluating_symbol", symbol: symbol, price: current_price)
         h1_candles  = fetch_candles(symbol, @config.timeframe_trend)
         m15_candles = fetch_candles(symbol, @config.timeframe_confirm)
         m5_candles  = fetch_candles(symbol, @config.timeframe_entry)
@@ -75,9 +76,14 @@ module Bot
 
         # Run Filters with Real Data
         potential_side = h1_dir == :bullish ? :long : :short
-        mom_f = Filters::MomentumFilter.check(potential_side, rsi_val)
-        vol_f = Filters::VolumeFilter.check(potential_side, cvd_data, current_price, current_vwap)
-        der_f = Filters::DerivativesFilter.check(deriv_data)
+        mom_res = Filters::MomentumFilter.check(potential_side, rsi_val, logger: @logger)
+        vol_res = Filters::VolumeFilter.check(potential_side, cvd_data, current_price, current_vwap, logger: @logger)
+        der_res = Filters::DerivativesFilter.check(deriv_data)
+
+        # Extraction for signal check
+        mom_f = mom_res.is_a?(Hash) ? mom_res[:passed] : mom_res
+        vol_f = vol_res.is_a?(Hash) ? vol_res[:passed] : vol_res
+        der_f = der_res.is_a?(Hash) ? der_res[:passed] : der_res
 
         # MANDATORY: Update UI even if we skip trade logic
         persist_symbol_state(symbol, {
@@ -95,28 +101,28 @@ module Bot
           oi_usd: deriv_data[:oi_usd],
           funding_rate: deriv_data[:funding_rate],
           filters: {
-            momentum: mom_f,
-            volume: vol_f,
-            derivatives: der_f
+            momentum: mom_res,
+            volume: vol_res,
+            derivatives: der_res
           },
           updated_at: Time.current.iso8601
         })
 
         # --- TRADE LOGIC ---
         if h1_dir.nil? || m15_dir.nil? || m5_last_dir.nil?
-          @logger.debug("strategy_skip", symbol: symbol, reason: "nil_direction")
+          @logger.info("strategy_skip", symbol: symbol, reason: "nil_direction")
           return nil
         end
 
         if adx_val.nil? || adx_val < @config.adx_threshold
-          @logger.debug("strategy_skip", symbol: symbol, reason: "adx_below_threshold", adx: adx_val)
+          @logger.info("strategy_skip", symbol: symbol, reason: "adx_below_threshold", adx: adx_val)
           return nil
         end
 
         # Flip logic: In dry_run we allow continuation, in live we strictly want the fresh flip
         just_flipped = m5_prev_dir && m5_last_dir != m5_prev_dir
         unless just_flipped || @config.dry_run?
-          @logger.debug("strategy_skip", symbol: symbol, reason: "no_5m_flip")
+          @logger.info("strategy_skip", symbol: symbol, reason: "no_5m_flip")
           return nil
         end
 
@@ -131,13 +137,13 @@ module Bot
                end
 
         unless side
-          @logger.debug("strategy_skip", symbol: symbol, reason: "no_confluence")
+          @logger.info("strategy_skip", symbol: symbol, reason: "no_confluence")
           return nil
         end
 
         # CVD and Momentum checks
         unless mom_f && vol_f
-          @logger.debug("strategy_skip", symbol: symbol, reason: "filters_failed", mom: mom_f, vol: vol_f)
+          @logger.info("strategy_skip", symbol: symbol, reason: "filters_failed", mom: mom_f, vol: vol_f)
           return nil
         end
 

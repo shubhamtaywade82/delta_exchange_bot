@@ -8,18 +8,26 @@ RSpec.describe Trading::Bootstrap::SyncOrders do
   before do
     allow(client).to receive(:get_open_orders).and_return([
       { id: "EX-001", symbol: "BTCUSD", side: "buy", size: 1.0,
-        price: 50000.0, order_type: "limit_order", status: "open" }
+        price: 50_000.0, order_type: "limit_order", status: "open" }
     ])
   end
 
-  it "marks stale local pending orders as cancelled" do
+  it "marks stale local submitted orders as cancelled" do
     stale = Order.create!(
-      trading_session: session, symbol: "BTCUSD", side: "buy",
-      size: 1.0, price: 49000.0, order_type: "limit_order",
-      status: "pending", idempotency_key: "old-key-1",
+      trading_session: session,
+      symbol: "BTCUSD",
+      side: "buy",
+      size: 1.0,
+      price: 49_000.0,
+      order_type: "limit_order",
+      status: "submitted",
+      idempotency_key: "old-key-1",
+      client_order_id: SecureRandom.uuid,
       exchange_order_id: "EX-STALE"
     )
+
     described_class.call(client: client, session: session)
+
     expect(stale.reload.status).to eq("cancelled")
   end
 end

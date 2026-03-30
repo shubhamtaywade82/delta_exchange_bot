@@ -5,7 +5,7 @@ module Trading
     BUFFER_PCT = 0.10  # force exit if within 10% of liquidation price
 
     def self.check_all(client:)
-      Position.where(status: "open").each do |position|
+      Position.active.each do |position|
         new(position, client).check!
       end
     end

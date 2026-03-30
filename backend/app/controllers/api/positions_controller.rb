@@ -1,7 +1,7 @@
 class Api::PositionsController < ApplicationController
   def index
     prices = Bot::Feed::PriceStore.new.all
-    positions = Position.where(status: "open").map do |pos|
+    positions = Position.active.map do |pos|
       ltp = prices[pos.symbol]
       
       pos.as_json.merge(

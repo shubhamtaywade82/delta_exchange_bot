@@ -1,7 +1,20 @@
-# app/services/trading/events/order_filled.rb
+# frozen_string_literal: true
+
 module Trading
   module Events
-    OrderFilled = Struct.new(:exchange_order_id, :symbol, :side, :filled_qty,
-                              :avg_fill_price, :status, keyword_init: true)
+    OrderFilled = Struct.new(
+      :exchange_fill_id,
+      :exchange_order_id,
+      :client_order_id,
+      :symbol,
+      :side,
+      :quantity,
+      :price,
+      :fee,
+      :filled_at,
+      :status,
+      :raw_payload,
+      keyword_init: true
+    )
   end
 end

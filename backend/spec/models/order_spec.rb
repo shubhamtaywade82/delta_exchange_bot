@@ -1,43 +1,31 @@
-# spec/models/order_spec.rb
 require "rails_helper"
 
 RSpec.describe Order, type: :model do
-  let(:session) { TradingSession.create!(strategy: "multi_timeframe", status: "running", capital: 1000.0) }
+  let(:session) { create(:trading_session) }
 
   it "is valid with required attributes" do
-    order = Order.new(
-      trading_session: session,
-      symbol: "BTCUSD",
-      side: "buy",
-      size: 1.0,
-      price: 50000.0,
-      order_type: "limit_order",
-      status: "pending",
-      idempotency_key: "delta:order:BTCUSD:buy:1711440000"
-    )
+    order = build(:order, trading_session: session, status: "created")
+
     expect(order).to be_valid
   end
 
-  it "is invalid without idempotency_key" do
-    order = Order.new(symbol: "BTCUSD", side: "buy", size: 1.0, status: "pending")
-    expect(order).not_to be_valid
+  it "enforces transitions" do
+    order = create(:order, trading_session: session, status: "created")
+
+    order.transition_to!("submitted")
+    expect(order.reload.status).to eq("submitted")
+
+    expect { order.transition_to!("created") }
+      .to raise_error(Order::InvalidTransitionError)
   end
 
-  it "enforces unique idempotency_key" do
-    attrs = { trading_session: session, symbol: "BTCUSD", side: "buy", size: 1.0,
-              price: 50000.0, order_type: "limit_order", status: "pending",
-              idempotency_key: "unique-key-123" }
-    Order.create!(attrs)
-    duplicate = Order.new(attrs)
-    expect(duplicate).not_to be_valid
-  end
+  it "applies cumulative fills" do
+    order = create(:order, trading_session: session, status: "submitted", size: 2)
 
-  it "#filled? returns true when status is filled" do
-    expect(Order.new(status: "filled")).to be_filled
-  end
+    order.apply_fill!(cumulative_qty: 1, avg_fill_price: 49_900, exchange_status: "open")
+    expect(order.reload.status).to eq("partially_filled")
 
-  it "#open? returns true when status is open or partially_filled" do
-    expect(Order.new(status: "open")).to be_open
-    expect(Order.new(status: "partially_filled")).to be_open
+    order.apply_fill!(cumulative_qty: 2, avg_fill_price: 49_950, exchange_status: "filled")
+    expect(order.reload.status).to eq("filled")
   end
 end

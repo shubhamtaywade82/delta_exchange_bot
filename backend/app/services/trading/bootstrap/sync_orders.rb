@@ -30,7 +30,7 @@ module Trading
       end
 
       def cancel_stale_local_orders(open_exchange_ids)
-        Order.where(trading_session: @session, status: %w[pending open])
+        Order.where(trading_session: @session, status: %w[created submitted partially_filled])
              .where.not(exchange_order_id: open_exchange_ids)
              .update_all(status: "cancelled")
       end

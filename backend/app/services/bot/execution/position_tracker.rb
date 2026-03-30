@@ -11,7 +11,7 @@ module Bot
       def refresh_from_db
         @mutex.synchronize do
           @positions = {}
-          Position.where(status: "open").find_each do |pos|
+          Position.active.find_each do |pos|
             @positions[pos.symbol] = pos_to_hash(pos)
           end
         end
@@ -25,12 +25,12 @@ module Bot
           side      = attrs.fetch(:side)
           stop      = side == :long ? entry * (1.0 - trail_pct) : entry * (1.0 + trail_pct)
 
-          return nil if Position.exists?(symbol: symbol, status: "open")
+          return nil if Position.exists?(symbol: symbol, status: "filled")
 
           pos = Position.create!(
             symbol:         symbol,
             side:           side.to_s,
-            status:         "open",
+            status:         "filled",
             entry_price:    entry,
             size:           attrs.fetch(:lots),
             leverage:       attrs.fetch(:leverage).to_i,
@@ -72,7 +72,7 @@ module Bot
           end
 
           if updated
-            Position.where(symbol: symbol, status: "open").update_all(
+            Position.active.where(symbol: symbol).update_all(
               peak_price: pos_hash[:peak_price],
               stop_price: pos_hash[:stop_price]
             )
@@ -84,7 +84,7 @@ module Bot
 
       def close(symbol, exit_price: nil, pnl_usd: nil, pnl_inr: nil)
         @mutex.synchronize do
-          Position.where(symbol: symbol, status: "open").update_all(
+          Position.active.where(symbol: symbol).update_all(
             status: "closed",
             exit_price: exit_price,
             exit_time: Time.now.utc,
