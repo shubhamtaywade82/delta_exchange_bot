@@ -10,17 +10,38 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_28_055656) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_30_193001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
+  create_table "fills", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "exchange_fill_id", null: false
+    t.decimal "fee", precision: 20, scale: 8
+    t.datetime "filled_at", null: false
+    t.bigint "order_id", null: false
+    t.decimal "price", precision: 20, scale: 8
+    t.decimal "quantity", precision: 20, scale: 8, null: false
+    t.jsonb "raw_payload", default: {}, null: false
+    t.datetime "updated_at", null: false
+    t.index ["exchange_fill_id"], name: "index_fills_on_exchange_fill_id", unique: true
+    t.index ["order_id", "filled_at", "exchange_fill_id"], name: "index_fills_ordered_execution"
+    t.index ["order_id", "filled_at"], name: "index_fills_on_order_id_and_filled_at"
+    t.index ["order_id"], name: "index_fills_on_order_id"
+    t.check_constraint "price IS NULL OR price > 0::numeric", name: "fills_price_positive"
+    t.check_constraint "quantity > 0::numeric", name: "fills_quantity_positive"
+  end
+
   create_table "orders", force: :cascade do |t|
     t.decimal "avg_fill_price"
+    t.string "client_order_id"
     t.datetime "created_at", null: false
     t.string "exchange_order_id"
     t.decimal "filled_qty"
     t.string "idempotency_key"
+    t.string "last_fill_digest"
     t.string "order_type"
+    t.bigint "position_id"
     t.decimal "price"
     t.jsonb "raw_payload"
     t.string "side"
@@ -29,32 +50,42 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_28_055656) do
     t.string "symbol"
     t.bigint "trading_session_id", null: false
     t.datetime "updated_at", null: false
+    t.index ["client_order_id"], name: "index_orders_on_client_order_id", unique: true
     t.index ["exchange_order_id"], name: "index_orders_on_exchange_order_id"
     t.index ["idempotency_key"], name: "index_orders_on_idempotency_key", unique: true
+    t.index ["position_id"], name: "index_orders_on_position_id"
     t.index ["trading_session_id"], name: "index_orders_on_trading_session_id"
+    t.check_constraint "filled_qty IS NULL OR size IS NULL OR filled_qty <= size", name: "orders_no_overfill"
   end
 
   create_table "positions", force: :cascade do |t|
     t.decimal "contract_value"
     t.datetime "created_at", null: false
+    t.jsonb "entry_features", default: {}
     t.decimal "entry_price"
     t.datetime "entry_time"
     t.decimal "exit_price"
     t.datetime "exit_time"
+    t.decimal "fee_total", precision: 16, scale: 6, default: "0.0"
     t.integer "leverage"
     t.decimal "liquidation_price"
+    t.integer "lock_version", default: 0, null: false
     t.decimal "margin"
+    t.boolean "needs_reconciliation", default: false, null: false
     t.decimal "peak_price"
     t.decimal "pnl_inr"
     t.decimal "pnl_usd"
     t.integer "product_id"
+    t.string "regime"
     t.string "side"
     t.decimal "size"
     t.string "status"
     t.decimal "stop_price"
+    t.string "strategy"
     t.string "symbol"
     t.decimal "trail_pct"
     t.datetime "updated_at", null: false
+    t.index ["needs_reconciliation"], name: "index_positions_on_needs_reconciliation"
     t.index ["symbol"], name: "index_positions_on_symbol_when_open", unique: true, where: "((status)::text = 'open'::text)"
   end
 
@@ -66,10 +97,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_28_055656) do
     t.string "value_type"
   end
 
+  create_table "strategy_params", force: :cascade do |t|
+    t.decimal "aggression", precision: 6, scale: 4, default: "0.5"
+    t.decimal "alpha", precision: 8, scale: 6, default: "0.01"
+    t.decimal "bias", precision: 10, scale: 6, default: "0.0"
+    t.datetime "created_at", null: false
+    t.integer "lock_version", default: 0, null: false
+    t.string "regime", null: false
+    t.decimal "risk_multiplier", precision: 6, scale: 4, default: "1.0"
+    t.string "strategy", null: false
+    t.datetime "updated_at", null: false
+    t.index ["strategy", "regime"], name: "index_strategy_params_on_strategy_and_regime", unique: true
+  end
+
   create_table "symbol_configs", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.boolean "enabled"
     t.integer "leverage"
+    t.integer "product_id"
     t.string "symbol"
     t.datetime "updated_at", null: false
   end
@@ -80,12 +125,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_28_055656) do
     t.integer "duration_seconds"
     t.decimal "entry_price"
     t.decimal "exit_price"
+    t.decimal "expected_edge", precision: 12, scale: 6, default: "0.0"
+    t.jsonb "features", default: {}
+    t.decimal "fees", precision: 16, scale: 6, default: "0.0"
+    t.integer "holding_time_ms", default: 0
     t.decimal "pnl_inr"
     t.decimal "pnl_usd"
+    t.decimal "realized_edge", precision: 12, scale: 6
+    t.decimal "realized_pnl", precision: 16, scale: 6, default: "0.0"
+    t.string "regime", null: false
     t.string "side"
     t.decimal "size"
+    t.string "strategy", null: false
     t.string "symbol"
     t.datetime "updated_at", null: false
+    t.index ["regime"], name: "index_trades_on_regime"
+    t.index ["strategy", "regime"], name: "index_trades_on_strategy_and_regime"
+    t.index ["strategy"], name: "index_trades_on_strategy"
     t.index ["symbol", "entry_price", "exit_price", "closed_at"], name: "index_trades_uniqueness", unique: true
   end
 
@@ -100,5 +156,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_28_055656) do
     t.datetime "updated_at", null: false
   end
 
+  add_foreign_key "fills", "orders"
+  add_foreign_key "orders", "positions"
   add_foreign_key "orders", "trading_sessions"
 end

@@ -5,8 +5,16 @@ class AddOnlineLearningFields < ActiveRecord::Migration[8.1]
     add_column :trades, :holding_time_ms, :integer, default: 0 unless column_exists?(:trades, :holding_time_ms)
     add_column :trades, :features, :jsonb, default: {} unless column_exists?(:trades, :features)
 
-    change_column_null :trades, :strategy, false if column_exists?(:trades, :strategy)
-    change_column_null :trades, :regime, false if column_exists?(:trades, :regime)
+    if column_exists?(:trades, :strategy)
+      execute "UPDATE trades SET strategy = 'legacy' WHERE strategy IS NULL"
+      change_column_null :trades, :strategy, false
+    end
+
+    if column_exists?(:trades, :regime)
+      execute "UPDATE trades SET regime = 'unknown' WHERE regime IS NULL"
+      change_column_null :trades, :regime, false
+    end
+
     change_column_default :trades, :expected_edge, from: nil, to: 0 if column_exists?(:trades, :expected_edge)
 
     add_index :trades, %i[strategy regime], name: "index_trades_on_strategy_and_regime" unless index_exists?(:trades, %i[strategy regime], name: "index_trades_on_strategy_and_regime")

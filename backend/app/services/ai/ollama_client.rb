@@ -1,12 +1,12 @@
 # frozen_string_literal: true
 
-require "ollama-ai"
+require "ollama-client"
 
 module Ai
   # OllamaClient provides cached access to local Ollama model responses for meta-configuration only.
   class OllamaClient
     def self.client
-      @client ||= Ollama.new(credentials: { address: ENV.fetch("OLLAMA_URL", "http://localhost:11434") })
+      @client ||= Ollama.new(url: ENV.fetch("OLLAMA_URL", "http://localhost:11434"))
     end
 
     # @param prompt [String]

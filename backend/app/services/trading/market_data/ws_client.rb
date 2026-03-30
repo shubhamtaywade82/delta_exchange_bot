@@ -17,6 +17,7 @@ module Trading
         @processed_count = 0
         @dropped_count = 0
         @last_metrics_at = Time.current
+        @books = {}
       end
 
       def start

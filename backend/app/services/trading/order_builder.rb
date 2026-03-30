@@ -13,11 +13,12 @@ module Trading
     end
 
     def build
+      side = map_side(@signal.side)
       {
         trading_session_id: @session.id,
         position_id: @position.id,
         symbol: @signal.symbol,
-        side: @signal.side,
+        side: side,
         size: calculate_size,
         price: @signal.entry_price,
         order_type: "limit_order",
@@ -25,13 +26,21 @@ module Trading
         client_order_id: SecureRandom.uuid,
         idempotency_key: IdempotencyGuard.key(
           symbol: @signal.symbol,
-          side: @signal.side,
+          side: side,
           timestamp: @signal.candle_timestamp.to_i
         )
       }
     end
 
     private
+
+    def map_side(strategy_side)
+      case strategy_side.to_sym
+      when :long, :buy then "buy"
+      when :short, :sell then "sell"
+      else strategy_side.to_s
+      end
+    end
 
     def calculate_size
       return 1 unless @session.capital.present? && @signal.entry_price.to_f.positive?
