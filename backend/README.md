@@ -1,24 +1,97 @@
-# README
+# Delta Trading Backend
 
-This README would normally document whatever steps are necessary to get the
-application up and running.
+Rails API backend for the Delta trading bot runtime.
 
-Things you may want to cover:
+## Fill-first execution pipeline
 
-* Ruby version
+Source-of-truth chain is now:
 
-* System dependencies
+`Exchange fills -> fills table -> orders -> positions`
 
-* Configuration
+- `Fill` is persisted with unique `exchange_fill_id` and linked to `Order`.
+- `Trading::FillProcessor` is idempotent via `exchange_fill_id` and recalculates order + position state under transaction/lock.
+- `Trading::OrderUpdater` applies exchange order lifecycle updates and fill snapshots.
 
-* Database creation
+Critical transactions run under `REPEATABLE READ` to prevent stale aggregate reads during concurrent ingestion.
 
-* Database initialization
+## WebSocket ingestion
 
-* How to run the test suite
+`Trading::MarketData::WsClient` now listens to ticker + order + fill channels and routes payloads to:
 
-* Services (job queues, cache servers, search engines, etc.)
+- `Trading::FillProcessor` for `v2/fills`
+- `Trading::OrderUpdater` for `v2/orders`
 
-* Deployment instructions
+WS ingestion uses a bounded queue (`WS_INGESTION_QUEUE_SIZE`) and worker pool (`WS_INGESTION_WORKERS`) to absorb burst traffic and apply backpressure.
 
-* ...
+Overflow policy is explicit: **drop + log warning** (non-blocking enqueue), so feed threads are not stalled.
+
+Workers are self-healed by a supervisor loop, and throughput metrics are logged (`processed`, `dropped`, `queue`) every `WS_METRICS_LOG_INTERVAL_SECONDS`.
+
+Reconnect uses jitter via `WS_RECONNECT_BASE_SECONDS`.
+
+## Position lifecycle state machine
+
+`Position` transitions remain deterministic:
+
+`init -> entry_pending -> partially_filled -> filled -> exit_pending -> closed`
+
+Terminal states: `liquidated`, `rejected`, `closed`.
+
+## Environment variables
+
+Copy `.env.example` and set your broker credentials before running the bot.
+
+## Reconciliation
+
+`Trading::ReconciliationJob` runs every minute (Solid Queue recurring) and calls `Trading::PositionRecalculator` for every dirty position to correct drift from missed WS events.
+
+Reconciliation uses a dirty-position strategy (`needs_reconciliation`) so only affected positions are recomputed by the periodic job.
+
+
+## Risk engine
+
+Risk runs at two hooks:
+- on every tick (`WsClient#handle_tick`)
+- immediately after fill processing (`FillProcessor`)
+
+Modules:
+- `Trading::Risk::PositionRisk`
+- `Trading::Risk::MarginCalculator`
+- `Trading::Risk::LiquidationGuard`
+- `Trading::Risk::KillSwitch`
+- `Trading::Risk::Engine`
+- `Trading::Risk::Executor`
+
+`ExecutionEngine` checks kill-switch before placing any new order.
+
+
+## Microstructure execution layer
+
+Orderbook updates (`v2/orderbook`) are processed by:
+- `Trading::Orderbook::Book` (L2 state)
+- `Trading::Microstructure::Imbalance` + `SignalEngine`
+- `Trading::Execution::DecisionEngine` (maker/taker choice)
+- `Trading::Execution::OrderRouter` (post_only/reduce_only aware placement)
+
+Execution is throttled through `Trading::Execution::RateLimiter` and supports batch submission via `Trading::Execution::BatchExecutor`.
+
+
+## Adaptive strategy layer
+
+Adaptive flow:
+`Features::Extractor -> Strategy::RegimeDetector -> Strategy::AiEdgeModel (cached) -> Strategy::Selector -> Strategies::* -> Execution::OrderRouter`
+
+AI is used only for meta-configuration (strategy/risk multipliers), never direct trade placement.
+Deterministic fallback is always available via `AiEdgeModel.fallback`.
+
+`Trading::AdaptiveEngine` is invoked from orderbook updates and keeps AI calls cached (`AI_CONFIG_CACHE_SECONDS`).
+
+
+## Online learning loop
+
+Loop:
+`Execution -> Learning::CreditAssigner -> Learning::Reward -> Learning::OnlineUpdater -> Learning::Metrics -> next strategy choice`
+
+- Updates are bounded (`OnlineUpdater::CLIP`) and clamped to safe ranges.
+- Learning pauses automatically when portfolio PnL breaches `LEARNING_FREEZE_PNL`.
+- `AiRefinementJob` runs off-path (every 10 minutes) to suggest parameter bounds; execution remains deterministic.

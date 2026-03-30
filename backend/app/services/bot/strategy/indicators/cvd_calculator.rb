@@ -5,10 +5,15 @@ module Bot
     module Indicators
       module CVDCalculator
         def self.compute(trades)
-          return { delta: 0, delta_trend: :neutral, delta_pct: 0 } if trades.nil? || trades.empty?
+          if trades.nil? || trades.empty?
+            puts "CVD DEBUG: No trades received"
+            return { delta: 0, delta_trend: :neutral, delta_pct: 0 }
+          end
 
           buy_vol  = trades.select { |t| t[:side] == "buy"  || t["side"] == "buy" }.sum { |t| (t[:size] || t["size"]).to_f }
           sell_vol = trades.select { |t| t[:side] == "sell" || t["side"] == "sell" }.sum { |t| (t[:size] || t["size"]).to_f }
+          
+          puts "CVD DEBUG: buy_vol=#{buy_vol}, sell_vol=#{sell_vol}, trades_count=#{trades.size}"
           
           total_vol = buy_vol + sell_vol
           return { delta: 0, delta_trend: :neutral, delta_pct: 0 } if total_vol.zero?

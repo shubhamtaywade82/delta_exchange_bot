@@ -8,12 +8,13 @@ module Api
 
     def create
       # Add or update a symbol in the watchlist
-      symbol   = params[:symbol]
-      leverage = params[:leverage] || 10
-      enabled  = params[:enabled] != false
+      symbol     = params[:symbol]
+      leverage   = params[:leverage] || 10
+      enabled    = params[:enabled] != false
+      product_id = params[:product_id]
 
       config = SymbolConfig.find_or_initialize_by(symbol: symbol)
-      config.update!(leverage: leverage, enabled: enabled)
+      config.update!(leverage: leverage, enabled: enabled, product_id: product_id)
 
       render json: config
     end
@@ -41,7 +42,7 @@ module Api
     private
 
     def symbol_config_params
-      params.require(:symbol_config).permit(:leverage, :enabled)
+      params.require(:symbol_config).permit(:leverage, :enabled, :product_id)
     end
   end
 end

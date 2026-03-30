@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 
 interface Product {
+  id: number;
   symbol: string;
   description: string;
   contract_type: string;
@@ -16,6 +17,7 @@ interface SymbolConfig {
   symbol: string;
   enabled: boolean;
   leverage: number;
+  product_id?: number;
 }
 
 const CATEGORIES = ['ALL', 'BTC', 'ETH', 'USDT'];
@@ -63,13 +65,19 @@ const CatalogPage: React.FC = () => {
 
   const toggleWatch = async (symbol: string) => {
     const entry = watchlist.find(w => w.symbol === symbol);
+    const product = products.find(p => p.symbol === symbol);
     const targetLeverage = leverages[symbol] || 10;
     
     try {
       if (entry?.enabled) {
         await axios.delete(`/api/symbol_configs/${entry.id}`);
       } else {
-        await axios.post('/api/symbol_configs', { symbol, leverage: targetLeverage, enabled: true });
+        await axios.post('/api/symbol_configs', { 
+          symbol, 
+          leverage: targetLeverage, 
+          enabled: true,
+          product_id: product?.id
+        });
       }
       fetchData();
     } catch (err) {

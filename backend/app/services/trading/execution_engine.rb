@@ -7,15 +7,15 @@ module Trading
     end
 
     def initialize(signal, session, client)
-      @signal  = signal
+      @signal = signal
       @session = session
-      @client  = client
+      @client = client
     end
 
     def execute
       idem_key = IdempotencyGuard.key(
-        symbol:    @signal.symbol,
-        side:      @signal.side,
+        symbol: @signal.symbol,
+        side: @signal.side,
         timestamp: @signal.candle_timestamp.to_i
       )
 
@@ -26,15 +26,25 @@ module Trading
 
       RiskManager.validate!(@signal, session: @session)
 
-      order_attrs = OrderBuilder.build(@signal, session: @session)
-      order       = OrdersRepository.create!(order_attrs)
+
+      kill_signal = Trading::Risk::KillSwitch.call(portfolio: Trading::Risk::PortfolioSnapshot.current)
+      if kill_signal == :halt_trading
+        raise Trading::RiskManager::RiskError, "kill switch: trading halted"
+      elsif kill_signal == :block_new_trades
+        raise Trading::RiskManager::RiskError, "kill switch: exposure cap reached"
+      end
+
+      position = find_or_create_position!
+      order_attrs = OrderBuilder.build(@signal, session: @session, position: position)
+      order = OrdersRepository.create!(order_attrs)
 
       result = place_order(order)
 
       order.update!(
         exchange_order_id: result[:id]&.to_s,
-        status:            result[:status] || "open"
+        status: normalize_exchange_status(result[:status])
       )
+      position.recalculate_from_orders!
 
       Rails.logger.info("[ExecutionEngine] Order placed: #{order.exchange_order_id} for #{@signal.symbol} #{@signal.side}")
       order
@@ -50,12 +60,19 @@ module Trading
 
     def place_order(order)
       @client.place_order(
-        product_id:  fetch_product_id(order.symbol),
-        side:        order.side,
-        order_type:  order.order_type,
-        size:        order.size,
-        limit_price: order.price
+        product_id: fetch_product_id(order.symbol),
+        side: order.side,
+        order_type: order.order_type,
+        size: order.size,
+        limit_price: order.price,
+        client_order_id: order.client_order_id
       )
+    end
+
+    def find_or_create_position!
+      Position.find_or_create_by!(symbol: @signal.symbol, side: @signal.side) do |position|
+        position.status = "init"
+      end
     end
 
     def fetch_product_id(symbol)
@@ -64,6 +81,17 @@ module Trading
         raise "No product_id configured for #{symbol}" unless config&.respond_to?(:product_id)
 
         config.product_id
+      end
+    end
+
+    def normalize_exchange_status(status)
+      case status.to_s
+      when "open", "submitted", "pending" then "submitted"
+      when "partially_filled" then "partially_filled"
+      when "filled" then "filled"
+      when "cancelled", "canceled" then "cancelled"
+      when "rejected" then "rejected"
+      else "submitted"
       end
     end
   end

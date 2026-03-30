@@ -19,8 +19,8 @@ module Bot
     end
 
     def start
-      puts "Starting runner..."
-      @logger.info("bot_starting", mode: @config.mode, symbols: @config.symbol_names)
+      puts "Starting runner v2 [2026-03-30 15:10]..."
+      @logger.info("bot_starting_v2", mode: @config.mode, symbols: @config.symbol_names)
 
       puts "Fetching products..."
       products       = DeltaExchange::Models::Product.all

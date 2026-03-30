@@ -43,7 +43,7 @@ module Trading
     end
 
     def close_open_positions!
-      Position.where(status: "open").each do |position|
+      Position.active.each do |position|
         self.class.force_exit_position(position, @client)
       end
     end

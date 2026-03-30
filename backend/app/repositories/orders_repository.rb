@@ -10,14 +10,45 @@ module OrdersRepository
   end
 
   def self.update_from_fill(exchange_order_id:, filled_qty:, avg_fill_price:, status:)
-    order = find_by_exchange_id(exchange_order_id)
-    return unless order
+    exchange_fill_id = [exchange_order_id, filled_qty, avg_fill_price, status].join(":")
 
-    order.update!(
-      filled_qty:     filled_qty,
-      avg_fill_price: avg_fill_price,
-      status:         status
+    Trading::FillProcessor.process(
+      Trading::Events::OrderFilled.new(
+        exchange_fill_id: exchange_fill_id,
+        exchange_order_id: exchange_order_id,
+        quantity: filled_qty,
+        price: avg_fill_price,
+        status: status,
+        filled_at: Time.current,
+        raw_payload: { source: "repository_update" }
+      )
     )
-    order
+  end
+
+  def self.close_position(position_id:, reason:, mark_price:)
+    position = Position.find(position_id)
+
+    Position.transaction do
+      position.update!(
+        status: "liquidated",
+        exit_price: mark_price,
+        exit_time: Time.current,
+        pnl_usd: position.pnl_usd.to_d,
+        pnl_inr: position.pnl_inr.to_d
+      )
+
+      trade = Trading::Learning::CreditAssigner.finalize_trade!(
+        position,
+        entry_features: position.entry_features || {},
+        strategy: position.strategy.presence || "scalping",
+        regime: position.regime.presence || "mean_reversion"
+      )
+      Trading::Learning::OnlineUpdater.update!(trade)
+      Trading::Learning::Metrics.update(trade)
+
+      Rails.logger.warn("[OrdersRepository] Forced close position=#{position.id} reason=#{reason} mark=#{mark_price}")
+    end
+
+    position
   end
 end

@@ -4,7 +4,7 @@ module Bot
   module Strategy
     module Filters
       module VolumeFilter
-        def self.check(side, cvd_data, current_price, vwap_result)
+        def self.check(side, cvd_data, current_price, vwap_result, logger: nil)
           return { passed: true, reason: "CVD/VWAP unavailable — skipping gate" } if cvd_data.nil? || vwap_result.nil?
 
           cvd_trend   = cvd_data[:delta_trend]
@@ -13,17 +13,25 @@ module Bot
 
           if side == :long
             unless cvd_trend == :bullish
-              return { passed: false, reason: "CVD #{cvd_trend} — does not support long entry" }
+              res = { passed: false, reason: "CVD #{cvd_trend} — does not support long entry" }
+              logger&.info("filter_skip_volume", **res)
+              return res
             end
             unless price_above
-              return { passed: false, reason: "VWAP #{vwap_val}: price #{current_price} below VWAP — blocking long" }
+              res = { passed: false, reason: "VWAP #{vwap_val}: price #{current_price} below VWAP — blocking long" }
+              logger&.info("filter_skip_volume", **res)
+              return res
             end
           else
             unless cvd_trend == :bearish
-              return { passed: false, reason: "CVD #{cvd_trend} — does not support short entry" }
+              res = { passed: false, reason: "CVD #{cvd_trend} — does not support short entry" }
+              logger&.info("filter_skip_volume", **res)
+              return res
             end
             if price_above
-              return { passed: false, reason: "VWAP #{vwap_val}: price #{current_price} above VWAP — blocking short" }
+              res = { passed: false, reason: "VWAP #{vwap_val}: price #{current_price} above VWAP — blocking short" }
+              logger&.info("filter_skip_volume", **res)
+              return res
             end
           end
 

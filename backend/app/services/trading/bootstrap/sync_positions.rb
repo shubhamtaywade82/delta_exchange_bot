@@ -23,7 +23,8 @@ module Trading
       private
 
       def upsert_position(ep)
-        position = Position.find_or_initialize_by(symbol: ep[:symbol], status: "open")
+        position = Position.find_or_initialize_by(symbol: ep[:symbol], status: Position::STATES - ["closed", "liquidated", "rejected"])
+        position.status = "filled" if position.new_record?
         position.assign_attributes(
           side:              ep[:side],
           size:              ep[:size],
@@ -38,7 +39,7 @@ module Trading
 
       def close_stale_positions(exchange_positions)
         active_symbols = exchange_positions.map { |ep| ep[:symbol] }
-        Position.where(status: "open")
+        Position.active
                 .where.not(symbol: active_symbols)
                 .update_all(status: "closed")
       end

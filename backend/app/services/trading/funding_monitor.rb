@@ -5,7 +5,7 @@ module Trading
     HIGH_FUNDING_THRESHOLD = 0.001  # 0.1% funding rate
 
     def self.check_all(client:)
-      Position.where(status: "open").each do |position|
+      Position.active.each do |position|
         new(position, client).check!
       end
     end

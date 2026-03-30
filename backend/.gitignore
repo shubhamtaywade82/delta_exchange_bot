@@ -21,6 +21,7 @@
 
 # Ignore ENV files
 .env*
+!.env.example
 
 # Ignore master key for decrypting credentials and symlinks
 /config/master.key
