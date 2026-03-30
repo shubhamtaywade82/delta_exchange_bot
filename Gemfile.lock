@@ -115,7 +115,9 @@ GEM
       diff-lcs (>= 1.2.0, < 2.0)
       rspec-support (~> 3.13.0)
     rspec-support (3.13.7)
+    ruby-technical-analysis (1.0.4)
     securerandom (0.4.1)
+    technical-analysis (0.2.4)
     telegram-bot-ruby (2.6.0)
       dry-struct (~> 1.6)
       faraday (~> 2.0)
@@ -140,6 +142,8 @@ DEPENDENCIES
   redis
   rspec
   rspec-mocks
+  ruby-technical-analysis
+  technical-analysis
   telegram-bot-ruby
   tzinfo
 
@@ -184,7 +188,9 @@ CHECKSUMS
   rspec-expectations (3.13.5) sha256=33a4d3a1d95060aea4c94e9f237030a8f9eae5615e9bd85718fe3a09e4b58836
   rspec-mocks (3.13.8) sha256=086ad3d3d17533f4237643de0b5c42f04b66348c28bf6b9c2d3f4a3b01af1d47
   rspec-support (3.13.7) sha256=0640e5570872aafefd79867901deeeeb40b0c9875a36b983d85f54fb7381c47c
+  ruby-technical-analysis (1.0.4) sha256=5500d4cfb0f2613503778f0590d89acaa4456768e0cf512c0abdb3e055257dcc
   securerandom (0.4.1) sha256=cc5193d414a4341b6e225f0cb4446aceca8e50d5e1888743fac16987638ea0b1
+  technical-analysis (0.2.4) sha256=ef4c9041e86c488cf93f20e3cd8eab34dd57a3e44ee8dbcc8bc7f9c0de9e73d0
   telegram-bot-ruby (2.6.0) sha256=34b749dc3f897444277ac138ac6b6ce89cf5011cd2864d30b3078ea6836192e4
   tzinfo (2.0.6) sha256=8daf828cc77bcf7d63b0e3bdb6caa47e2272dcfaf4fbfe46f8c3a9df087a829b
   uri (1.1.1) sha256=379fa58d27ffb1387eaada68c749d1426738bd0f654d812fcc07e7568f5c57c6
