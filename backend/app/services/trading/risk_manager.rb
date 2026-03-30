@@ -26,13 +26,13 @@ module Trading
     private
 
     def check_max_concurrent_positions!
-      count = Position.where(status: "open").count
+      count = Position.active.count
       raise RiskError, "max concurrent positions reached (#{count}/#{MAX_CONCURRENT_POSITIONS})" if
         count >= MAX_CONCURRENT_POSITIONS
     end
 
     def check_margin_utilization!
-      total_margin = Position.where(status: "open").sum(:margin).to_f
+      total_margin = Position.active.sum(:margin).to_f
       capital      = @session.capital.to_f
       return if capital.zero?
 

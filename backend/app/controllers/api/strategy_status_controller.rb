@@ -61,7 +61,7 @@ module Api
     end
 
     def load_bot_config
-      path = Rails.root.parent.join("config", "bot.yml")
+      path = Rails.root.join("config", "bot.yml")
       return default_config unless path.exist?
 
       raw = YAML.safe_load(path.read, permitted_classes: [], aliases: true)
