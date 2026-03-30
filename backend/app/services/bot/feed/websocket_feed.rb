@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "eventmachine"
 
 module Bot
   module Feed
@@ -15,81 +16,60 @@ module Bot
       end
 
       def start
-        # Ensure EventMachine is running in its own thread
-        unless EM.reactor_running?
-          Thread.new { EM.run }
-          sleep 0.1 until EM.reactor_running?
-        end
-
-        # Close the previous Faye WS directly (avoids calling connection.stop
-        # which would halt the whole EM reactor).
-        if @client
-          prev_ws = @client.instance_variable_get(:@connection)
-                           &.instance_variable_get(:@ws)
-          prev_ws&.close
-        end
-
-        @running    = true
+        @running = true
         @generation += 1
-        gen          = @generation   # captured in closures below
+        gen = @generation
 
-        EM.next_tick do
+        # Ensure reactor is running
+        unless ::EventMachine.reactor_running?
+          Thread.new { ::EventMachine.run }
+          sleep 0.1 until ::EventMachine.reactor_running?
+        end
+
+        ::EventMachine.next_tick do
+          # Double-ensure old client is truly destroyed
+          if @client 
+             @client.close rescue nil
+             @client = nil
+          end
+
           @client = DeltaExchange::Websocket::Client.new(testnet: @testnet)
-
-          @client.on(:open) do
-            @logger.info("ws_connected")
-            # Delta Exchange India v2/ticker requires a single channel entry
-            # with a "symbols" array — NOT one entry per symbol.
-            @client.subscribe([{ name: "v2/ticker", symbols: @symbols }])
-          end
-
-          @client.on(:message) do |data|
-            @logger.debug("ws_message_received", raw: data.is_a?(Hash) ? data : data.to_s)
-            next unless data.is_a?(Hash)
-
-            case data["type"]
-            when "key-auth"
-              if data["success"]
-                @logger.info("ws_authenticated")
-              else
-                @logger.error("ws_auth_failed", message: data["message"])
-                @client.close
-                @running = false if @generation == gen
-              end
-            when "v2/ticker"
-              symbol = data["symbol"]
-              price  = data["mark_price"]&.to_f || data["close"]&.to_f
-              if symbol && price && price.positive?
-                @price_store.update(symbol, price)
-                @logger.debug("ltp_update", symbol: symbol, price: price)
-              end
-            when "subscriptions"
-              @logger.info("ws_subscribed", channels: data["channels"])
-            end
-          end
-
+          
+          # Force a clean disconnect on this gen's end
           @client.on(:close) do |event|
-            # Only treat this as a disconnect if it belongs to the current
-            # generation — stale callbacks from a previous client must not
-            # kill the running thread.
             next unless @generation == gen
-
             @logger.warn("ws_disconnected", code: event.code, reason: event.reason)
             @running = false
           end
 
           @client.on(:error) do |err|
             next unless @generation == gen
-
             @logger.error("ws_error", message: err.to_s)
             @running = false
+          end
+
+          @client.on(:open) do
+            @logger.info("ws_connected")
+            @client.subscribe([{ name: "v2/ticker", symbols: @symbols }])
+          end
+
+          @client.on(:message) do |data|
+            next unless data.is_a?(Hash) && data["type"] == "v2/ticker"
+            symbol = data["symbol"]
+            price  = data["mark_price"]&.to_f || data["close"]&.to_f
+            @price_store.update(symbol, price) if symbol && price&.positive?
           end
 
           @client.connect!
         end
 
-        # Keep this thread alive as long as the supervisor wants this 'service' to run
+        # This thread must block until the connection is dead, 
+        # allowing the supervisor to see the failure and back off.
         sleep 1 while @running
+      rescue StandardError => e
+        @logger.error("ws_process_crash", message: e.message)
+      ensure
+        @running = false
       end
 
       def stop

@@ -182,3 +182,75 @@
     border-right-color: var(--border);
   }
 }
+
+.signal-quality-panel {
+  padding: 8px 12px;
+  background: rgba(0, 255, 136, 0.03);
+  border-top: 1px solid rgba(0, 255, 136, 0.1);
+  font-size: 11px;
+}
+
+.sq-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  flex-wrap: wrap;
+}
+
+.sq-header {
+  font-weight: bold;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  border-bottom: 1px solid rgba(0, 255, 136, 0.1);
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+}
+
+.sq-label {
+  color: #666;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  min-width: 36px;
+}
+
+.sq-value {
+  font-family: monospace;
+  min-width: 80px;
+}
+
+.sq-status { font-size: 10px; margin-left: auto; letter-spacing: 0.1em; }
+
+.sq-reason { color: #555; font-size: 10px; font-style: italic; flex: 1; }
+
+.sq-blocked { color: #ff4444; font-size: 10px; font-style: italic; }
+
+.derivatives-strip {
+  display: flex;
+  gap: 16px;
+  padding: 4px 16px;
+  background: rgba(0, 0, 0, 0.4);
+  border-bottom: 1px solid rgba(0, 255, 136, 0.1);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  flex-wrap: wrap;
+}
+
+.deriv-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.deriv-symbol { color: #aaa; font-weight: bold; }
+
+.deriv-oi { font-family: monospace; }
+
+.deriv-fund { font-family: monospace; }
+
+.fund-extreme {
+  color: #ff9800;
+  font-weight: bold;
+}
+
+.fund-normal { color: #4caf50; }

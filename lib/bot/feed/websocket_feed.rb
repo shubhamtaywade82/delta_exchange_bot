@@ -6,14 +6,18 @@ require_relative "delta_ws_patch"
 module Bot
   module Feed
     class WebsocketFeed
-      def initialize(symbols:, price_store:, logger:, testnet: false)
-        @symbols     = symbols
-        @price_store = price_store
-        @logger      = logger
-        @testnet     = testnet
-        @client      = nil
-        @running     = false
-        @generation  = 0
+      def initialize(symbols:, price_store:, logger:, testnet: false, on_tick: nil,
+                     cvd_store: nil, derivatives_store: nil)
+        @symbols           = symbols
+        @price_store       = price_store
+        @logger            = logger
+        @testnet           = testnet
+        @on_tick           = on_tick
+        @cvd_store         = cvd_store
+        @derivatives_store = derivatives_store
+        @client            = nil
+        @running           = false
+        @generation        = 0
       end
 
       def start
@@ -40,9 +44,10 @@ module Bot
 
           @client.on(:open) do
             @logger.info("ws_connected")
-            # Delta Exchange India v2/ticker requires a single channel entry
-            # with a "symbols" array — NOT one entry per symbol.
-            @client.subscribe([{ name: "v2/ticker", symbols: @symbols }])
+            channels = [{ name: "v2/ticker", symbols: @symbols }]
+            channels << { name: "all_trades",   symbols: @symbols } if @cvd_store
+            channels << { name: "funding_rate", symbols: @symbols } if @derivatives_store
+            @client.subscribe(channels)
           end
 
           @client.on(:message) do |data|
@@ -64,7 +69,30 @@ module Bot
               if symbol && price && price.positive?
                 @price_store.update(symbol, price)
                 @logger.debug("ltp_update", symbol: symbol, price: price)
+                @on_tick&.call(symbol, price, Time.now.to_i)
               end
+            when "all_trades"
+              symbol = data["symbol"]
+              side = if data["buyer_role"] == "taker" || data["side"] == "buy"
+                       "buy"
+                     elsif data["buyer_role"] == "maker" || data["side"] == "sell"
+                       "sell"
+                     else
+                       @logger.warn("all_trades_unknown_direction", symbol: symbol)
+                       next
+                     end
+              size = data["size"]&.to_f || data["quantity"]&.to_f
+              if size.nil? || size <= 0
+                @logger.debug("all_trades_missing_size", symbol: symbol)
+                next
+              end
+              @cvd_store&.record_trade(symbol, side: side, size: size) if symbol
+
+            when "funding_rate"
+              symbol = data["symbol"]
+              rate   = data["funding_rate"]&.to_f
+              @derivatives_store&.update_funding_rate(symbol, rate: rate) if symbol && rate
+
             when "subscriptions"
               @logger.info("ws_subscribed", channels: data["channels"])
             end

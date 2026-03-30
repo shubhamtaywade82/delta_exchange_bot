@@ -14,3 +14,15 @@
 # ActiveSupport::Inflector.inflections(:en) do |inflect|
 #   inflect.acronym "RESTful"
 # end
+
+# Zeitwerk acronym inflections for bot strategy modules
+Rails.autoloaders.main.inflector.inflect(
+  "rsi"          => "RSI",
+  "vwap"         => "VWAP",
+  "bos"          => "BOS",
+  "adx"          => "ADX",
+  "order_block"  => "OrderBlock",
+  "momentum_filter"    => "MomentumFilter",
+  "volume_filter"      => "VolumeFilter",
+  "derivatives_filter" => "DerivativesFilter"
+)

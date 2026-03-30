@@ -21,13 +21,12 @@ module Bot
       end
 
       def all
-        keys   = @redis.keys("#{REDIS_KEY_PREFIX}*")
-        return {} if keys.empty?
-        
-        values = @redis.mget(*keys)
-        keys.map { |k| k.sub(REDIS_KEY_PREFIX, "") }
-            .zip(values.map(&:to_f))
-            .to_h
+        data = {}
+        @redis.scan_each(match: "#{REDIS_KEY_PREFIX}*") do |key|
+          symbol = key.sub(REDIS_KEY_PREFIX, "")
+          data[symbol] = @redis.get(key).to_f
+        end
+        data
       end
     end
   end

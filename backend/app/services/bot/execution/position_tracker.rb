@@ -25,6 +25,8 @@ module Bot
           side      = attrs.fetch(:side)
           stop      = side == :long ? entry * (1.0 - trail_pct) : entry * (1.0 + trail_pct)
 
+          return nil if Position.exists?(symbol: symbol, status: "open")
+
           pos = Position.create!(
             symbol:         symbol,
             side:           side.to_s,
@@ -141,6 +143,15 @@ module Bot
             unrealized_pnl:   total_unrealized.round(2),
             open_count:       positions.size
           }
+        end
+      end
+
+      def persist_state(prices)
+        @mutex.synchronize do
+          data = snapshot(prices)
+          Redis.new.set("delta:positions:live", data.to_json)
+        rescue StandardError => e
+          puts "Error persisting positions to Redis: #{e.message}"
         end
       end
 

@@ -11,7 +11,12 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
       timeframe_trend: "1h", timeframe_confirm: "15m", timeframe_entry: "5m",
       supertrend_atr_period: 3, supertrend_multiplier: 1.5,
       adx_period: 5, adx_threshold: 20,
-      candles_lookback: 20, min_candles_required: 10
+      candles_lookback: 20, min_candles_required: 10,
+      dry_run?: true,
+      rsi_period: 5, rsi_overbought: 70.0, rsi_oversold: 30.0,
+      vwap_session_reset_hour_utc: 0,
+      bos_swing_lookback: 5,
+      ob_min_impulse_pct: 0.1, ob_max_age: 20
     )
   end
 
@@ -29,8 +34,8 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
         base = 200.0 - i * 2
         { open: base - 0.5, high: base + 2.0, low: base - 2.0, close: base, timestamp: ts }
       else
-        # Last bar: massive bullish candle that closes above the upper Supertrend band
-        { open: 162.0, high: 210.0, low: 160.0, close: 208.0, timestamp: ts }
+        # Last bar: bullish candle that breaks above swing high (BOS) without overbought RSI
+        { open: 162.0, high: 178.0, low: 160.0, close: 176.0, timestamp: ts }
       end
     end
   end
@@ -51,7 +56,7 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
     end
 
     it "emits a LONG signal" do
-      signal = mtf.evaluate("BTCUSD", current_price: 208.0)
+      signal = mtf.evaluate("BTCUSD", current_price: 176.0)
       expect(signal&.side).to eq(:long)
       expect(signal&.symbol).to eq("BTCUSD")
     end
@@ -67,7 +72,7 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
     end
 
     it "returns nil (no confluent signal)" do
-      expect(mtf.evaluate("BTCUSD", current_price: 208.0)).to be_nil
+      expect(mtf.evaluate("BTCUSD", current_price: 176.0)).to be_nil
     end
   end
 
@@ -95,8 +100,8 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
     end
 
     it "does not re-emit a signal for the same candle timestamp" do
-      first  = mtf.evaluate("BTCUSD", current_price: 208.0)
-      second = mtf.evaluate("BTCUSD", current_price: 208.0)
+      first  = mtf.evaluate("BTCUSD", current_price: 176.0)
+      second = mtf.evaluate("BTCUSD", current_price: 176.0)
       expect(first&.side).to eq(:long)
       expect(second).to be_nil
     end

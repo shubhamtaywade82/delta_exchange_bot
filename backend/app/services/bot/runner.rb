@@ -3,9 +3,9 @@
 
 module Bot
   class Runner
-    STRATEGY_INTERVAL_SECONDS      = 15    # Reduced for testing/faster signals
+    STRATEGY_INTERVAL_SECONDS = 300 # 5-minute periodic scan for futures
     TRAILING_STOP_INTERVAL_SECONDS = 5     # Faster tracking
-    PORTFOLIO_LOG_INTERVAL_SECONDS = 30    # Portfolio snapshot frequency
+    PORTFOLIO_LOG_INTERVAL_SECONDS = 10    # Faster status updates for UI
 
     def initialize(config:)
       @config = config
@@ -19,21 +19,27 @@ module Bot
     end
 
     def start
+      puts "Starting runner..."
       @logger.info("bot_starting", mode: @config.mode, symbols: @config.symbol_names)
 
+      puts "Fetching products..."
       products       = DeltaExchange::Models::Product.all
+      puts "Products fetched: #{products&.size || 0}"
       @product_cache = ProductCache.new(symbols: @config.symbol_names, products: products)
 
       @price_store      = Feed::PriceStore.new
       @position_tracker = Execution::PositionTracker.new
-      @capital_manager  = Account::CapitalManager.new(usd_to_inr_rate: @config.usd_to_inr_rate,
-                                                       dry_run: @config.dry_run?)
+      @capital_manager  = Account::CapitalManager.new(
+        usd_to_inr_rate:        @config.usd_to_inr_rate,
+        dry_run:                @config.dry_run?,
+        simulated_capital_inr:  @config.simulated_capital_inr
+      )
       @risk_calculator  = Execution::RiskCalculator.new(usd_to_inr_rate: @config.usd_to_inr_rate)
 
       client       = DeltaExchange::Client.new
       @market_data = client.market_data
 
-      @mtf = Strategy::MultiTimeframe.new(config: @config, market_data: @market_data, logger: @logger)
+      @mtf_scanner = Strategy::ScanningService.new(config: @config, market_data: @market_data, logger: @logger)
 
       @order_manager = Execution::OrderManager.new(
         config:           @config,
@@ -41,6 +47,7 @@ module Bot
         position_tracker: @position_tracker,
         risk_calculator:  @risk_calculator,
         capital_manager:  @capital_manager,
+        price_store:      @price_store,
         logger:           @logger,
         notifier:         @notifier
       )
@@ -52,21 +59,27 @@ module Bot
         testnet:     @config.testnet?
       )
 
+      puts "Reconciling positions..."
       reconcile_open_positions
 
+      puts "Setting up supervisor..."
       supervisor = Supervisor.new(logger: @logger, notifier: @notifier)
 
+      puts "Registering threads..."
       supervisor.register(:websocket)     { @ws_feed.start }
       supervisor.register(:strategy)      { run_strategy_loop }
       supervisor.register(:trailing_stop) { run_trailing_stop_loop }
       supervisor.register(:portfolio_log) { run_portfolio_log_loop }
 
       @shutdown_requested = false
+      puts "Setting up traps..."
       trap("INT")  { @shutdown_requested = true }
       trap("TERM") { @shutdown_requested = true }
 
+      puts "Starting supervisor..."
       supervisor.start_all
       
+      puts "Bot is running. Monitoring..."
       until @shutdown_requested
         supervisor.monitor
         sleep 1
@@ -78,32 +91,38 @@ module Bot
     private
 
     def setup_delta_exchange
+      key    = ENV["DELTA_API_KEY"]
+      secret = ENV["DELTA_API_SECRET"]
+
+      if key.blank? || secret.blank?
+        puts "❌ ERROR: Missing Delta Exchange API credentials in .env"
+        puts "   Please set DELTA_API_KEY and DELTA_API_SECRET"
+        exit 1
+      end
+
+      # Basic length check to catch placeholder values
+      if key.length < 20 || secret.length < 40
+        puts "⚠️ WARNING: Delta API credentials look too short. Check if they are correct."
+      end
+
       DeltaExchange.configure do |c|
-        c.api_key    = ENV["DELTA_API_KEY"]    or raise "Missing env var: DELTA_API_KEY"
-        c.api_secret = ENV["DELTA_API_SECRET"] or raise "Missing env var: DELTA_API_SECRET"
+        c.api_key    = key
+        c.api_secret = secret
         c.testnet    = @config.testnet?
       end
     end
 
     def run_strategy_loop
       loop do
-        @config.symbol_names.each do |symbol|
-          next if @position_tracker.open?(symbol)
-          next if @position_tracker.count >= @config.max_concurrent_positions
-
-          ltp = @price_store.get(symbol)
-          unless ltp
-            @logger.warn("skip_no_ltp", symbol: symbol)
-            next
-          end
-
-          signal = @mtf.evaluate(symbol, current_price: ltp)
-          @order_manager.execute_signal(signal) if signal
-        rescue DeltaExchange::RateLimitError => e
-          @logger.warn("rate_limited", symbol: symbol, retry_after: e.retry_after_seconds)
-          sleep(e.retry_after_seconds)
-        rescue StandardError => e
-          @logger.error("strategy_error", symbol: symbol, message: e.message)
+        @logger.info("strategy_loop_tick")
+        current_prices = @price_store.all
+        
+        # Staggered scan of all symbols
+        signals = @mtf_scanner.scan(@config.symbol_names, current_prices: current_prices)
+        
+        signals.each do |signal|
+          next if @position_tracker.open?(signal.symbol)
+          @order_manager.execute_signal(signal)
         end
 
         sleep STRATEGY_INTERVAL_SECONDS
@@ -133,17 +152,25 @@ module Bot
         sleep PORTFOLIO_LOG_INTERVAL_SECONDS
 
         snapshot       = @position_tracker.snapshot(@price_store.all)
-        total_capital  = @capital_manager.available_usdt
+        equity_usd     = @capital_manager.total_equity_usdt(unrealized_pnl: snapshot[:unrealized_pnl])
         blocked_margin = snapshot[:blocked_margin]
-        available      = (total_capital - blocked_margin).round(2)
+        available_usd  = @capital_manager.spendable_usdt(
+          blocked_margin: blocked_margin,
+          unrealized_pnl: snapshot[:unrealized_pnl]
+        )
         unrealized     = snapshot[:unrealized_pnl]
         realized       = @order_manager.realized_pnl.round(2)
 
+        @capital_manager.persist_state(
+          blocked_margin: snapshot[:blocked_margin],
+          unrealized_pnl: snapshot[:unrealized_pnl]
+        )
+
         @logger.info("portfolio_snapshot",
           open_positions:       snapshot[:open_count],
-          total_capital_usd:    total_capital.round(2),
+          total_equity_usd:     equity_usd.round(2),
           blocked_margin_usd:   blocked_margin,
-          available_margin_usd: available,
+          available_margin_usd: available_usd.round(2),
           realized_pnl_usd:     realized,
           unrealized_pnl_usd:   unrealized,
           total_pnl_usd:        (realized + unrealized).round(2),

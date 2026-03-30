@@ -10,6 +10,12 @@ RSpec.describe Bot::Config do
       "strategy" => {
         "supertrend" => { "atr_period" => 10, "multiplier" => 3.0 },
         "adx" => { "period" => 14, "threshold" => 25 },
+        "rsi" => { "period" => 14, "overbought" => 70, "oversold" => 30 },
+        "vwap" => { "session_reset_hour_utc" => 0 },
+        "bos" => { "swing_lookback" => 10 },
+        "order_block" => { "min_impulse_pct" => 0.3, "ob_max_age" => 20 },
+        "filters" => { "funding_rate_threshold" => 0.05, "cvd_window" => 50 },
+        "derivatives" => { "oi_poll_interval" => 30 },
         "trailing_stop_pct" => 1.5,
         "timeframes" => { "trend" => "1h", "confirm" => "15m", "entry" => "5m" },
         "candles_lookback" => 100,
@@ -279,6 +285,67 @@ RSpec.describe Bot::Config do
   context "leverage_for with unknown symbol" do
     it "raises ArgumentError" do
       expect { config.leverage_for("UNKNOWN") }.to raise_error(ArgumentError, /Unknown symbol/)
+    end
+  end
+
+  describe "new MWS accessors" do
+    it "exposes rsi_period" do
+      expect(config.rsi_period).to eq(14)
+    end
+
+    it "exposes rsi_overbought" do
+      expect(config.rsi_overbought).to eq(70.0)
+    end
+
+    it "exposes rsi_oversold" do
+      expect(config.rsi_oversold).to eq(30.0)
+    end
+
+    it "exposes vwap_session_reset_hour_utc" do
+      expect(config.vwap_session_reset_hour_utc).to eq(0)
+    end
+
+    it "exposes bos_swing_lookback" do
+      expect(config.bos_swing_lookback).to eq(10)
+    end
+
+    it "exposes ob_min_impulse_pct" do
+      expect(config.ob_min_impulse_pct).to eq(0.3)
+    end
+
+    it "exposes ob_max_age" do
+      expect(config.ob_max_age).to eq(20)
+    end
+
+    it "exposes funding_rate_threshold" do
+      expect(config.funding_rate_threshold).to eq(0.05)
+    end
+
+    it "exposes cvd_window" do
+      expect(config.cvd_window).to eq(50)
+    end
+
+    it "exposes oi_poll_interval" do
+      expect(config.oi_poll_interval).to eq(30)
+    end
+
+    context "when MWS strategy sections are absent" do
+      let(:minimal_yaml) do
+        valid_yaml.tap { |y| y["strategy"] = y["strategy"].reject { |k, _| ["rsi", "vwap", "bos", "order_block", "filters", "derivatives"].include?(k) } }
+      end
+      let(:minimal_config) { described_class.new(minimal_yaml) }
+
+      it "rsi_period defaults to 14" do
+        expect(minimal_config.rsi_period).to eq(14)
+      end
+
+      it "ob_max_age defaults to 20" do
+        expect(minimal_config.ob_max_age).to eq(20)
+      end
+
+      it "funding_rate_threshold defaults to 0.05" do
+        expect(minimal_config.funding_rate_threshold).to eq(0.05)
+      end
     end
   end
 end

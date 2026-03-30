@@ -5,6 +5,8 @@ require_relative "config"
 require_relative "product_cache"
 require_relative "supervisor"
 require_relative "feed/price_store"
+require_relative "feed/cvd_store"
+require_relative "feed/derivatives_store"
 require_relative "feed/websocket_feed"
 require_relative "strategy/multi_timeframe"
 require_relative "account/capital_manager"
@@ -13,6 +15,8 @@ require_relative "execution/position_tracker"
 require_relative "execution/order_manager"
 require_relative "notifications/logger"
 require_relative "notifications/telegram_notifier"
+require_relative "persistence/db_writer"
+require_relative "persistence/state_publisher"
 
 module Bot
   class Runner
@@ -38,15 +42,33 @@ module Bot
       @product_cache = ProductCache.new(symbols: @config.symbol_names, products: products)
 
       @price_store      = Feed::PriceStore.new
+      @cvd_store         = Feed::CvdStore.new(window: @config.cvd_window)
+      @derivatives_store = Feed::DerivativesStore.new(
+        products:      DeltaExchange::Client.new.products,
+        symbols:       @config.symbol_names,
+        poll_interval: @config.oi_poll_interval,
+        logger:        @logger
+      )
       @position_tracker = Execution::PositionTracker.new
-      @capital_manager  = Account::CapitalManager.new(usd_to_inr_rate: @config.usd_to_inr_rate,
-                                                       dry_run: @config.dry_run?)
+      @capital_manager  = Account::CapitalManager.new(
+        usd_to_inr_rate:   @config.usd_to_inr_rate,
+        dry_run:           @config.dry_run?,
+        paper_capital_inr: @config.paper_capital_inr
+      )
+      @db_writer       = Persistence::DbWriter.new if @config.dry_run?
+      @state_publisher = Persistence::StatePublisher.new
       @risk_calculator  = Execution::RiskCalculator.new(usd_to_inr_rate: @config.usd_to_inr_rate)
 
       client       = DeltaExchange::Client.new
       @market_data = client.market_data
 
-      @mtf = Strategy::MultiTimeframe.new(config: @config, market_data: @market_data, logger: @logger)
+      @mtf = Strategy::MultiTimeframe.new(
+        config:            @config,
+        market_data:       @market_data,
+        logger:            @logger,
+        cvd_store:         @cvd_store,
+        derivatives_store: @derivatives_store
+      )
 
       @order_manager = Execution::OrderManager.new(
         config:           @config,
@@ -55,14 +77,17 @@ module Bot
         risk_calculator:  @risk_calculator,
         capital_manager:  @capital_manager,
         logger:           @logger,
-        notifier:         @notifier
+        notifier:         @notifier,
+        db_writer:        @db_writer
       )
 
       @ws_feed = Feed::WebsocketFeed.new(
-        symbols:     @config.symbol_names,
-        price_store: @price_store,
-        logger:      @logger,
-        testnet:     @config.testnet?
+        symbols:           @config.symbol_names,
+        price_store:       @price_store,
+        logger:            @logger,
+        testnet:           @config.testnet?,
+        cvd_store:         @cvd_store,
+        derivatives_store: @derivatives_store
       )
 
       reconcile_open_positions
@@ -73,6 +98,8 @@ module Bot
       supervisor.register(:strategy)      { run_strategy_loop }
       supervisor.register(:trailing_stop) { run_trailing_stop_loop }
       supervisor.register(:portfolio_log) { run_portfolio_log_loop }
+
+      @derivatives_store.start_polling
 
       @shutdown_requested = false
       trap("INT")  { @shutdown_requested = true }
@@ -111,6 +138,7 @@ module Bot
           end
 
           signal = @mtf.evaluate(symbol, current_price: ltp)
+          @state_publisher.publish_strategy_state(symbol, @mtf.state_for(symbol))
           @order_manager.execute_signal(signal) if signal
         rescue DeltaExchange::RateLimitError => e
           @logger.warn("rate_limited", symbol: symbol, retry_after: e.retry_after_seconds)
@@ -151,6 +179,13 @@ module Bot
         available      = (total_capital - blocked_margin).round(2)
         unrealized     = snapshot[:unrealized_pnl]
         realized       = @order_manager.realized_pnl.round(2)
+
+        @state_publisher.publish_wallet(
+          available_usd:  total_capital,
+          paper_mode:     @config.dry_run?,
+          capital_inr:    @config.paper_capital_inr,
+          usd_to_inr_rate: @config.usd_to_inr_rate
+        )
 
         @logger.info("portfolio_snapshot",
           open_positions:       snapshot[:open_count],
@@ -209,6 +244,7 @@ module Bot
       @logger.info("bot_stopping")
       supervisor.stop_all
       @ws_feed&.stop
+      @db_writer&.close
       exit 0
     end
   end

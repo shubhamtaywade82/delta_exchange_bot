@@ -10,9 +10,29 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_26_110647) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_28_055656) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "orders", force: :cascade do |t|
+    t.decimal "avg_fill_price"
+    t.datetime "created_at", null: false
+    t.string "exchange_order_id"
+    t.decimal "filled_qty"
+    t.string "idempotency_key"
+    t.string "order_type"
+    t.decimal "price"
+    t.jsonb "raw_payload"
+    t.string "side"
+    t.decimal "size"
+    t.string "status"
+    t.string "symbol"
+    t.bigint "trading_session_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["exchange_order_id"], name: "index_orders_on_exchange_order_id"
+    t.index ["idempotency_key"], name: "index_orders_on_idempotency_key", unique: true
+    t.index ["trading_session_id"], name: "index_orders_on_trading_session_id"
+  end
 
   create_table "positions", force: :cascade do |t|
     t.decimal "contract_value"
@@ -22,6 +42,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_26_110647) do
     t.decimal "exit_price"
     t.datetime "exit_time"
     t.integer "leverage"
+    t.decimal "liquidation_price"
     t.decimal "margin"
     t.decimal "peak_price"
     t.decimal "pnl_inr"
@@ -30,9 +51,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_26_110647) do
     t.string "side"
     t.decimal "size"
     t.string "status"
+    t.decimal "stop_price"
     t.string "symbol"
     t.decimal "trail_pct"
     t.datetime "updated_at", null: false
+    t.index ["symbol"], name: "index_positions_on_symbol_when_open", unique: true, where: "((status)::text = 'open'::text)"
   end
 
   create_table "settings", force: :cascade do |t|
@@ -63,5 +86,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_26_110647) do
     t.decimal "size"
     t.string "symbol"
     t.datetime "updated_at", null: false
+    t.index ["symbol", "entry_price", "exit_price", "closed_at"], name: "index_trades_uniqueness", unique: true
   end
+
+  create_table "trading_sessions", force: :cascade do |t|
+    t.decimal "capital"
+    t.datetime "created_at", null: false
+    t.integer "leverage"
+    t.datetime "started_at"
+    t.string "status"
+    t.datetime "stopped_at"
+    t.string "strategy"
+    t.datetime "updated_at", null: false
+  end
+
+  add_foreign_key "orders", "trading_sessions"
 end

@@ -1,17 +1,32 @@
 # frozen_string_literal: true
 
+require "time"
 require_relative "supertrend"
 require_relative "adx"
 require_relative "signal"
+require_relative "indicators/rsi"
+require_relative "indicators/vwap"
+require_relative "indicators/bos"
+require_relative "indicators/order_block"
+require_relative "filters/momentum_filter"
+require_relative "filters/volume_filter"
+require_relative "filters/derivatives_filter"
 
 module Bot
   module Strategy
     class MultiTimeframe
-      def initialize(config:, market_data:, logger:)
-        @config      = config
-        @market_data = market_data
-        @logger      = logger
-        @last_acted  = {}  # symbol → candle_ts of last acted-on entry candle
+      def initialize(config:, market_data:, logger:, cvd_store: nil, derivatives_store: nil)
+        @config            = config
+        @market_data       = market_data
+        @logger            = logger
+        @cvd_store         = cvd_store
+        @derivatives_store = derivatives_store
+        @last_acted        = {}
+        @signal_state      = {}
+      end
+
+      def state_for(symbol)
+        @signal_state[symbol]
       end
 
       # Returns a Signal or nil
@@ -27,18 +42,19 @@ module Bot
         h1_st   = Supertrend.compute(h1_candles,  atr_period: @config.supertrend_atr_period, multiplier: @config.supertrend_multiplier)
         m15_st  = Supertrend.compute(m15_candles, atr_period: @config.supertrend_atr_period, multiplier: @config.supertrend_multiplier)
         m15_adx = ADX.compute(m15_candles, period: @config.adx_period)
-        m5_st   = Supertrend.compute(m5_candles,  atr_period: @config.supertrend_atr_period, multiplier: @config.supertrend_multiplier)
-
         h1_dir       = h1_st.last[:direction]
         m15_dir      = m15_st.last[:direction]
         m15_adx_val  = m15_adx.last[:adx]
-        m5_prev_dir  = m5_st[-2]&.dig(:direction)
-        m5_last_dir  = m5_st.last[:direction]
-        m5_last_ts   = m5_candles.last[:timestamp].to_i
 
-        if h1_dir.nil? || m15_dir.nil? || m5_last_dir.nil?
+        if h1_dir.nil? || m15_dir.nil?
           @logger.debug("strategy_skip", symbol: symbol, reason: "nil_direction",
-                        h1: h1_dir, m15: m15_dir, m5: m5_last_dir)
+                        h1: h1_dir, m15: m15_dir)
+          return nil
+        end
+
+        unless h1_dir == m15_dir
+          @logger.debug("strategy_skip", symbol: symbol, reason: "no_regime_confluence",
+                        h1: h1_dir, m15: m15_dir)
           return nil
         end
 
@@ -48,15 +64,49 @@ module Bot
           return nil
         end
 
-        # Check for fresh flip on 5M — previous direction must differ from current
-        just_flipped = m5_prev_dir && m5_last_dir != m5_prev_dir
+        # --- Entry: BOS + Order Block on 5M ---
+        m5_rsi  = Indicators::RSI.compute(m5_candles,  period: @config.rsi_period)
+        m5_vwap = Indicators::VWAP.compute(m5_candles, session_reset_hour_utc: @config.vwap_session_reset_hour_utc)
+        m5_bos  = Indicators::BOS.compute(m5_candles,  swing_lookback: @config.bos_swing_lookback)
+        m5_obs  = Indicators::OrderBlock.compute(m5_candles,
+                    min_impulse_pct: @config.ob_min_impulse_pct,
+                    max_ob_age:      @config.ob_max_age)
 
-        # In dry_run the flip requirement is relaxed so test signals fire on directional
-        # alignment alone — in testnet/live a genuine 5M flip is required.
-        unless just_flipped || @config.dry_run?
-          @logger.debug("strategy_skip", symbol: symbol, reason: "no_5m_flip",
-                        m5_prev: m5_prev_dir, m5_last: m5_last_dir,
-                        h1: h1_dir, m15: m15_dir, adx: m15_adx_val&.round(2))
+        bos_last  = m5_bos.last
+        rsi_last  = m5_rsi.last
+        vwap_last = m5_vwap.last
+        m5_last_ts = m5_candles.last[:timestamp].to_i
+
+        @signal_state[symbol] = {
+          h1_dir:          h1_dir&.to_s,
+          m15_dir:         m15_dir&.to_s,
+          adx:             m15_adx_val&.round(2),
+          bos_direction:   bos_last[:direction]&.to_s,
+          bos_level:       bos_last[:level],
+          rsi:             rsi_last[:value],
+          vwap:            vwap_last[:vwap],
+          vwap_deviation_pct: vwap_last[:deviation_pct],
+          order_blocks:    m5_obs.map { |ob| { side: ob[:side].to_s, high: ob[:high], low: ob[:low], fresh: ob[:fresh] } },
+          signal:          nil,
+          updated_at:      Time.now.utc.iso8601
+        }
+
+        # BOS must be confirmed in the same direction as regime
+        unless bos_last[:confirmed] && bos_last[:direction] == h1_dir
+          @logger.debug("strategy_skip", symbol: symbol, reason: "no_bos",
+                        bos_confirmed: bos_last[:confirmed], bos_dir: bos_last[:direction], h1: h1_dir)
+          return nil
+        end
+
+        side = h1_dir == :bullish ? :long : :short
+        signal_side_for_ob = h1_dir  # :bullish or :bearish maps to :bull/:bear OB
+
+        # OB confirmation required in live modes; relaxed in dry_run (same as flip was)
+        ob_ok = @config.dry_run? ||
+                m5_obs.any? { |ob| ob[:side] == (signal_side_for_ob == :bullish ? :bull : :bear) && ob[:fresh] }
+
+        unless ob_ok
+          @logger.debug("strategy_skip", symbol: symbol, reason: "no_fresh_ob", side: side)
           return nil
         end
 
@@ -65,19 +115,35 @@ module Bot
           return nil
         end
 
-        side = if h1_dir == :bullish && m15_dir == :bullish && m5_last_dir == :bullish
-                 :long
-               elsif h1_dir == :bearish && m15_dir == :bearish && m5_last_dir == :bearish
-                 :short
-               end
+        # --- Filter chain ---
+        cvd_data         = @cvd_store&.get(symbol)
+        derivatives_data = @derivatives_store&.get(symbol)
 
-        unless side
-          @logger.debug("strategy_skip", symbol: symbol, reason: "no_confluence",
-                        h1: h1_dir, m15: m15_dir, m5: m5_last_dir)
+        filter_results = {
+          momentum:    Filters::MomentumFilter.check(side, rsi_last),
+          volume:      Filters::VolumeFilter.check(side, cvd_data, current_price, vwap_last),
+          derivatives: Filters::DerivativesFilter.check(derivatives_data)
+        }
+
+        @signal_state[symbol] = @signal_state[symbol].merge(
+          cvd_trend:       cvd_data&.dig(:delta_trend)&.to_s,
+          cvd_delta:       cvd_data&.dig(:cumulative_delta),
+          oi_usd:          derivatives_data&.dig(:oi_usd),
+          oi_trend:        derivatives_data&.dig(:oi_trend)&.to_s,
+          funding_rate:    derivatives_data&.dig(:funding_rate),
+          funding_extreme: derivatives_data&.dig(:funding_extreme),
+          filters:         filter_results.transform_values { |f| { passed: f[:passed], reason: f[:reason] } }
+        )
+
+        blocked = filter_results.find { |_k, f| !f[:passed] }
+        if blocked
+          @logger.debug("strategy_skip", symbol: symbol, reason: "filter_blocked",
+                        filter: blocked[0], detail: blocked[1][:reason])
           return nil
         end
 
         @last_acted[symbol] = m5_last_ts
+        @signal_state[symbol] = @signal_state[symbol].merge(signal: side.to_s)
         @logger.info("signal_generated", symbol: symbol, side: side, candle_ts: m5_last_ts)
 
         Signal.new(symbol: symbol, side: side, entry_price: current_price, candle_ts: m5_last_ts)
@@ -111,6 +177,7 @@ module Bot
           { open:      (c[:open]      || c["open"])&.to_f      || raise("missing open in candle"),
             high:      (c[:high]      || c["high"])&.to_f      || raise("missing high in candle"),
             low:       (c[:low]       || c["low"])&.to_f       || raise("missing low in candle"),
+            volume:    (c[:volume]    || c["volume"])&.to_f    || 0.0,
             close:     (c[:close]     || c["close"])&.to_f     || raise("missing close in candle"),
             timestamp: (c[:timestamp] || c["timestamp"] || c[:time] || c["time"])&.to_i || raise("missing timestamp in candle") }
         end.sort_by { |c| c[:timestamp] }

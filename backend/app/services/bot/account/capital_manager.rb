@@ -1,30 +1,64 @@
 # frozen_string_literal: true
 
+require "redis"
 
 module Bot
   module Account
     class CapitalManager
       attr_reader :usd_to_inr_rate
 
-      DRY_RUN_SIMULATED_CAPITAL_USD = 10_000.0
+      REDIS_KEY = "delta:wallet:state"
 
-      def initialize(usd_to_inr_rate:, dry_run: false)
-        @usd_to_inr_rate = usd_to_inr_rate
-        @dry_run         = dry_run
+      def initialize(usd_to_inr_rate:, dry_run: false, simulated_capital_inr: 10_000.0)
+        @usd_to_inr_rate        = usd_to_inr_rate
+        @dry_run                = dry_run
+        @simulated_capital_inr  = simulated_capital_inr
+        @redis                  = Redis.new
       end
 
-      def available_usdt
-        # Delta Exchange India uses "USD" as the margin asset for USD-settled
-        # perpetuals; try USDT first then fall back to USD.
+      # Total Equity (Initial + Realized + Unrealized)
+      def total_equity_usdt(unrealized_pnl: 0.0)
+        # Delta Exchange India uses "USD" as the margin asset
         balance = DeltaExchange::Models::WalletBalance.find_by_asset("USDT") ||
                   DeltaExchange::Models::WalletBalance.find_by_asset("USD")
         result = balance&.available_balance.to_f || 0.0
-        # In dry_run mode use simulated capital when real balance is too small to trade
-        @dry_run && result < 1.0 ? DRY_RUN_SIMULATED_CAPITAL_USD : result
+        
+        if @dry_run
+          realized      = Trade.all.sum(:pnl_usd).to_f
+          initial_usd   = (@simulated_capital_inr / @usd_to_inr_rate).round(2)
+          (initial_usd + realized + unrealized_pnl).round(2)
+        else
+          # In live mode, balance + unrealized from API
+          result + unrealized_pnl
+        end
       end
 
-      def available_inr
-        available_usdt * @usd_to_inr_rate
+      # Spendable = Equity - Blocked Margin
+      def spendable_usdt(blocked_margin: 0.0, unrealized_pnl: 0.0)
+        (total_equity_usdt(unrealized_pnl: unrealized_pnl) - blocked_margin).round(2)
+      end
+
+      def available_inr(unrealized_pnl: 0.0)
+        total_equity_usdt(unrealized_pnl: unrealized_pnl) * @usd_to_inr_rate
+      end
+
+      def persist_state(blocked_margin: 0.0, unrealized_pnl: 0.0)
+        equity_usd    = total_equity_usdt(unrealized_pnl: unrealized_pnl)
+        spendable_usd = spendable_usdt(blocked_margin: blocked_margin, unrealized_pnl: unrealized_pnl)
+        
+        data = {
+          total_equity_usd: equity_usd,
+          total_equity_inr: (equity_usd * @usd_to_inr_rate).round(0),
+          available_usd:    spendable_usd, # renamed for backward compat with existing UI
+          available_inr:    (spendable_usd * @usd_to_inr_rate).round(0),
+          capital_inr:      @simulated_capital_inr.round(0),
+          paper_mode:       @dry_run,
+          updated_at:       Time.current.iso8601,
+          stale:            false
+        }
+        @redis.set(REDIS_KEY, data.to_json)
+      rescue StandardError => e
+        puts "Error persisting wallet state: #{e.message}"
       end
     end
   end

@@ -4,7 +4,7 @@ module Bot
   class Supervisor
     MAX_CRASHES      = 5
     CRASH_WINDOW_SEC = 600  # 10 minutes
-    BACKOFF_SEQUENCE = [5, 10, 30, 60].freeze
+    BACKOFF_SEQUENCE = [10, 30, 60, 300].freeze
 
     def initialize(logger:, notifier:)
       @logger   = logger
@@ -25,6 +25,7 @@ module Bot
       @threads.each do |name, meta|
         next if meta[:thread]&.alive?
 
+        puts "CRASH DETECTED: #{name}"
         handle_crash(name)
       end
     end
@@ -43,9 +44,12 @@ module Bot
     end
 
     def spawn_thread(name)
+      puts "Spawning thread: #{name}"
       @threads[name][:thread] = Thread.new do
         @threads[name][:block].call
       rescue StandardError => e
+        puts "THREAD ERROR [#{name}]: #{e.message}"
+        puts e.backtrace.first(10).join("\n")
         @logger.error("thread_crashed", thread: name.to_s, message: e.message,
                       backtrace: e.backtrace&.first(5)&.join(" | "))
       end
