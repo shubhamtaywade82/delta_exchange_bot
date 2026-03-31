@@ -140,6 +140,7 @@ const DashboardPage: React.FC = () => {
   const [strategyStatus, setStrategyStatus] = useState<StrategyStatus | null>(null);
   const [wallet, setWallet] = useState<any>(null);
   const [stats, setStats] = useState<any>(null);
+  const [executionHealth, setExecutionHealth] = useState<any>(null);
   const [expandedSym, setExpandedSym] = useState<string | null>(null);
 
   useEffect(() => {
@@ -155,6 +156,7 @@ const DashboardPage: React.FC = () => {
       setTrades(dash.trades);
       setWallet(dash.wallet);
       setStats(dash.stats);
+      setExecutionHealth(dash.execution_health);
 
       const { data: strat } = await axios.get('/api/strategy_status');
       setStrategyStatus(strat);
@@ -217,6 +219,12 @@ const DashboardPage: React.FC = () => {
               </span>
             </div>
           )}
+          <div className="mini-stat">
+            <label>EXECUTION</label>
+            <span className={`value ${executionHealth?.healthy ? 'pos' : executionHealth ? 'neg' : ''}`}>
+              {executionHealth?.healthy ? 'HEALTHY' : executionHealth?.category?.toUpperCase() || 'UNKNOWN'}
+            </span>
+          </div>
         </div>
       </header>
 

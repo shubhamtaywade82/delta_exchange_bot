@@ -9,6 +9,7 @@ require_relative "filters/momentum_filter"
 require_relative "filters/volume_filter"
 require_relative "filters/derivatives_filter"
 require "redis"
+require "securerandom"
 require "active_support/core_ext/time"
 
 module Bot
@@ -158,9 +159,10 @@ module Bot
         end
 
         @last_acted[symbol] = m5_last_ts
-        @logger.info("signal_generated", symbol: symbol, side: side, price: current_price)
+        signal_id = SecureRandom.uuid
+        @logger.info("signal_generated", signal_id: signal_id, symbol: symbol, side: side, price: current_price)
 
-        Signal.new(symbol: symbol, side: side, entry_price: current_price, candle_ts: m5_last_ts)
+        Signal.new(symbol: symbol, side: side, entry_price: current_price, candle_ts: m5_last_ts, signal_id: signal_id)
       end
 
       private

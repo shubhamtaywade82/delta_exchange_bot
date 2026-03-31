@@ -18,16 +18,15 @@ module Bot
 
       # Total Equity (Initial + Realized + Unrealized)
       def total_equity_usdt(unrealized_pnl: 0.0)
-        # Delta Exchange India uses "USD" as the margin asset
-        balance = DeltaExchange::Models::WalletBalance.find_by_asset("USDT") ||
-                  DeltaExchange::Models::WalletBalance.find_by_asset("USD")
-        result = balance&.available_balance.to_f || 0.0
-        
         if @dry_run
           realized      = Trade.all.sum(:pnl_usd).to_f
           initial_usd   = (@simulated_capital_inr / @usd_to_inr_rate).round(2)
           (initial_usd + realized + unrealized_pnl).round(2)
         else
+          # Delta Exchange India uses "USD" as the margin asset
+          balance = DeltaExchange::Models::WalletBalance.find_by_asset("USDT") ||
+                    DeltaExchange::Models::WalletBalance.find_by_asset("USD")
+          result = balance&.available_balance.to_f || 0.0
           # In live mode, balance + unrealized from API
           result + unrealized_pnl
         end

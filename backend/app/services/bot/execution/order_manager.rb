@@ -4,6 +4,11 @@
 module Bot
   module Execution
     class OrderManager
+      CATEGORY_BY_BROKER_CODE = {
+        "ip_not_whitelisted_for_api_key" => "auth_whitelist",
+        "expired_signature" => "signature_time_skew"
+      }.freeze
+
       attr_reader :realized_pnl
 
       def initialize(config:, product_cache:, position_tracker:, risk_calculator:,
@@ -21,6 +26,8 @@ module Bot
 
       def execute_signal(signal)
         symbol = signal.symbol
+        signal_id = signal.respond_to?(:signal_id) ? signal.signal_id : nil
+        @logger.info("order_attempted", signal_id: signal_id, symbol: symbol, side: signal.side, entry_price: signal.entry_price)
 
         if @position_tracker.open?(symbol)
           @logger.warn("skip_position_exists", symbol: symbol)
@@ -77,11 +84,27 @@ module Bot
         )
         fill_price
       rescue DeltaExchange::RateLimitError => e
-        @logger.warn("rate_limited", symbol: symbol, retry_after: e.retry_after_seconds)
+        capture_incident(
+          kind: "order_failed",
+          category: "rate_limit",
+          symbol: symbol,
+          signal: signal,
+          message: e.message
+        )
+        @logger.warn("rate_limited", signal_id: signal_id, symbol: symbol, retry_after: e.retry_after_seconds)
         sleep(e.retry_after_seconds)
         nil
       rescue DeltaExchange::ApiError => e
-        @logger.error("order_failed", symbol: symbol, message: e.message)
+        category, broker_code = classify_api_error(e.message)
+        capture_incident(
+          kind: "order_failed",
+          category: category,
+          symbol: symbol,
+          signal: signal,
+          message: e.message,
+          details: { broker_code: broker_code }
+        )
+        @logger.error("order_failed", signal_id: signal_id, symbol: symbol, category: category, broker_code: broker_code, message: e.message)
         nil
       end
 
@@ -89,7 +112,7 @@ module Bot
         pos = @position_tracker.get(symbol)
         return unless pos
 
-        unless @config.dry_run?
+        if @config.live?
           begin
             place_close_order(symbol, pos[:side], pos[:lots])
           rescue DeltaExchange::RateLimitError => e
@@ -136,7 +159,7 @@ module Bot
       private
 
       def place_order(symbol, side, lots, signal)
-        return fake_fill(signal) if @config.dry_run?
+        return fake_fill(signal) unless @config.live?
 
         product_id = @product_cache.product_id_for(symbol)
         order = DeltaExchange::Models::Order.create(
@@ -149,6 +172,8 @@ module Bot
       end
 
       def place_close_order(symbol, side, lots)
+        return if !@config.live?
+
         product_id = @product_cache.product_id_for(symbol)
         DeltaExchange::Models::Order.create(
           product_id: product_id,
@@ -182,6 +207,24 @@ module Bot
         else
           entry_price * (1 + @config.trailing_stop_pct / 100.0)
         end
+      end
+
+      def classify_api_error(message)
+        broker_code = message.to_s[/\"code\"=>\"([^\"]+)\"/, 1]
+        category = CATEGORY_BY_BROKER_CODE.fetch(broker_code, "unknown")
+        [category, broker_code]
+      end
+
+      def capture_incident(kind:, category:, symbol:, signal:, message:, details: {})
+        signal_id = signal.respond_to?(:signal_id) ? signal.signal_id : nil
+        IncidentStore.record!(
+          kind: kind,
+          category: category,
+          message: message,
+          symbol: symbol,
+          signal_id: signal_id,
+          details: details
+        )
       end
     end
   end

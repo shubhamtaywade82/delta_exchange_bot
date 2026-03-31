@@ -24,6 +24,7 @@ module Bot
       puts "Starting runner v2 [2026-03-30 15:10]..."
       @logger.info("bot_starting_v2", mode: @config.mode, symbols: @config.symbol_names)
       @notifier.notify_status("Bot starting in #{@config.mode} mode for #{@config.symbol_names.join(', ')}", status: "starting")
+      run_exchange_preflight!
 
       puts "Fetching products..."
       products       = DeltaExchange::Models::Product.all
@@ -102,20 +103,20 @@ module Bot
       key    = ENV["DELTA_API_KEY"]
       secret = ENV["DELTA_API_SECRET"]
 
-      if key.blank? || secret.blank?
+      if @config.live? && (key.blank? || secret.blank?)
         puts "❌ ERROR: Missing Delta Exchange API credentials in .env"
         puts "   Please set DELTA_API_KEY and DELTA_API_SECRET"
         exit 1
       end
 
       # Basic length check to catch placeholder values
-      if key.length < 20 || secret.length < 40
+      if @config.live? && (key.length < 20 || secret.length < 40)
         puts "⚠️ WARNING: Delta API credentials look too short. Check if they are correct."
       end
 
       DeltaExchange.configure do |c|
-        c.api_key    = key
-        c.api_secret = secret
+        c.api_key    = key if @config.live?
+        c.api_secret = secret if @config.live?
         c.testnet    = @config.testnet?
       end
     end
@@ -148,6 +149,11 @@ module Bot
         
         signals.each do |signal|
           next if @position_tracker.open?(signal.symbol)
+          unless execution_healthy?
+            @logger.warn("execution_skipped_unhealthy", symbol: signal.symbol, reason: @execution_health["category"])
+            next
+          end
+
           @notifier.notify_signal_generated(
             symbol: signal.symbol,
             side: signal.side,
@@ -224,7 +230,7 @@ module Bot
     end
 
     def reconcile_open_positions
-      return if @config.dry_run?
+      return unless @config.live?
       adopted = 0
 
       @config.symbol_names.each do |symbol|
@@ -277,6 +283,34 @@ module Bot
         trailing: @config.telegram_event_enabled?(:trailing),
         errors: @config.telegram_event_enabled?(:errors)
       }
+    end
+
+    def run_exchange_preflight!
+      if !@config.live?
+        @execution_health = { healthy: true, category: "ok", message: "auth checks disabled outside live", broker_code: nil }
+        return
+      end
+
+      @execution_health = Bot::Preflight::ExchangeAccessCheck.call
+      return if @execution_health["healthy"] || @execution_health[:healthy]
+
+      category = @execution_health["category"] || @execution_health[:category]
+      message = @execution_health["message"] || @execution_health[:message]
+      broker_code = @execution_health["broker_code"] || @execution_health[:broker_code]
+      @logger.error("execution_preflight_failed", category: category, broker_code: broker_code, message: message)
+      Bot::Execution::IncidentStore.record!(
+        kind: "preflight_failed",
+        category: category,
+        message: message,
+        details: { broker_code: broker_code }
+      )
+    rescue StandardError => e
+      @execution_health = { healthy: false, category: "unknown", message: e.message, broker_code: nil }
+      @logger.error("execution_preflight_failed", category: "unknown", message: e.message)
+    end
+
+    def execution_healthy?
+      @execution_health.nil? || @execution_health["healthy"] == true || @execution_health[:healthy] == true
     end
   end
 end

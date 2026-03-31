@@ -2,7 +2,7 @@
 
 module Bot
   module Strategy
-    Signal = Struct.new(:symbol, :side, :entry_price, :candle_ts, keyword_init: true) do
+    Signal = Struct.new(:symbol, :side, :entry_price, :candle_ts, :signal_id, keyword_init: true) do
       def long?  = side == :long
       def short? = side == :short
     end
