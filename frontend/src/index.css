@@ -342,6 +342,97 @@ body::after {
   border: 1px solid var(--border-accent);
 }
 
+.signal-activity-section .signal-activity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  padding: 0 1rem 1rem;
+}
+
+.signal-activity-block {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-glass);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+}
+
+.signal-activity-label {
+  display: block;
+  font-size: 0.6rem;
+  letter-spacing: 1.2px;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+}
+
+.signal-activity-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.35rem;
+}
+
+.signal-activity-symbol {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.signal-activity-meta {
+  font-size: 0.7rem;
+  margin-bottom: 0.25rem;
+}
+
+.signal-activity-time {
+  font-size: 0.65rem;
+}
+
+.signal-activity-reason {
+  font-size: 0.72rem;
+  margin: 0.4rem 0 0.25rem;
+  line-height: 1.35;
+}
+
+.signal-activity-error {
+  color: #f87171;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.signal-activity-empty {
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  padding: 0.25rem 0;
+}
+
+.signal-status-pill {
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.signal-status-pill.status-generated {
+  color: var(--text-dim);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.signal-status-pill.status-executed {
+  color: var(--success);
+  background: rgba(0, 255, 136, 0.08);
+  border-color: rgba(0, 255, 136, 0.2);
+}
+
+.signal-status-pill.status-rejected,
+.signal-status-pill.status-failed {
+  color: var(--danger);
+  background: rgba(255, 77, 77, 0.08);
+  border-color: rgba(255, 77, 77, 0.25);
+}
+
 .trade-history-filters {
   display: flex;
   align-items: center;

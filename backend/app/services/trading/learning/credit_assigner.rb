@@ -13,8 +13,19 @@ module Trading
         notional = position.size.to_d.abs * position.entry_price.to_d
         realized_pnl = position.pnl_usd.to_d
         fees = position.fee_total.to_d
+        entry_t = position.entry_time || position.created_at
+        duration_sec = entry_t.present? ? (Time.current - entry_t.to_time).to_i : 0
 
         Trade.create!(
+          symbol: position.symbol,
+          side: position.side,
+          size: position.size,
+          entry_price: position.entry_price,
+          exit_price: position.exit_price,
+          pnl_usd: realized_pnl,
+          pnl_inr: position.pnl_inr.to_d,
+          closed_at: Time.current,
+          duration_seconds: duration_sec,
           strategy: strategy,
           regime: regime,
           expected_edge: entry_features["expected_edge"].to_d,

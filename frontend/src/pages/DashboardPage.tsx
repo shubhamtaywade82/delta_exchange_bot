@@ -5,7 +5,8 @@ import {
   History, 
   Cpu, 
   Terminal as TerminalIcon,
-  BarChart3
+  BarChart3,
+  Activity
 } from 'lucide-react';
 
 
@@ -56,6 +57,24 @@ interface StrategyStatus {
   symbols: SymbolState[];
 }
 
+interface SignalActivityEntry {
+  id: number;
+  symbol: string;
+  side: string;
+  status: string;
+  strategy: string;
+  source: string;
+  entry_price: number;
+  candle_timestamp: number;
+  error_message: string | null;
+  created_at: string;
+}
+
+interface SignalActivity {
+  last_signal: SignalActivityEntry | null;
+  last_rejection: SignalActivityEntry | null;
+}
+
 
 function filterBadge(result?: FilterResult) {
   if (!result) return null;
@@ -77,6 +96,15 @@ function localCalendarDateISO(d = new Date()) {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+function formatSignalActivityTimestamp(iso: string | undefined) {
+  if (!iso) return '--';
+  try {
+    return new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'medium' });
+  } catch {
+    return iso;
+  }
 }
 
 /** YYYY-MM-DD → localized medium date for dropdown labels */
@@ -157,6 +185,7 @@ const DashboardPage: React.FC = () => {
   const [wallet, setWallet] = useState<any>(null);
   const [stats, setStats] = useState<any>(null);
   const [executionHealth, setExecutionHealth] = useState<any>(null);
+  const [signalActivity, setSignalActivity] = useState<SignalActivity | null>(null);
   const [expandedSym, setExpandedSym] = useState<string | null>(null);
   const [tradeHistoryDay, setTradeHistoryDay] = useState<string>(() => localCalendarDateISO());
   const [tradesMeta, setTradesMeta] = useState<{ total_count: number; limit: number; day: string | null } | null>(
@@ -196,6 +225,7 @@ const DashboardPage: React.FC = () => {
       setWallet(dash.wallet);
       setStats(dash.stats);
       setExecutionHealth(dash.execution_health);
+      setSignalActivity(dash.signal_activity ?? null);
 
       const { data: strat } = await axios.get('/api/strategy_status');
       setStrategyStatus(strat);
@@ -337,6 +367,72 @@ const DashboardPage: React.FC = () => {
               </div>
             </section>
           )}
+
+          <section className="terminal-section signal-activity-section">
+            <div className="section-header">
+              <div className="header-title-group">
+                <Activity size={18} className="icon-accent" />
+                <h2>SIGNAL_ACTIVITY</h2>
+              </div>
+            </div>
+            <div className="signal-activity-grid">
+              <div className="signal-activity-block">
+                <label className="signal-activity-label">LAST_SIGNAL</label>
+                {signalActivity?.last_signal ? (
+                  <div className="signal-activity-detail">
+                    <div className="signal-activity-line">
+                      <span className="font-mono signal-activity-symbol">{signalActivity.last_signal.symbol}</span>
+                      <span className={`side-badge ${sideBadgeMeta(signalActivity.last_signal.side).css}`}>
+                        {sideBadgeMeta(signalActivity.last_signal.side).label}
+                      </span>
+                      <span className={`signal-status-pill status-${signalActivity.last_signal.status}`}>
+                        {signalActivity.last_signal.status.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="signal-activity-meta font-mono text-muted">
+                      {signalActivity.last_signal.strategy} · {signalActivity.last_signal.source} · entry{' '}
+                      {signalActivity.last_signal.entry_price}
+                    </div>
+                    <div className="signal-activity-time text-muted">
+                      {formatSignalActivityTimestamp(signalActivity.last_signal.created_at)}
+                    </div>
+                    {signalActivity.last_signal.error_message && (
+                      <div className="signal-activity-error">{signalActivity.last_signal.error_message}</div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-muted signal-activity-empty">NO_SIGNALS_RECORDED</div>
+                )}
+              </div>
+              <div className="signal-activity-block">
+                <label className="signal-activity-label">LAST_REJECTION_OR_FAILURE</label>
+                {signalActivity?.last_rejection ? (
+                  <div className="signal-activity-detail">
+                    <div className="signal-activity-line">
+                      <span className="font-mono signal-activity-symbol">{signalActivity.last_rejection.symbol}</span>
+                      <span className={`side-badge ${sideBadgeMeta(signalActivity.last_rejection.side).css}`}>
+                        {sideBadgeMeta(signalActivity.last_rejection.side).label}
+                      </span>
+                      <span className={`signal-status-pill status-${signalActivity.last_rejection.status}`}>
+                        {signalActivity.last_rejection.status.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="signal-activity-meta font-mono text-muted">
+                      {signalActivity.last_rejection.strategy} · {signalActivity.last_rejection.source}
+                    </div>
+                    <div className="signal-activity-reason signal-activity-error">
+                      {signalActivity.last_rejection.error_message || 'NO_ERROR_MESSAGE_STORED'}
+                    </div>
+                    <div className="signal-activity-time text-muted">
+                      {formatSignalActivityTimestamp(signalActivity.last_rejection.created_at)}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-muted signal-activity-empty">NONE</div>
+                )}
+              </div>
+            </div>
+          </section>
 
           <section className="terminal-section">
             <div className="section-header">

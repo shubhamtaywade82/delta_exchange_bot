@@ -43,6 +43,44 @@ RSpec.describe "Api::Dashboard", type: :request do
       )
     end
 
+    it "returns signal_activity with last signal and last rejection" do
+      session = create(:trading_session)
+      create(
+        :generated_signal,
+        trading_session: session,
+        symbol: "BTCUSD",
+        side: "buy",
+        status: "executed",
+        created_at: 3.minutes.ago
+      )
+      create(
+        :generated_signal,
+        trading_session: session,
+        symbol: "ETHUSD",
+        side: "sell",
+        status: "rejected",
+        error_message: "kill switch: exposure cap reached",
+        created_at: 2.minutes.ago
+      )
+      create(
+        :generated_signal,
+        trading_session: session,
+        symbol: "BTCUSD",
+        side: "buy",
+        status: "executed",
+        created_at: 1.minute.ago
+      )
+
+      get "/api/dashboard"
+
+      body = JSON.parse(response.body)
+      act = body["signal_activity"]
+      expect(act["last_signal"]["symbol"]).to eq("BTCUSD")
+      expect(act["last_signal"]["status"]).to eq("executed")
+      expect(act["last_rejection"]["symbol"]).to eq("ETHUSD")
+      expect(act["last_rejection"]["error_message"]).to eq("kill switch: exposure cap reached")
+    end
+
     it "includes unrealized_pnl_inr and unrealized_pnl_pct aligned with cached LTP" do
       create(:position,
              symbol: "BTCUSD",

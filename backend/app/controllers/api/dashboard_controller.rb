@@ -38,6 +38,7 @@ class Api::DashboardController < ApplicationController
     trade_rows = trades_scope.order(closed_at: :desc).limit(trades_limit)
 
     trade_calendar_days = Trade.broker_settled_calendar_days.map { |d| format_trade_calendar_day(d) }
+    signal_activity = build_signal_activity
 
     render json: {
       positions: active_positions.map { |p| position_payload(p) },
@@ -64,7 +65,8 @@ class Api::DashboardController < ApplicationController
         equity_curve: equity_curve
       },
       market: market,
-      execution_health: execution_health
+      execution_health: execution_health,
+      signal_activity: signal_activity
     }
   end
 
@@ -223,6 +225,32 @@ class Api::DashboardController < ApplicationController
     lot = Trading::Risk::PositionLotSize.multiplier_for(position).to_f
     qty = lots * lot
     (mark.to_f - entry.to_f) * qty * direction
+  end
+
+  def build_signal_activity
+    {
+      last_signal: signal_activity_payload(GeneratedSignal.order(created_at: :desc).first),
+      last_rejection: signal_activity_payload(
+        GeneratedSignal.where(status: %w[rejected failed]).order(created_at: :desc).first
+      )
+    }
+  end
+
+  def signal_activity_payload(record)
+    return nil unless record
+
+    {
+      id: record.id,
+      symbol: record.symbol,
+      side: record.side,
+      status: record.status,
+      strategy: record.strategy,
+      source: record.source,
+      entry_price: record.entry_price.to_f,
+      candle_timestamp: record.candle_timestamp,
+      error_message: record.error_message,
+      created_at: record.created_at.iso8601(3)
+    }
   end
 
   def build_execution_health
