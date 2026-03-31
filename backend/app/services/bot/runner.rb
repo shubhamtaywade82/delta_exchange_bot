@@ -56,7 +56,11 @@ module Bot
         symbols:     @config.symbol_names,
         price_store: @price_store,
         logger:      @logger,
-        testnet:     @config.testnet?
+        testnet:     @config.testnet?,
+        on_tick:     ->(symbol, price, _time) { 
+          # Ensure both bot internal store and shared Rails cache are updated
+          Rails.cache.write("ltp:#{symbol}", price, expires_in: 30.seconds)
+        }
       )
 
       puts "Reconciling positions..."
@@ -67,6 +71,7 @@ module Bot
 
       puts "Registering threads..."
       supervisor.register(:websocket)     { @ws_feed.start }
+      supervisor.register(:rest_ltp_poll) { run_rest_ltp_poll_loop }
       supervisor.register(:strategy)      { run_strategy_loop }
       supervisor.register(:trailing_stop) { run_trailing_stop_loop }
       supervisor.register(:portfolio_log) { run_portfolio_log_loop }
@@ -109,6 +114,24 @@ module Bot
         c.api_key    = key
         c.api_secret = secret
         c.testnet    = @config.testnet?
+      end
+    end
+
+    def run_rest_ltp_poll_loop
+      loop do
+        @config.symbol_names.each do |symbol|
+          begin
+            ticker = DeltaExchange::Models::Ticker.find(symbol)
+            if ticker && (price = ticker.mark_price || ticker.close)
+              @price_store.update(symbol, price.to_f)
+              Rails.cache.write("ltp:#{symbol}", price.to_f, expires_in: 30.seconds)
+              @logger.debug("rest_ltp_update", symbol: symbol, price: price)
+            end
+          rescue StandardError => e
+            @logger.warn("rest_ltp_poll_failed", symbol: symbol, message: e.message)
+          end
+        end
+        sleep 10 # Poll every 10 seconds as a fallback
       end
     end
 

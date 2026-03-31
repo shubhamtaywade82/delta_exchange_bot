@@ -87,7 +87,11 @@ module Bot
         logger:            @logger,
         testnet:           @config.testnet?,
         cvd_store:         @cvd_store,
-        derivatives_store: @derivatives_store
+        derivatives_store: @derivatives_store,
+        on_tick:           ->(symbol, price, _time) { 
+          @logger.info("ltp_cache_write", symbol: symbol, price: price)
+          Rails.cache.write("ltp:#{symbol}", price, expires_in: 30.seconds) 
+        }
       )
 
       reconcile_open_positions
