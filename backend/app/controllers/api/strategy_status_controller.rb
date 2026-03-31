@@ -9,10 +9,14 @@ module Api
 
       symbols = live_symbol_states(bot_config[:symbols])
       st_line   = supertrend_indicator_label(bot_config)
+      strat     = bot_config[:strategy]
       timeframes = [
-        { tf: "1H",  role: "Trend filter",   indicator: "#{st_line} direction" },
-        { tf: "15M", role: "Confirmation",   indicator: "#{st_line} + ADX strength" },
-        { tf: "5M",  role: "Entry trigger",  indicator: "BOS + Order Block zone" }
+        { tf: timeframe_display(strat[:timeframe_trend]),   role: "Trend filter",
+          indicator: "#{st_line} direction" },
+        { tf: timeframe_display(strat[:timeframe_confirm]), role: "Confirmation",
+          indicator: "#{st_line} + ADX strength" },
+        { tf: timeframe_display(strat[:timeframe_entry]),   role: "Entry trigger",
+          indicator: "BOS + Order Block zone" }
       ]
 
       render json: {
@@ -31,10 +35,10 @@ module Api
             trail_pct:     bot_config.dig(:strategy, :trail_pct)
           },
           entry_rules: [
-            "1H #{st_line} must be bullish (long) or bearish (short)",
-            "15M #{st_line} must agree with 1H direction",
-            "15M ADX ≥ #{bot_config.dig(:strategy, :adx_threshold)} (trending, not ranging)",
-            "5M BOS confirmed in trend direction + fresh Order Block present",
+            "#{timeframe_display(strat[:timeframe_trend])} #{st_line} must be bullish (long) or bearish (short)",
+            "#{timeframe_display(strat[:timeframe_confirm])} #{st_line} must agree with trend direction",
+            "#{timeframe_display(strat[:timeframe_confirm])} ADX ≥ #{bot_config.dig(:strategy, :adx_threshold)} (trending, not ranging)",
+            "#{timeframe_display(strat[:timeframe_entry])} BOS confirmed in trend direction + fresh Order Block present",
             "MomentumFilter: RSI not extreme (not overbought for longs / oversold for shorts)",
             "VolumeFilter: CVD agrees with direction + price on correct side of VWAP",
             "DerivativesFilter: OI rising (no divergence) + funding rate within ±0.05%"
@@ -68,6 +72,9 @@ module Api
         mode:    config.mode,
         symbols: config.symbol_names,
         strategy: {
+          timeframe_trend: config.timeframe_trend,
+          timeframe_confirm: config.timeframe_confirm,
+          timeframe_entry: config.timeframe_entry,
           atr_period:    config.supertrend_atr_period,
           multiplier:    config.supertrend_multiplier,
           supertrend_variant: config.supertrend_variant,
@@ -91,6 +98,7 @@ module Api
       {
         mode: "unknown", symbols: %w[BTCUSD ETHUSD SOLUSD],
         strategy: {
+          timeframe_trend: "1h", timeframe_confirm: "15m", timeframe_entry: "1m",
           atr_period: 10, multiplier: 3.0, supertrend_variant: "ml_adaptive",
           supertrend_indicator_type: nil,
           ml_adaptive: {
@@ -106,6 +114,10 @@ module Api
       return "ML Adaptive Supertrend" if variant == "ml_adaptive"
 
       "Supertrend"
+    end
+
+    def timeframe_display(resolution)
+      resolution.to_s.strip.downcase.sub(/([smhdw])$/) { |u| u.upcase }
     end
   end
 end

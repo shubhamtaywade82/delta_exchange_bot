@@ -18,7 +18,7 @@ strategy:
   timeframes:
     trend: "1h"
     confirm: "15m"
-    entry: "5m"
+    entry: "1m"
   candles_lookback: 100
   min_candles_required: 30
 

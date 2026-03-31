@@ -24,33 +24,34 @@ module Bot
       end
 
       # Returns a Signal or nil
+      # Supertrend (including ML adaptive when configured) runs on trend, confirm, and entry resolutions.
       def evaluate(symbol, current_price:)
         @logger.info("evaluating_symbol", symbol: symbol, price: current_price)
-        h1_candles  = fetch_candles(symbol, @config.timeframe_trend)
-        m15_candles = fetch_candles(symbol, @config.timeframe_confirm)
-        m5_candles  = fetch_candles(symbol, @config.timeframe_entry)
+        trend_candles  = fetch_candles(symbol, @config.timeframe_trend)
+        confirm_candles = fetch_candles(symbol, @config.timeframe_confirm)
+        entry_candles   = fetch_candles(symbol, @config.timeframe_entry)
 
-        return nil unless sufficient?(h1_candles, symbol, "1H") &&
-                          sufficient?(m15_candles, symbol, "15M") &&
-                          sufficient?(m5_candles, symbol, "5M")
+        return nil unless sufficient?(trend_candles, symbol, timeframe_tag(@config.timeframe_trend)) &&
+                          sufficient?(confirm_candles, symbol, timeframe_tag(@config.timeframe_confirm)) &&
+                          sufficient?(entry_candles, symbol, timeframe_tag(@config.timeframe_entry))
 
-        h1_st   = IndicatorFactory.compute_supertrend(h1_candles, config: @config)
-        m15_st  = IndicatorFactory.compute_supertrend(m15_candles, config: @config)
-        m15_adx = ADX.compute(m15_candles, period: @config.adx_period)
-        m5_st   = IndicatorFactory.compute_supertrend(m5_candles, config: @config)
+        trend_st   = IndicatorFactory.compute_supertrend(trend_candles, config: @config)
+        confirm_st = IndicatorFactory.compute_supertrend(confirm_candles, config: @config)
+        m15_adx = ADX.compute(confirm_candles, period: @config.adx_period)
+        entry_st = IndicatorFactory.compute_supertrend(entry_candles, config: @config)
 
         # New Indicators
-        m15_rsi  = Indicators::RSI.compute(m15_candles, period: 14)
-        m5_vwap  = Indicators::VWAP.compute(m5_candles)
-        
-        current_vwap = m5_vwap.last
+        m15_rsi  = Indicators::RSI.compute(confirm_candles, period: 14)
+        entry_vwap = Indicators::VWAP.compute(entry_candles)
+
+        current_vwap = entry_vwap.last
         rsi_val      = m15_rsi.last
         adx_val      = m15_adx.last[:adx]
-        h1_dir       = h1_st.last[:direction]
-        m15_dir      = m15_st.last[:direction]
-        m5_prev_dir  = m5_st[-2]&.dig(:direction)
-        m5_last_dir  = m5_st.last[:direction]
-        m5_last_ts   = m5_candles.last[:timestamp].to_i
+        h1_dir       = trend_st.last[:direction]
+        m15_dir      = confirm_st.last[:direction]
+        entry_prev_dir = entry_st[-2]&.dig(:direction)
+        entry_last_dir = entry_st.last[:direction]
+        entry_last_ts = entry_candles.last[:timestamp].to_i
 
         # Real-time Metrics from Delta Exchange API
         ticker = DeltaExchange::Models::Ticker.find(symbol) rescue nil
@@ -90,7 +91,8 @@ module Bot
         persist_symbol_state(symbol, {
           h1_dir: h1_dir,
           m15_dir: m15_dir,
-          m5_dir: m5_last_dir,
+          m5_dir: entry_last_dir,
+          entry_timeframe: @config.timeframe_entry,
           adx: adx_val,
           rsi: rsi_val ? rsi_val[:value] : nil,
           vwap: current_vwap[:vwap],
@@ -110,7 +112,7 @@ module Bot
         })
 
         # --- TRADE LOGIC ---
-        if h1_dir.nil? || m15_dir.nil? || m5_last_dir.nil?
+        if h1_dir.nil? || m15_dir.nil? || entry_last_dir.nil?
           @logger.info("strategy_skip", symbol: symbol, reason: "nil_direction")
           return nil
         end
@@ -121,19 +123,19 @@ module Bot
         end
 
         # Flip logic: In dry_run we allow continuation, in live we strictly want the fresh flip
-        just_flipped = m5_prev_dir && m5_last_dir != m5_prev_dir
+        just_flipped = entry_prev_dir && entry_last_dir != entry_prev_dir
         unless just_flipped || @config.dry_run?
-          @logger.info("strategy_skip", symbol: symbol, reason: "no_5m_flip")
+          @logger.info("strategy_skip", symbol: symbol, reason: "no_entry_timeframe_flip")
           return nil
         end
 
-        if @last_acted[symbol] == m5_last_ts
+        if @last_acted[symbol] == entry_last_ts
           return nil
         end
 
-        side = if h1_dir == :bullish && m15_dir == :bullish && m5_last_dir == :bullish
+        side = if h1_dir == :bullish && m15_dir == :bullish && entry_last_dir == :bullish
                  :long
-               elsif h1_dir == :bearish && m15_dir == :bearish && m5_last_dir == :bearish
+               elsif h1_dir == :bearish && m15_dir == :bearish && entry_last_dir == :bearish
                  :short
                end
 
@@ -158,11 +160,11 @@ module Bot
           return nil
         end
 
-        @last_acted[symbol] = m5_last_ts
+        @last_acted[symbol] = entry_last_ts
         signal_id = SecureRandom.uuid
         @logger.info("signal_generated", signal_id: signal_id, symbol: symbol, side: side, price: current_price)
 
-        Signal.new(symbol: symbol, side: side, entry_price: current_price, candle_ts: m5_last_ts, signal_id: signal_id)
+        Signal.new(symbol: symbol, side: side, entry_price: current_price, candle_ts: entry_last_ts, signal_id: signal_id)
       end
 
       private
@@ -215,7 +217,7 @@ module Bot
       end
 
       def resolution_to_seconds(resolution)
-        match = resolution.match(/(\d+)([smhdw])/)
+        match = resolution.to_s.match(/(\d+)([smhdw])/)
         return resolution.to_i * 60 unless match # fallback for backward compatibility
 
         value = match[1].to_i
@@ -228,6 +230,10 @@ module Bot
         when "w" then value * 604800
         else value * 60
         end
+      end
+
+      def timeframe_tag(resolution)
+        resolution.to_s.strip.downcase.sub(/([smhdw])$/) { |u| u.upcase }
       end
 
       def persist_symbol_state(symbol, data)
