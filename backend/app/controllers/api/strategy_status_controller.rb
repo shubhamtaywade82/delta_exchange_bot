@@ -71,6 +71,10 @@ module Api
         strategy: {
           atr_period:    raw.dig("strategy", "supertrend", "atr_period"),
           multiplier:    raw.dig("strategy", "supertrend", "multiplier"),
+          supertrend_variant: raw.dig("strategy", "supertrend", "variant") || "classic",
+          supertrend_indicator_type: raw.dig("strategy", "supertrend", "indicator_type") ||
+                                      raw.dig("strategy", "supertrend", "type"),
+          ml_adaptive:   raw.dig("strategy", "supertrend", "ml_adaptive"),
           adx_period:    raw.dig("strategy", "adx", "period"),
           adx_threshold: raw.dig("strategy", "adx", "threshold"),
           trail_pct:     raw.dig("strategy", "trailing_stop_pct")
@@ -83,7 +87,11 @@ module Api
     def default_config
       {
         mode: "unknown", symbols: %w[BTCUSD ETHUSD SOLUSD],
-        strategy: { atr_period: 10, multiplier: 3.0, adx_period: 14, adx_threshold: 20, trail_pct: 0.2 }
+        strategy: {
+          atr_period: 10, multiplier: 3.0, supertrend_variant: "classic",
+          supertrend_indicator_type: nil, ml_adaptive: nil,
+          adx_period: 14, adx_threshold: 20, trail_pct: 0.2
+        }
       }
     end
   end

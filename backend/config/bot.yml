@@ -2,8 +2,15 @@ mode: dry_run # dry_run | testnet | live
 
 strategy:
   supertrend:
-    atr_period: 10
-    multiplier: 3.0
+    variant: classic # classic | ml_adaptive (uses algo_scalper-style volatility-regime Supertrend)
+    # indicator_type: mast # optional algo_scalper aliases: ml_adaptive_supertrend, mast, ml_st, ml_adaptive
+    atr_period: 10 # maps to ATR length for ml_adaptive
+    multiplier: 3.0 # maps to factor for ml_adaptive
+    # ml_adaptive:
+    #   training_period: 100
+    #   highvol: 0.75
+    #   midvol: 0.5
+    #   lowvol: 0.25
   adx:
     period: 14
     threshold: 20

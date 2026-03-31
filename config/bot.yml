@@ -2,6 +2,7 @@ mode: dry_run # dry_run | testnet | live
 
 strategy:
   supertrend:
+    variant: classic # classic | ml_adaptive — see backend/config/bot.yml
     atr_period: 10
     multiplier: 3.0
   adx:

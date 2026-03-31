@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 require "time"
-require_relative "supertrend"
 require_relative "adx"
+require_relative "indicator_factory"
 require_relative "signal"
 require_relative "indicators/rsi"
 require_relative "indicators/vwap"
@@ -39,8 +39,8 @@ module Bot
                           sufficient?(m15_candles, symbol, "15M") &&
                           sufficient?(m5_candles, symbol, "5M")
 
-        h1_st   = Supertrend.compute(h1_candles,  atr_period: @config.supertrend_atr_period, multiplier: @config.supertrend_multiplier)
-        m15_st  = Supertrend.compute(m15_candles, atr_period: @config.supertrend_atr_period, multiplier: @config.supertrend_multiplier)
+        h1_st   = IndicatorFactory.compute_supertrend(h1_candles, config: @config)
+        m15_st  = IndicatorFactory.compute_supertrend(m15_candles, config: @config)
         m15_adx = ADX.compute(m15_candles, period: @config.adx_period)
         h1_dir       = h1_st.last[:direction]
         m15_dir      = m15_st.last[:direction]
@@ -187,8 +187,12 @@ module Bot
       end
 
       def sufficient?(candles, symbol, label)
-        if candles.size < @config.min_candles_required
-          @logger.warn("insufficient_candles", symbol: symbol, timeframe: label, count: candles.size)
+        required = @config.effective_min_candles_for_supertrend
+        if candles.size < required
+          @logger.warn(
+            "insufficient_candles",
+            symbol: symbol, timeframe: label, count: candles.size, required: required
+          )
           return false
         end
         true

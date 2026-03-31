@@ -48,6 +48,37 @@ RSpec.describe Bot::Config do
   it "exposes supertrend config" do
     expect(config.supertrend_atr_period).to eq(10)
     expect(config.supertrend_multiplier).to eq(3.0)
+    expect(config.supertrend_variant).to eq("classic")
+    expect(config.effective_min_candles_for_supertrend).to eq(30)
+  end
+
+  context "with ml_adaptive supertrend" do
+    let(:ml_yaml) do
+      valid_yaml.deep_dup.tap do |y|
+        y["strategy"] = y["strategy"].merge(
+          "candles_lookback" => 150,
+          "min_candles_required" => 120,
+          "supertrend" => {
+            "variant" => "ml_adaptive",
+            "atr_period" => 10,
+            "multiplier" => 2.0,
+            "ml_adaptive" => { "training_period" => 100 }
+          }
+        )
+      end
+    end
+
+    it "raises when candles_lookback is below training_period" do
+      bad = ml_yaml.deep_dup
+      bad["strategy"]["candles_lookback"] = 50
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /candles_lookback/)
+    end
+
+    it "exposes ml adaptive settings and effective min candles" do
+      cfg = described_class.new(ml_yaml)
+      expect(cfg.ml_adaptive_supertrend_training_period).to eq(100)
+      expect(cfg.effective_min_candles_for_supertrend).to eq(120)
+    end
   end
 
   it "exposes adx config" do

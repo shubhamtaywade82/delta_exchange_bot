@@ -10,6 +10,8 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
     double(
       timeframe_trend: "1h", timeframe_confirm: "15m", timeframe_entry: "5m",
       supertrend_atr_period: 3, supertrend_multiplier: 1.5,
+      supertrend_variant: "classic", supertrend_indicator_type: "supertrend",
+      effective_min_candles_for_supertrend: 10,
       adx_period: 5, adx_threshold: 20,
       candles_lookback: 20, min_candles_required: 10,
       dry_run?: true,
