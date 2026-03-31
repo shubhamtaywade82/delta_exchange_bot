@@ -3,6 +3,13 @@
 
 require_relative "../config/environment"
 
+# Development: Rails.logger defaults to log/development.log only. Foreman shows STDOUT,
+# so mirror logger output here (web + jobs keep their own processes / log targets).
+if Rails.env.development?
+  $stdout.sync = true
+  Rails.logger.broadcast_to(ActiveSupport::Logger.new($stdout))
+end
+
 # Single long-running process for ./bin/dev (see Procfile).
 # Default: Trading::Runner — real market data + paper execution (when mode is dry_run or EXECUTION_MODE=paper).
 # Set LEGACY_BOT_RUNNER=1 to use the old Bot::Runner stack only.
