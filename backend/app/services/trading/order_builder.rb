@@ -2,6 +2,8 @@
 
 module Trading
   class OrderBuilder
+    class SizingError < StandardError; end
+
     def self.build(signal, session:, position:)
       new(signal, session, position).build
     end
@@ -45,15 +47,54 @@ module Trading
     def calculate_size
       return 1 unless @session.capital.present? && @signal.entry_price.to_f.positive?
 
-      capital = @session.capital.to_f
-      leverage = (@session.leverage || 10).to_f
       entry = @signal.entry_price.to_f
+      contract_value = Trading::Risk::PositionLotSize.multiplier_for(@position).to_f
+      stop_price = effective_stop_price(entry)
+
+      balance_inr = @session.capital.to_d * usd_to_inr_rate
       risk_pct = bounded_risk_pct(base_risk_pct * adaptive_risk_multiplier * bias_adjustment_factor)
 
-      margin_per_trade = capital * risk_pct
-      notional = margin_per_trade * leverage
-      lots = (notional / entry).floor
-      [lots, 1].max
+      result = Finance::PositionSizer.compute!(
+        balance_inr: balance_inr.to_f,
+        risk_percent: risk_pct,
+        entry_price: entry,
+        stop_price: stop_price,
+        contract_value: contract_value,
+        usd_inr: usd_to_inr_rate
+      )
+
+      if result.contracts.zero?
+        raise SizingError,
+              "risk budget yields zero contracts (stop_distance=#{result.stop_distance}, " \
+              "risk_per_contract=#{result.risk_per_contract})"
+      end
+
+      result.contracts
+    end
+
+    def effective_stop_price(entry)
+      explicit = @signal.respond_to?(:stop_price) ? @signal.stop_price : nil
+      return explicit.to_f if explicit.present?
+
+      trail_pct = Trading::RuntimeConfig.fetch_float(
+        "risk.trail_pct_for_sizing",
+        default: 1.5,
+        env_key: "RISK_TRAIL_PCT_FOR_SIZING"
+      )
+      trail_distance = entry * (trail_pct / 100.0)
+
+      case @signal.side.to_s.downcase
+      when "long", "buy"
+        entry - trail_distance
+      when "short", "sell"
+        entry + trail_distance
+      else
+        entry - trail_distance
+      end
+    end
+
+    def usd_to_inr_rate
+      Setting.find_by(key: "usd_to_inr_rate")&.value&.to_f&.nonzero? || 85.0
     end
 
     def base_risk_pct

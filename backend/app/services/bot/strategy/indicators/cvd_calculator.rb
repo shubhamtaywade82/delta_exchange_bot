@@ -3,7 +3,7 @@
 module Bot
   module Strategy
     module Indicators
-      module CVDCalculator
+      module CvdCalculator
         def self.compute(trades)
           if trades.nil? || trades.empty?
             puts "CVD DEBUG: No trades received"

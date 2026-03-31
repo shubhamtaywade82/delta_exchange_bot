@@ -87,11 +87,9 @@ module Trading
       
       # Reuse the migrated strategy logic which fetches OHLCV from API
       strategy = Bot::Strategy::MultiTimeframe.new(
-        client:      @client,
         config:      config,
-        symbols:     symbols,
-        logger:      Rails.logger,
-        market_data: @client.market_data
+        market_data: @client.market_data,
+        logger:      Rails.logger
       )
 
       symbols.each do |symbol|

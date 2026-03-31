@@ -48,6 +48,9 @@ module Trading
 
       Rails.logger.info("[ExecutionEngine] Order placed: #{order.exchange_order_id} for #{@signal.symbol} #{@signal.side}")
       order
+    rescue OrderBuilder::SizingError => e
+      Rails.logger.warn("[ExecutionEngine] Sizing rejected signal for #{@signal.symbol}: #{e.message}")
+      raise RiskManager::RiskError, e.message
     rescue RiskManager::RiskError => e
       Rails.logger.warn("[ExecutionEngine] Risk rejected signal for #{@signal.symbol}: #{e.message}")
       raise
@@ -106,9 +109,27 @@ module Trading
     end
 
     def find_or_create_position!
-      Position.find_or_create_by!(symbol: @signal.symbol, side: @signal.side) do |position|
+      symbol = @signal.symbol.to_s
+      side = @signal.side.to_s
+      contract_scalar = Trading::Risk::PositionLotSize.from_exchange(symbol)
+      leverage = @session.leverage.to_i
+      leverage = 10 if leverage.zero?
+
+      position = Position.find_or_initialize_by(symbol: symbol, side: side)
+      if position.new_record?
         position.status = "init"
+        position.leverage = leverage
+        position.contract_value = contract_scalar if contract_scalar.to_f.positive?
+        position.save!
+      else
+        updates = {}
+        updates[:leverage] = leverage if position.leverage.blank? || position.leverage.to_i.zero?
+        if contract_scalar.to_f.positive? && (position.contract_value.blank? || position.contract_value.to_f.zero?)
+          updates[:contract_value] = contract_scalar
+        end
+        position.update!(updates) if updates.any?
       end
+      position
     end
 
     def fetch_product_id(symbol)

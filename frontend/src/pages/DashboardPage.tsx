@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { 
   Wallet, 
@@ -69,6 +69,14 @@ function filterBadge(result?: FilterResult) {
 
 function trendArrow(trend?: string) {
   return trend === 'rising' || trend === 'bullish' ? '▲' : '▼';
+}
+
+/** Local calendar date YYYY-MM-DD (not UTC) — matches how users pick "today" in the date control. */
+function localCalendarDateISO(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function SignalQualityPanel({ sym }: { sym: SymbolState }) {
@@ -142,10 +150,12 @@ const DashboardPage: React.FC = () => {
   const [stats, setStats] = useState<any>(null);
   const [executionHealth, setExecutionHealth] = useState<any>(null);
   const [expandedSym, setExpandedSym] = useState<string | null>(null);
-  const [tradeHistoryDay, setTradeHistoryDay] = useState<string>('');
+  const [tradeHistoryDay, setTradeHistoryDay] = useState<string>(() => localCalendarDateISO());
   const [tradesMeta, setTradesMeta] = useState<{ total_count: number; limit: number; day: string | null } | null>(
     null
   );
+
+  const todayLocal = useCallback(() => localCalendarDateISO(), []);
 
   useEffect(() => {
     fetchEverything();
@@ -157,7 +167,7 @@ const DashboardPage: React.FC = () => {
     try {
       const params = new URLSearchParams();
       params.set('trades_limit', '500');
-      if (tradeHistoryDay) params.set('trades_day', tradeHistoryDay);
+      params.set('trades_day', tradeHistoryDay || todayLocal());
       const { data: dash } = await axios.get(`/api/dashboard?${params.toString()}`);
       setPositions(dash.positions);
       setTrades(dash.trades);
@@ -365,10 +375,11 @@ const DashboardPage: React.FC = () => {
               </div>
               <div className="header-badge-group trade-history-filters">
                 <label className="trade-day-filter">
-                  <span className="trade-day-label">DAY</span>
+                  <span className="trade-day-label">DATE</span>
                   <input
                     type="date"
                     value={tradeHistoryDay}
+                    max={todayLocal()}
                     onChange={(e) => setTradeHistoryDay(e.target.value)}
                     className="trade-day-input"
                   />
@@ -376,10 +387,10 @@ const DashboardPage: React.FC = () => {
                 <button
                   type="button"
                   className="trade-day-clear"
-                  disabled={!tradeHistoryDay}
-                  onClick={() => setTradeHistoryDay('')}
+                  disabled={tradeHistoryDay === todayLocal()}
+                  onClick={() => setTradeHistoryDay(todayLocal())}
                 >
-                  ALL
+                  TODAY
                 </button>
                 {tradesMeta && (
                   <span className="section-badge trade-count-badge">

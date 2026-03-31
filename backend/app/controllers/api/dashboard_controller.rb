@@ -38,8 +38,7 @@ class Api::DashboardController < ApplicationController
       Trade.where("closed_at::date = ?", date).sum(:pnl_usd).to_f.round(2)
     end
 
-    trades_scope = broker_settled_trades_scope
-    trades_scope = trades_scope.where(closed_at: trades_day_range) if trades_day_range
+    trades_scope = broker_settled_trades_scope.where(closed_at: trades_day_range)
     trades_total = trades_scope.count
     trades_limit = trades_limit_param
     trade_rows = trades_scope.order(closed_at: :desc).limit(trades_limit)
@@ -50,7 +49,7 @@ class Api::DashboardController < ApplicationController
       trades_meta: {
         total_count: trades_total,
         limit: trades_limit,
-        day: trades_day_param&.strftime("%Y-%m-%d")
+        day: trades_day_param.strftime("%Y-%m-%d")
       },
       wallet: wallet,
       stats: {
@@ -77,20 +76,19 @@ class Api::DashboardController < ApplicationController
          .where.not(closed_at: nil)
   end
 
+  # Trade list is always scoped to one calendar day. When the client omits the param,
+  # default to the current day in Time.zone so history opens on "today".
   def trades_day_param
     raw = params[:trades_day].to_s.strip
-    return nil if raw.blank?
+    return Time.zone.today if raw.blank?
 
     Date.iso8601(raw)
   rescue ArgumentError
-    nil
+    Time.zone.today
   end
 
   def trades_day_range
-    day = trades_day_param
-    return nil unless day
-
-    day.in_time_zone.all_day
+    trades_day_param.in_time_zone.all_day
   end
 
   def trades_limit_param

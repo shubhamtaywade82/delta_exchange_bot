@@ -18,6 +18,7 @@ module Trading
       return nil unless order
       return order if @fill_event.exchange_fill_id.blank?
 
+      applied_fill = false
       ActiveRecord::Base.transaction(isolation: :repeatable_read) do
         order.lock!
 
@@ -30,7 +31,10 @@ module Trading
         position = PositionRecalculator.call(order.position_id) if order.position_id.present?
         apply_entry_context!(position) if position
         evaluate_risk!(position) if position
+        applied_fill = true
       end
+
+      publish_paper_wallet_after_fill if applied_fill
 
       order
     end
@@ -103,6 +107,14 @@ module Trading
       return if position_id.blank?
 
       Position.where(id: position_id).update_all(needs_reconciliation: true)
+    end
+
+    def publish_paper_wallet_after_fill
+      return unless PaperTrading.enabled?
+
+      PaperWalletPublisher.publish!
+    rescue StandardError => e
+      Rails.logger.warn("[FillProcessor] PaperWalletPublisher failed: #{e.message}")
     end
   end
 end

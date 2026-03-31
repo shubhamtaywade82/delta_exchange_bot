@@ -118,6 +118,23 @@ RSpec.describe "Api::Dashboard", type: :request do
       expect(body["trades_meta"]["day"]).to eq("2026-03-31")
     end
 
+    it "defaults trade history to the current day when trades_day is omitted" do
+      allow(Redis).to receive(:new).and_return(instance_double(Redis, get: nil))
+      day = Date.new(2026, 3, 31)
+      travel_to day.in_time_zone.change(hour: 12) do
+        create(:trade, symbol: "ETHUSD", side: "long", closed_at: day.in_time_zone.change(hour: 8),
+               strategy: "multi_timeframe", regime: "trending", pnl_usd: 1.0)
+        create(:trade, symbol: "BTCUSD", side: "long", closed_at: (day - 1).in_time_zone.change(hour: 8),
+               strategy: "multi_timeframe", regime: "trending", pnl_usd: 2.0)
+
+        get "/api/dashboard"
+
+        body = JSON.parse(response.body)
+        expect(body["trades"].map { |t| t["symbol"] }).to eq(["ETHUSD"])
+        expect(body["trades_meta"]["day"]).to eq("2026-03-31")
+      end
+    end
+
     it "shows stored entry_price from the position row (no OHLCV override)" do
       create(:position,
              symbol: "BTCUSD",

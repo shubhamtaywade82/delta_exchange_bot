@@ -62,7 +62,7 @@ module Bot
                  else
                    raw_trades
                  end
-        cvd_data = Indicators::CVDCalculator.compute(trades)
+        cvd_data = Indicators::CvdCalculator.compute(trades)
         
         deriv_data = if ticker
                        {

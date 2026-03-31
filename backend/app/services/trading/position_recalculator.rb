@@ -39,12 +39,25 @@ module Trading
                          "filled"
                        end
 
-          position.update!(
+          lot_d = Trading::Risk::PositionLotSize.multiplier_for(position).to_d
+
+          attrs = {
             size: total_qty.zero? ? position.size : total_qty,
             entry_price: avg_price,
             status: next_state,
             needs_reconciliation: false
-          )
+          }
+
+          if lot_d.positive? && (position.contract_value.blank? || position.contract_value.to_f.zero?)
+            attrs[:contract_value] = lot_d
+          end
+
+          if !total_qty.zero? && avg_price.present? && lot_d.positive?
+            lev = effective_leverage(position)
+            attrs[:margin] = (total_qty.abs * lot_d * avg_price.to_d.abs) / lev if lev.positive?
+          end
+
+          position.update!(attrs)
 
           position
         end
@@ -53,6 +66,22 @@ module Trading
         retry if retries < MAX_RETRIES
         raise
       end
+    end
+
+    private
+
+    def effective_leverage(position)
+      lev = position.leverage.to_d
+      return lev if lev.positive?
+
+      picked = Order.where(position_id: position.id)
+                    .joins(:trading_session)
+                    .limit(1)
+                    .pick("trading_sessions.leverage")
+      lev = picked.to_d
+      return lev if lev.positive?
+
+      1.to_d
     end
   end
 end

@@ -39,25 +39,25 @@ module Bot
 
           @client.on(:close) do |event|
             next unless @generation == gen
-            @logger.warn("ws_disconnected", code: event.code, reason: event.reason)
+            structured_log(:warn, "ws_disconnected", code: event.code, reason: event.reason)
             @running = false
           end
 
           @client.on(:error) do |err|
             next unless @generation == gen
-            @logger.error("ws_error", message: err.to_s)
+            structured_log(:error, "ws_error", message: err.to_s)
             @running = false
           end
 
           @client.on(:open) do
-            @logger.info("ws_connected")
+            structured_log(:info, "ws_connected")
             @client.subscribe([{ name: "v2/ticker", symbols: @symbols }])
             @client.subscribe([{ name: "v2/orderbook", symbols: @symbols }])
             if @subscribe_private_streams
               @client.subscribe([{ name: "v2/orders", symbols: @symbols }])
               @client.subscribe([{ name: "v2/fills", symbols: @symbols }])
             else
-              @logger.info("ws_subscribe_public_only", message: "paper mode — skipping orders/fills streams")
+              structured_log(:info, "ws_subscribe_public_only", message: "paper mode — skipping orders/fills streams")
             end
           end
 
@@ -79,7 +79,7 @@ module Bot
 
         sleep 1 while @running
       rescue StandardError => e
-        @logger.error("ws_process_crash", message: e.message)
+        structured_log(:error, "ws_process_crash", message: e.message)
       ensure
         @running = false
       end
@@ -87,6 +87,18 @@ module Bot
       def stop
         @running = false
         @client&.close
+      end
+
+      private
+
+      # Rails.logger / stdlib Logger accept only one message argument; Bot::Notifications::Logger uses event + payload.
+      def structured_log(level, event, **payload)
+        if @logger.is_a?(Bot::Notifications::Logger)
+          @logger.public_send(level, event, **payload)
+        else
+          line = payload.empty? ? event.to_s : "#{event} #{payload.map { |k, v| "#{k}=#{v.inspect}" }.join(" ")}"
+          @logger.public_send(level, line)
+        end
       end
     end
   end

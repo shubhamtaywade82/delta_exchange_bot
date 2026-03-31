@@ -5,6 +5,7 @@ RSpec.describe Trading::KillSwitch do
   let(:client)  { double("DeltaExchange::Client") }
 
   before do
+    allow(Trading::PaperTrading).to receive(:enabled?).and_return(false)
     allow(client).to receive(:cancel_order).and_return(true)
     allow(client).to receive(:place_order).and_return({ id: "CLOSE-001" })
     allow(Trading::Learning::CreditAssigner).to receive(:finalize_trade!).and_return(instance_double(Trade, id: 1))

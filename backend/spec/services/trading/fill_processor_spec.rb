@@ -2,7 +2,12 @@ require "rails_helper"
 
 RSpec.describe Trading::FillProcessor do
   let(:session) { create(:trading_session) }
-  let(:position) { Position.create!(symbol: "BTCUSD", side: "buy", status: "init", size: 1) }
+  let(:position) { Position.create!(symbol: "BTCUSD", side: "buy", status: "init", size: 1, leverage: 10) }
+
+  before do
+    allow(Trading::PaperTrading).to receive(:enabled?).and_return(false)
+    allow(Trading::Risk::PositionLotSize).to receive(:multiplier_for).and_return(BigDecimal("0.001"))
+  end
   let(:order) do
     create(
       :order,
@@ -36,6 +41,27 @@ RSpec.describe Trading::FillProcessor do
     expect(position.reload.status).to eq("partially_filled")
     expect(position.size.to_d).to eq(1.to_d)
     expect(position.needs_reconciliation).to eq(false)
+  end
+
+  it "publishes paper wallet snapshot when paper trading is enabled" do
+    order
+    allow(Trading::PaperTrading).to receive(:enabled?).and_return(true)
+    allow(Trading::PaperWalletPublisher).to receive(:publish!)
+
+    event = Trading::Events::OrderFilled.new(
+      exchange_fill_id: "F-paper",
+      exchange_order_id: "EX-1",
+      quantity: 1,
+      price: 49_900,
+      fee: 0,
+      filled_at: Time.current,
+      status: "open",
+      raw_payload: { source: "spec" }
+    )
+
+    described_class.process(event)
+
+    expect(Trading::PaperWalletPublisher).to have_received(:publish!)
   end
 
   it "skips side effects for duplicate fill id" do

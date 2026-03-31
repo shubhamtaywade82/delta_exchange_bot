@@ -22,6 +22,12 @@ RSpec.describe Trading::ExecutionEngine do
     allow(client).to receive(:place_order).and_return({ id: "EX-001", status: "open" })
     allow(Trading::RiskManager).to receive(:validate!).and_return(true)
     allow(Rails.cache).to receive(:fetch).with(/product_id:/, anything).and_return(84)
+    allow(Trading::Risk::PositionLotSize).to receive(:from_exchange).and_return(0.001)
+    allow(Trading::Risk::PositionLotSize).to receive(:multiplier_for).and_return(0.001)
+    allow(Trading::RuntimeConfig).to receive(:fetch_float).and_call_original
+    allow(Trading::RuntimeConfig).to receive(:fetch_float)
+      .with("risk.trail_pct_for_sizing", default: 1.5, env_key: "RISK_TRAIL_PCT_FOR_SIZING")
+      .and_return(1.5)
     # Clean up idempotency keys after each test
     key = Trading::IdempotencyGuard.key(
       symbol: "BTCUSD", side: "buy", timestamp: signal.candle_timestamp.to_i
