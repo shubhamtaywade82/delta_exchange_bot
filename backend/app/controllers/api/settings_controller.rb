@@ -12,21 +12,25 @@ class Api::SettingsController < ApplicationController
   end
 
   def update
-    setting = Setting.find_or_initialize_by(key: setting_params[:key])
-    setting.value = setting_params[:value].to_s
-    setting.value_type = setting_params[:value_type].presence || infer_value_type(setting_params[:value])
-
-    if setting.save
-      Trading::RuntimeConfig.refresh!(setting.key)
-      render json: {
-        key: setting.key,
-        value: setting.value,
-        value_type: setting.value_type,
-        typed_value: setting.typed_value
+    setting = Setting.apply!(
+      key: setting_params[:key],
+      value: setting_params[:value],
+      value_type: setting_params[:value_type].presence || infer_value_type(setting_params[:value]),
+      source: "api",
+      reason: "manual_update",
+      metadata: {
+        request_id: request.request_id,
+        remote_ip: request.remote_ip
       }
-    else
-      render json: { errors: setting.errors.full_messages }, status: :unprocessable_entity
-    end
+    )
+    render json: {
+      key: setting.key,
+      value: setting.value,
+      value_type: setting.value_type,
+      typed_value: setting.typed_value
+    }
+  rescue ActiveRecord::RecordInvalid => e
+    render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
   end
 
   private

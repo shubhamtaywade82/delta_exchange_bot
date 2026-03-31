@@ -1,8 +1,37 @@
 class Setting < ApplicationRecord
   VALUE_TYPES = %w[string integer float boolean].freeze
+  DEFAULT_SOURCE = "unknown"
 
   validates :key, presence: true, uniqueness: true
   validates :value_type, inclusion: { in: VALUE_TYPES }, allow_nil: true
+
+  has_many :setting_changes, dependent: :delete_all
+
+  def self.apply!(key:, value:, value_type: nil, source: DEFAULT_SOURCE, reason: nil, metadata: {})
+    setting = find_or_initialize_by(key: key)
+    new_value = value.to_s
+    new_type = value_type || infer_value_type(value)
+    old_value = setting.value
+    old_type = setting.value_type
+
+    return setting if old_value == new_value && old_type == new_type
+
+    setting.value = new_value
+    setting.value_type = new_type
+    setting.save!
+    setting.setting_changes.create!(
+      key: key,
+      old_value: old_value,
+      new_value: new_value,
+      old_value_type: old_type,
+      new_value_type: new_type,
+      source: source,
+      reason: reason,
+      metadata: metadata || {}
+    )
+    Trading::RuntimeConfig.refresh!(key)
+    setting
+  end
 
   def typed_value
     case (value_type || "string")
@@ -14,6 +43,19 @@ class Setting < ApplicationRecord
   end
 
   private
+
+  def self.infer_value_type(value)
+    return "boolean" if value == true || value == false
+    return "integer" if value.is_a?(Integer)
+    return "float" if value.is_a?(Float) || value.is_a?(BigDecimal)
+
+    str = value.to_s.strip
+    return "boolean" if str.downcase.in?(%w[true false 1 0 yes no on off])
+    return "integer" if str.match?(/\A-?\d+\z/)
+    return "float" if str.match?(/\A-?\d+\.\d+\z/)
+
+    "string"
+  end
 
   def boolean_value?
     value.to_s.strip.downcase.in?(%w[1 true yes on])

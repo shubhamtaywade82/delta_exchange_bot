@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_31_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_31_132000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -108,6 +108,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_31_120000) do
     t.index ["symbol"], name: "index_positions_on_symbol_when_open", unique: true, where: "((status)::text = 'open'::text)"
   end
 
+  create_table "setting_changes", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "key", null: false
+    t.jsonb "metadata", default: {}, null: false
+    t.string "new_value", null: false
+    t.string "new_value_type", null: false
+    t.string "old_value"
+    t.string "old_value_type"
+    t.string "reason"
+    t.bigint "setting_id", null: false
+    t.string "source", null: false
+    t.datetime "updated_at", null: false
+    t.index ["key", "created_at"], name: "index_setting_changes_on_key_and_created_at"
+    t.index ["setting_id"], name: "index_setting_changes_on_setting_id"
+    t.index ["source"], name: "index_setting_changes_on_source"
+  end
+
   create_table "settings", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "key"
@@ -179,4 +196,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_31_120000) do
   add_foreign_key "generated_signals", "trading_sessions"
   add_foreign_key "orders", "positions"
   add_foreign_key "orders", "trading_sessions"
+  add_foreign_key "setting_changes", "settings"
 end

@@ -22,5 +22,9 @@ RSpec.describe "Api::Settings", type: :request do
     expect(response).to have_http_status(:ok)
     expect(Trading::RuntimeConfig).to have_received(:refresh!).with("learning.epsilon")
     expect(Setting.find_by(key: "learning.epsilon")&.value).to eq("0.15")
+    change = SettingChange.order(:created_at).last
+    expect(change.key).to eq("learning.epsilon")
+    expect(change.source).to eq("api")
+    expect(change.reason).to eq("manual_update")
   end
 end
