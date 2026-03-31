@@ -14,13 +14,16 @@ module Bot
       @notifier = Notifications::TelegramNotifier.new(
         enabled: config.telegram_enabled?,
         token:   config.telegram_token,
-        chat_id: config.telegram_chat_id
+        chat_id: config.telegram_chat_id,
+        logger:  @logger,
+        event_settings: telegram_event_settings
       )
     end
 
     def start
       puts "Starting runner v2 [2026-03-30 15:10]..."
       @logger.info("bot_starting_v2", mode: @config.mode, symbols: @config.symbol_names)
+      @notifier.notify_status("Bot starting in #{@config.mode} mode for #{@config.symbol_names.join(', ')}", status: "starting")
 
       puts "Fetching products..."
       products       = DeltaExchange::Models::Product.all
@@ -145,6 +148,12 @@ module Bot
         
         signals.each do |signal|
           next if @position_tracker.open?(signal.symbol)
+          @notifier.notify_signal_generated(
+            symbol: signal.symbol,
+            side: signal.side,
+            price: signal.entry_price,
+            strategy: "multi_timeframe"
+          )
           @order_manager.execute_signal(signal)
         end
 
@@ -158,12 +167,22 @@ module Bot
           ltp = @price_store.get(symbol)
           next unless ltp
 
+          position = @position_tracker.get(symbol)
           result = @position_tracker.update_trailing_stop(symbol, ltp)
           next unless result == :exit
 
+          if position
+            @notifier.notify_trailing_stop_triggered(
+              symbol: symbol,
+              side: position[:side],
+              ltp: ltp,
+              stop_price: position[:stop_price]
+            )
+          end
           @order_manager.close_position(symbol, exit_price: ltp, reason: :trail_stop)
         rescue StandardError => e
           @logger.error("trailing_stop_error", symbol: symbol, message: e.message)
+          @notifier.notify_error(context: "trailing_stop/#{symbol}", message: e.message)
         end
 
         sleep TRAILING_STOP_INTERVAL_SECONDS
@@ -239,14 +258,25 @@ module Bot
       return unless adopted.positive?
 
       @logger.info("positions_reconciled", count: adopted)
-      @notifier.send_message("♻️ Bot restarted — re-adopted #{adopted} open position(s) from API")
+      @notifier.notify_status("Re-adopted #{adopted} open position(s) from API", status: "reconciled")
     end
 
     def graceful_shutdown(supervisor)
       @logger.info("bot_stopping")
+      @notifier.notify_status("Bot stopping cleanly", status: "stopping")
       supervisor.stop_all
       @ws_feed&.stop
       exit 0
+    end
+
+    def telegram_event_settings
+      {
+        status: @config.telegram_event_enabled?(:status),
+        signals: @config.telegram_event_enabled?(:signals),
+        positions: @config.telegram_event_enabled?(:positions),
+        trailing: @config.telegram_event_enabled?(:trailing),
+        errors: @config.telegram_event_enabled?(:errors)
+      }
     end
   end
 end

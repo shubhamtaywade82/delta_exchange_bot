@@ -72,7 +72,15 @@ module Bot
 
         @logger.info("trade_opened", symbol: symbol, side: signal.side, entry_usd: fill_price,
                      lots: lots, leverage: leverage, mode: current_mode)
-        @notifier.send_message(trade_opened_message(symbol, signal.side, fill_price, lots, leverage))
+        @notifier.notify_trade_opened(
+          symbol: symbol,
+          side: signal.side,
+          price: fill_price,
+          lots: lots,
+          leverage: leverage,
+          trailing_stop: trail_stop_price(signal.side, fill_price),
+          mode: current_mode
+        )
         fill_price
       rescue DeltaExchange::RateLimitError => e
         @logger.warn("rate_limited", symbol: symbol, retry_after: e.retry_after_seconds)
@@ -120,7 +128,14 @@ module Bot
         @logger.info("trade_closed", symbol: symbol, exit_usd: exit_price,
                      pnl_usd: pnl_usd.round(2), realized_pnl_usd: @realized_pnl.round(2),
                      reason: reason, duration_seconds: duration)
-        @notifier.send_message(trade_closed_message(symbol, exit_price, pnl_usd, duration, reason))
+        @notifier.notify_trade_closed(
+          symbol: symbol,
+          exit_price: exit_price,
+          pnl_usd: pnl_usd,
+          pnl_inr: pnl_inr,
+          duration_seconds: duration,
+          reason: reason
+        )
       end
 
       private
@@ -166,20 +181,12 @@ module Bot
         "live"
       end
 
-      def trade_opened_message(symbol, side, price, lots, leverage)
-        emoji = side == :long ? "🟢" : "🔴"
-        tag   = @config.dry_run? ? " [DRY RUN]" : ""
-        stop  = side == :long ? price * (1 - @config.trailing_stop_pct / 100.0) : price * (1 + @config.trailing_stop_pct / 100.0)
-        "#{emoji} #{side.to_s.upcase} #{symbol} opened#{tag}\nEntry: $#{format('%.2f', price)}\nLots: #{lots} | Leverage: #{leverage}x\nTrail Stop: $#{format('%.2f', stop)}"
-      end
-
-      def trade_closed_message(symbol, exit_price, pnl_usd, duration_secs, reason)
-        hours   = duration_secs / 3600
-        minutes = (duration_secs % 3600) / 60
-        pnl_inr = (pnl_usd * @capital_manager.usd_to_inr_rate).round(0)
-        sign    = pnl_usd >= 0 ? "+" : ""
-        emoji   = pnl_usd >= 0 ? "🟢" : "🔴"
-        "#{emoji} #{symbol} closed — #{reason}\nExit: $#{format('%.2f', exit_price)}\nPnL: #{sign}$#{format('%.2f', pnl_usd)} (#{sign}₹#{pnl_inr})\nDuration: #{hours}h #{minutes}m"
+      def trail_stop_price(side, entry_price)
+        if side == :long
+          entry_price * (1 - @config.trailing_stop_pct / 100.0)
+        else
+          entry_price * (1 + @config.trailing_stop_pct / 100.0)
+        end
       end
     end
   end

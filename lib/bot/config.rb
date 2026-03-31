@@ -210,6 +210,13 @@ module Bot
     def telegram_token     = @raw.dig("notifications", "telegram", "bot_token")
     def telegram_chat_id   = @raw.dig("notifications", "telegram", "chat_id").to_s
     def daily_summary_time = @raw.dig("notifications", "daily_summary_time")
+    def telegram_event_enabled?(event)
+      events = @raw.dig("notifications", "telegram", "events")
+      return true unless events.is_a?(Hash)
+      return true unless events.key?(event.to_s)
+
+      events[event.to_s] == true
+    end
 
     def log_level  = @raw.dig("logging", "level") || "info"
     def log_file   = @raw.dig("logging", "file") || "logs/bot.log"

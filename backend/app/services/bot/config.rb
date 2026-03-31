@@ -43,7 +43,18 @@ module Bot
         "simulated_capital_inr" => 10_000.0
       },
       "notifications" => {
-        "telegram" => { "enabled" => false, "bot_token" => "", "chat_id" => "" },
+        "telegram" => {
+          "enabled" => false,
+          "bot_token" => "",
+          "chat_id" => "",
+          "events" => {
+            "status" => true,
+            "signals" => true,
+            "positions" => true,
+            "trailing" => true,
+            "errors" => true
+          }
+        },
         "daily_summary_time" => "18:00"
       },
       "logging" => { "level" => "info", "file" => "logs/bot.log" }
@@ -86,6 +97,11 @@ module Bot
       apply_setting!(raw, "notifications", "telegram", "enabled", key: "notifications.telegram.enabled")
       apply_setting!(raw, "notifications", "telegram", "bot_token", key: "notifications.telegram.bot_token")
       apply_setting!(raw, "notifications", "telegram", "chat_id", key: "notifications.telegram.chat_id")
+      apply_setting!(raw, "notifications", "telegram", "events", "status", key: "notifications.telegram.events.status")
+      apply_setting!(raw, "notifications", "telegram", "events", "signals", key: "notifications.telegram.events.signals")
+      apply_setting!(raw, "notifications", "telegram", "events", "positions", key: "notifications.telegram.events.positions")
+      apply_setting!(raw, "notifications", "telegram", "events", "trailing", key: "notifications.telegram.events.trailing")
+      apply_setting!(raw, "notifications", "telegram", "events", "errors", key: "notifications.telegram.events.errors")
       apply_setting!(raw, "notifications", "daily_summary_time", key: "notifications.daily_summary_time")
       apply_setting!(raw, "logging", "level", key: "logging.level")
       apply_setting!(raw, "logging", "file", key: "logging.file")
@@ -262,6 +278,13 @@ module Bot
     def telegram_token     = @raw.dig("notifications", "telegram", "bot_token")
     def telegram_chat_id   = @raw.dig("notifications", "telegram", "chat_id").to_s
     def daily_summary_time = @raw.dig("notifications", "daily_summary_time")
+    def telegram_event_enabled?(event)
+      events = @raw.dig("notifications", "telegram", "events")
+      return true unless events.is_a?(Hash)
+      return true unless events.key?(event.to_s)
+
+      events[event.to_s] == true
+    end
 
     def log_level  = @raw.dig("logging", "level") || "info"
     def log_file   = @raw.dig("logging", "file") || "logs/bot.log"

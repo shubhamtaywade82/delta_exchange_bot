@@ -12,9 +12,16 @@ RSpec.describe Bot::Execution::OrderManager do
 
   let(:position_tracker) { Bot::Execution::PositionTracker.new }
   let(:risk_calculator)  { double("RiskCalculator", compute: 44) }
-  let(:capital_manager)  { double("CapitalManager", available_usdt: 500.0, usd_to_inr_rate: 85.0) }
+  let(:capital_manager)  { double("CapitalManager", spendable_usdt: 500.0, usd_to_inr_rate: 85.0) }
+  let(:price_store)      { double("PriceStore", all: {}) }
   let(:logger)           { double("Logger", info: nil, warn: nil, error: nil) }
-  let(:notifier)         { double("TelegramNotifier", send_message: nil) }
+  let(:notifier) do
+    double(
+      "TelegramNotifier",
+      notify_trade_opened: nil,
+      notify_trade_closed: nil
+    )
+  end
 
   let(:signal) do
     Bot::Strategy::Signal.new(
@@ -33,6 +40,7 @@ RSpec.describe Bot::Execution::OrderManager do
       position_tracker: position_tracker,
       risk_calculator: risk_calculator,
       capital_manager: capital_manager,
+      price_store: price_store,
       logger: logger,
       notifier: notifier
     )
@@ -63,7 +71,10 @@ RSpec.describe Bot::Execution::OrderManager do
   end
 
   describe "#close_position" do
-    before { manager.execute_signal(signal) }
+    before do
+      allow(Trade).to receive(:create!).and_return(true)
+      manager.execute_signal(signal)
+    end
 
     it "removes position from tracker in dry-run" do
       manager.close_position("BTCUSD", exit_price: 45_500.0, reason: :trail_stop)
@@ -76,8 +87,8 @@ RSpec.describe Bot::Execution::OrderManager do
     end
 
     it "sends Telegram notification including USD and INR PnL" do
-      expect(notifier).to receive(:send_message).with(
-        a_string_including("BTCUSD").and(a_string_including("$")).and(a_string_including("₹"))
+      expect(notifier).to receive(:notify_trade_closed).with(
+        hash_including(symbol: "BTCUSD", pnl_usd: be_a(Numeric), pnl_inr: be_a(Numeric))
       )
       manager.close_position("BTCUSD", exit_price: 45_500.0, reason: :trail_stop)
     end
