@@ -61,26 +61,27 @@ module Api
     end
 
     def load_bot_config
-      path = Rails.root.join("config", "bot.yml")
-      return default_config unless path.exist?
-
-      raw = YAML.safe_load(path.read, permitted_classes: [], aliases: true)
+      config = Bot::Config.load
       {
-        mode:    raw["mode"],
-        symbols: (raw["symbols"] || []).map { |s| s["symbol"] },
+        mode:    config.mode,
+        symbols: config.symbol_names,
         strategy: {
-          atr_period:    raw.dig("strategy", "supertrend", "atr_period"),
-          multiplier:    raw.dig("strategy", "supertrend", "multiplier"),
-          supertrend_variant: raw.dig("strategy", "supertrend", "variant") || "classic",
-          supertrend_indicator_type: raw.dig("strategy", "supertrend", "indicator_type") ||
-                                      raw.dig("strategy", "supertrend", "type"),
-          ml_adaptive:   raw.dig("strategy", "supertrend", "ml_adaptive"),
-          adx_period:    raw.dig("strategy", "adx", "period"),
-          adx_threshold: raw.dig("strategy", "adx", "threshold"),
-          trail_pct:     raw.dig("strategy", "trailing_stop_pct")
+          atr_period:    config.supertrend_atr_period,
+          multiplier:    config.supertrend_multiplier,
+          supertrend_variant: config.supertrend_variant,
+          supertrend_indicator_type: config.supertrend_indicator_type,
+          ml_adaptive: {
+            training_period: config.ml_adaptive_supertrend_training_period,
+            highvol: config.ml_adaptive_supertrend_highvol,
+            midvol: config.ml_adaptive_supertrend_midvol,
+            lowvol: config.ml_adaptive_supertrend_lowvol
+          },
+          adx_period:    config.adx_period,
+          adx_threshold: config.adx_threshold,
+          trail_pct:     config.trailing_stop_pct
         }
       }
-    rescue StandardError
+    rescue Bot::Config::ValidationError, StandardError
       default_config
     end
 

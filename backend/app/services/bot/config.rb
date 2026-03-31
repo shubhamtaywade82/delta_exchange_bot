@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "yaml"
-
 module Bot
   class Config
     class ValidationError < StandardError; end
@@ -16,11 +14,95 @@ module Bot
       validate!
     end
 
-    def self.load(path = Rails.root.join("config/bot.yml"))
-      raw = YAML.safe_load(File.read(path), permitted_classes: [], aliases: true)
+    DEFAULTS = {
+      "mode" => "dry_run",
+      "strategy" => {
+        "supertrend" => {
+          "variant" => "classic",
+          "atr_period" => 10,
+          "multiplier" => 3.0,
+          "ml_adaptive" => {
+            "training_period" => 100,
+            "highvol" => 0.75,
+            "midvol" => 0.5,
+            "lowvol" => 0.25
+          }
+        },
+        "adx" => { "period" => 14, "threshold" => 20 },
+        "trailing_stop_pct" => 0.2,
+        "timeframes" => { "trend" => "1h", "confirm" => "15m", "entry" => "5m" },
+        "candles_lookback" => 100,
+        "min_candles_required" => 30
+      },
+      "risk" => {
+        "risk_per_trade_pct" => 1.5,
+        "max_concurrent_positions" => 5,
+        "max_margin_per_position_pct" => 40.0,
+        "usd_to_inr_rate" => 85.0,
+        "simulated_capital_inr" => 10_000.0
+      },
+      "notifications" => {
+        "telegram" => { "enabled" => false, "bot_token" => "", "chat_id" => "" },
+        "daily_summary_time" => "18:00"
+      },
+      "logging" => { "level" => "info", "file" => "logs/bot.log" }
+    }.freeze
+
+    def self.load(_path = nil)
+      raw = runtime_raw
       mode_override = ENV["BOT_MODE"]
       raw["mode"] = mode_override if mode_override && !mode_override.empty?
       new(raw)
+    end
+
+    def self.runtime_raw
+      raw = Marshal.load(Marshal.dump(DEFAULTS))
+
+      apply_setting!(raw, "mode", key: "bot.mode")
+      apply_setting!(raw, "strategy", "supertrend", "variant", key: "strategy.supertrend.variant")
+      apply_setting!(raw, "strategy", "supertrend", "type", key: "strategy.supertrend.type")
+      apply_setting!(raw, "strategy", "supertrend", "indicator_type", key: "strategy.supertrend.indicator_type")
+      apply_setting!(raw, "strategy", "supertrend", "atr_period", key: "strategy.supertrend.atr_period")
+      apply_setting!(raw, "strategy", "supertrend", "multiplier", key: "strategy.supertrend.multiplier")
+      apply_setting!(raw, "strategy", "supertrend", "ml_adaptive", "training_period", key: "strategy.supertrend.ml_adaptive.training_period")
+      apply_setting!(raw, "strategy", "supertrend", "ml_adaptive", "highvol", key: "strategy.supertrend.ml_adaptive.highvol")
+      apply_setting!(raw, "strategy", "supertrend", "ml_adaptive", "midvol", key: "strategy.supertrend.ml_adaptive.midvol")
+      apply_setting!(raw, "strategy", "supertrend", "ml_adaptive", "lowvol", key: "strategy.supertrend.ml_adaptive.lowvol")
+      apply_setting!(raw, "strategy", "adx", "period", key: "strategy.adx.period")
+      apply_setting!(raw, "strategy", "adx", "threshold", key: "strategy.adx.threshold")
+      apply_setting!(raw, "strategy", "trailing_stop_pct", key: "strategy.trailing_stop_pct")
+      apply_setting!(raw, "strategy", "timeframes", "trend", key: "strategy.timeframes.trend")
+      apply_setting!(raw, "strategy", "timeframes", "confirm", key: "strategy.timeframes.confirm")
+      apply_setting!(raw, "strategy", "timeframes", "entry", key: "strategy.timeframes.entry")
+      apply_setting!(raw, "strategy", "candles_lookback", key: "strategy.candles_lookback")
+      apply_setting!(raw, "strategy", "min_candles_required", key: "strategy.min_candles_required")
+      apply_setting!(raw, "risk", "risk_per_trade_pct", key: "risk.risk_per_trade_pct")
+      apply_setting!(raw, "risk", "max_concurrent_positions", key: "risk.max_concurrent_positions")
+      apply_setting!(raw, "risk", "max_margin_per_position_pct", key: "risk.max_margin_per_position_pct")
+      apply_setting!(raw, "risk", "usd_to_inr_rate", key: "risk.usd_to_inr_rate")
+      apply_setting!(raw, "risk", "simulated_capital_inr", key: "risk.simulated_capital_inr")
+      apply_setting!(raw, "notifications", "telegram", "enabled", key: "notifications.telegram.enabled")
+      apply_setting!(raw, "notifications", "telegram", "bot_token", key: "notifications.telegram.bot_token")
+      apply_setting!(raw, "notifications", "telegram", "chat_id", key: "notifications.telegram.chat_id")
+      apply_setting!(raw, "notifications", "daily_summary_time", key: "notifications.daily_summary_time")
+      apply_setting!(raw, "logging", "level", key: "logging.level")
+      apply_setting!(raw, "logging", "file", key: "logging.file")
+
+      raw["symbols"] = SymbolConfig.where(enabled: true).order(:symbol).map do |symbol|
+        { "symbol" => symbol.symbol, "leverage" => symbol.leverage }
+      end
+
+      raw
+    end
+
+    def self.apply_setting!(raw, *path, key:)
+      setting = Setting.find_by(key: key)
+      return if setting.nil?
+
+      leaf_key = path.pop
+      container = raw
+      path.each { |segment| container = container[segment] ||= {} }
+      container[leaf_key] = setting.typed_value
     end
 
     def mode               = @raw["mode"]

@@ -3,6 +3,22 @@
 require "rails_helper"
 
 RSpec.describe Bot::Config do
+  describe ".load" do
+    it "builds runtime config from DB settings and symbol configs" do
+      SymbolConfig.create!(symbol: "BTCUSD", leverage: 12, enabled: true)
+      Setting.create!(key: "bot.mode", value: "testnet", value_type: "string")
+      Setting.create!(key: "strategy.supertrend.atr_period", value: "11", value_type: "integer")
+      Setting.create!(key: "strategy.adx.threshold", value: "23", value_type: "float")
+
+      config = described_class.load
+
+      expect(config.mode).to eq("testnet")
+      expect(config.symbol_names).to eq(["BTCUSD"])
+      expect(config.supertrend_atr_period).to eq(11)
+      expect(config.adx_threshold).to eq(23.0)
+    end
+  end
+
   let(:valid_yaml) do
     {
       "mode" => "testnet",
