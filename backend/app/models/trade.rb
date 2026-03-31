@@ -1,4 +1,13 @@
 class Trade < ApplicationRecord
+  # Distinct calendar days (app TZ / DB date cast) with at least one broker-settled row — for trade history picker.
+  def self.broker_settled_calendar_days
+    where.not(symbol: [nil, ""])
+      .where.not(closed_at: nil)
+      .group(Arel.sql("closed_at::date"))
+      .order(Arel.sql("closed_at::date DESC"))
+      .pluck(Arel.sql("closed_at::date"))
+  end
+
   # Single round-trip for dashboard KPIs (replaces several SUM/COUNT queries).
   def self.dashboard_pnl_totals(as_of: Time.zone.now)
     day_cutoff = as_of - 24.hours

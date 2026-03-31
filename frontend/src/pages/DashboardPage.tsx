@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import { 
   Wallet, 
@@ -79,6 +79,14 @@ function localCalendarDateISO(d = new Date()) {
   return `${y}-${m}-${day}`;
 }
 
+/** YYYY-MM-DD → localized medium date for dropdown labels */
+function formatTradeHistoryDayLabel(iso: string) {
+  const parts = iso.split('-').map(Number);
+  if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return iso;
+  const [y, m, d] = parts;
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { dateStyle: 'medium' });
+}
+
 function SignalQualityPanel({ sym }: { sym: SymbolState }) {
   const allFilters = sym.filters;
   const allPassed = allFilters &&
@@ -154,9 +162,16 @@ const DashboardPage: React.FC = () => {
   const [tradesMeta, setTradesMeta] = useState<{ total_count: number; limit: number; day: string | null } | null>(
     null
   );
+  const [tradesCalendarDays, setTradesCalendarDays] = useState<string[]>([]);
   const [positionsMeta, setPositionsMeta] = useState<{ as_of_date: string; count: number } | null>(null);
 
   const todayLocal = useCallback(() => localCalendarDateISO(), []);
+
+  const tradeHistoryDayOptions = useMemo(() => {
+    const today = todayLocal();
+    const merged = new Set<string>([today, tradeHistoryDay, ...tradesCalendarDays]);
+    return [...merged].sort((a, b) => b.localeCompare(a));
+  }, [todayLocal, tradeHistoryDay, tradesCalendarDays]);
 
   useEffect(() => {
     fetchEverything();
@@ -175,6 +190,9 @@ const DashboardPage: React.FC = () => {
       setPositionsMeta(dash.positions_meta ?? null);
       setTrades(dash.trades);
       setTradesMeta(dash.trades_meta ?? null);
+      setTradesCalendarDays(
+        Array.isArray(dash.trades_calendar_days) ? dash.trades_calendar_days.map(String) : []
+      );
       setWallet(dash.wallet);
       setStats(dash.stats);
       setExecutionHealth(dash.execution_health);
@@ -397,13 +415,19 @@ const DashboardPage: React.FC = () => {
               <div className="header-badge-group trade-history-filters">
                 <label className="trade-day-filter">
                   <span className="trade-day-label">DATE</span>
-                  <input
-                    type="date"
+                  <select
                     value={tradeHistoryDay}
-                    max={todayLocal()}
                     onChange={(e) => setTradeHistoryDay(e.target.value)}
-                    className="trade-day-input"
-                  />
+                    className="trade-day-select"
+                    aria-label="Trade history calendar day"
+                  >
+                    {tradeHistoryDayOptions.map((iso) => (
+                      <option key={iso} value={iso}>
+                        {formatTradeHistoryDayLabel(iso)}
+                        {iso === todayLocal() ? ' — TODAY' : ''}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <button
                   type="button"

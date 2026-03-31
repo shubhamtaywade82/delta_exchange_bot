@@ -3,6 +3,19 @@
 require "rails_helper"
 
 RSpec.describe Trade, type: :model do
+  describe ".broker_settled_calendar_days" do
+    it "returns unique calendar days for symbol-backed closed trades, newest first" do
+      day_a = Date.new(2026, 3, 30)
+      day_b = Date.new(2026, 3, 31)
+      create(:trade, symbol: "BTCUSD", closed_at: day_a.in_time_zone.change(hour: 10), pnl_usd: 1)
+      create(:trade, symbol: "ETHUSD", closed_at: day_a.in_time_zone.change(hour: 11), pnl_usd: 1)
+      create(:trade, symbol: "BTCUSD", closed_at: day_b.in_time_zone.change(hour: 12), pnl_usd: 1)
+      create(:trade, symbol: nil, closed_at: day_b.in_time_zone.change(hour: 12), pnl_usd: 0)
+
+      expect(described_class.broker_settled_calendar_days).to eq([day_b, day_a])
+    end
+  end
+
   describe ".dashboard_pnl_totals" do
     it "aggregates realized PnL, counts, and rolling windows in one query" do
       travel_to Time.zone.parse("2026-03-31 12:00:00 UTC") do

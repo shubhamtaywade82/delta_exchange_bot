@@ -37,6 +37,8 @@ class Api::DashboardController < ApplicationController
     trades_limit = trades_limit_param
     trade_rows = trades_scope.order(closed_at: :desc).limit(trades_limit)
 
+    trade_calendar_days = Trade.broker_settled_calendar_days.map { |d| format_trade_calendar_day(d) }
+
     render json: {
       positions: active_positions.map { |p| position_payload(p) },
       positions_meta: {
@@ -44,6 +46,7 @@ class Api::DashboardController < ApplicationController
         count: active_positions.size
       },
       trades: trade_rows.map { |t| trade_payload(t) },
+      trades_calendar_days: trade_calendar_days,
       trades_meta: {
         total_count: trades_total,
         limit: trades_limit,
@@ -66,6 +69,12 @@ class Api::DashboardController < ApplicationController
   end
 
   private
+
+  def format_trade_calendar_day(value)
+    return value.strftime("%Y-%m-%d") if value.respond_to?(:strftime)
+
+    value.to_s
+  end
 
   def load_wallet_for_dashboard(portfolio:, positions:)
     wallet =

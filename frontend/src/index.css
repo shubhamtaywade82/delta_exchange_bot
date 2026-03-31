@@ -372,6 +372,22 @@ body::after {
   padding: 0.25rem 0.4rem;
 }
 
+.trade-day-select {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-glass);
+  border-radius: 4px;
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  padding: 0.25rem 1.75rem 0.25rem 0.4rem;
+  cursor: pointer;
+  max-width: 14rem;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%2394a3b8' d='M2 3h6L5 7z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.35rem center;
+}
+
 .trade-day-clear {
   background: transparent;
   border: 1px solid var(--border-accent);

@@ -132,6 +132,21 @@ RSpec.describe "Api::Dashboard", type: :request do
       expect(row["unrealized_pnl_pct"]).to eq(2.98)
     end
 
+    it "includes trades_calendar_days for broker-settled history picker" do
+      day = Date.new(2026, 3, 31)
+      create(:trade, symbol: "ETHUSD", side: "long", closed_at: day.in_time_zone.change(hour: 12),
+             strategy: "multi_timeframe", regime: "trending", pnl_usd: 1.0)
+      create(:trade, symbol: "ETHUSD", side: "long", closed_at: day.in_time_zone.change(hour: 13),
+             strategy: "multi_timeframe", regime: "trending", pnl_usd: 2.0)
+      create(:trade, symbol: nil, side: nil, closed_at: day.in_time_zone.change(hour: 10),
+             strategy: "learn", regime: "explore", pnl_usd: 0.0)
+
+      get "/api/dashboard"
+
+      days = JSON.parse(response.body)["trades_calendar_days"]
+      expect(days).to eq(["2026-03-31"])
+    end
+
     it "lists only broker-settled trades with a symbol and supports day filter" do
       allow(Redis).to receive(:new).and_return(instance_double(Redis, get: nil))
       day = Date.new(2026, 3, 31)
