@@ -10,7 +10,11 @@ module Trading
       # @param mark_price [Numeric]
       # @return [Result]
       def self.call(position:, mark_price:)
-        qty = position.size.to_d.abs
+        lots = position.size.to_d.abs
+        return zero_result if lots.zero?
+
+        lot = PositionLotSize.multiplier_for(position).to_d
+        qty = lots * lot
         return zero_result if qty.zero?
 
         leverage = [position.leverage.to_d, 1.to_d].max

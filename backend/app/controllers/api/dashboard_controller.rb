@@ -133,9 +133,7 @@ class Api::DashboardController < ApplicationController
     }
   end
 
-  # ROE% must use the same exposure basis as unrealized_usd.
-  # `unrealized_usd` from Trading::Risk::PositionRisk currently does not apply
-  # contract_value, so we intentionally keep the denominator aligned here.
+  # ROE% must use the same exposure basis as unrealized_usd (contracts × lot_size / contract_value).
   def unrealized_pnl_pct(position, unrealized_usd)
     return 0.0 if unrealized_usd.zero?
 
@@ -153,12 +151,15 @@ class Api::DashboardController < ApplicationController
     entry = position.entry_price.to_f
     return 0.0 if lots <= 0 || entry <= 0
 
-    (lots * entry) / lev
+    lot = Trading::Risk::PositionLotSize.multiplier_for(position).to_f
+    (lots * lot * entry) / lev
   end
 
   def unrealized_pnl_usd(position:, mark:, entry:)
     direction = position.side.in?(%w[sell short]) ? -1.0 : 1.0
-    qty = position.size.to_f.abs
+    lots = position.size.to_f.abs
+    lot = Trading::Risk::PositionLotSize.multiplier_for(position).to_f
+    qty = lots * lot
     (mark.to_f - entry.to_f) * qty * direction
   end
 

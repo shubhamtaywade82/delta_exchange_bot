@@ -18,7 +18,9 @@ module Trading
         total_realized = positions.sum { |position| position.pnl_usd.to_d }
         total_exposure = positions.sum do |position|
           mark = Rails.cache.read("ltp:#{position.symbol}")&.to_d || position.entry_price.to_d
-          position.size.to_d.abs * mark
+          lots = position.size.to_d.abs
+          lot = PositionLotSize.multiplier_for(position).to_d
+          lots * lot * mark
         end
 
         Result.new(total_pnl: total_realized + total_unrealized, total_exposure: total_exposure)

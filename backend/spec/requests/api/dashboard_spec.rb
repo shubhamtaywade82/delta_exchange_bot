@@ -96,8 +96,8 @@ RSpec.describe "Api::Dashboard", type: :request do
       get "/api/dashboard"
 
       row = JSON.parse(response.body)["positions"].first
-      expect(row["unrealized_pnl"]).to eq(2001.0)
-      expect(row["unrealized_pnl_pct"]).to eq(2.99)
+      expect(row["unrealized_pnl"]).to eq(2.0)
+      expect(row["unrealized_pnl_pct"]).to eq(2.98)
     end
 
     it "lists only broker-settled trades with a symbol and supports day filter" do

@@ -20,6 +20,10 @@ RSpec.describe Bot::ProductCache do
     expect(cache.contract_value_for("BTCUSD")).to eq(0.001)
   end
 
+  it "looks up lot_size by symbol (same multiplier as contract_value for Delta perps)" do
+    expect(cache.lot_size_for("BTCUSD")).to eq(0.001)
+  end
+
   it "looks up symbol by product_id (inverse lookup)" do
     expect(cache.symbol_for(2)).to eq("ETHUSD")
   end
