@@ -16,6 +16,7 @@ RSpec.describe "Api::Settings", type: :request do
   it "updates setting and refreshes runtime cache" do
     Setting.create!(key: "learning.epsilon", value: "0.05", value_type: "float")
     allow(Trading::RuntimeConfig).to receive(:refresh!).and_call_original
+    allow(Trading::Learning::AiRefinementTrigger).to receive(:call)
 
     patch "/api/settings/learning.epsilon", params: { key: "learning.epsilon", value: "0.15", value_type: "float" }
 
@@ -26,5 +27,7 @@ RSpec.describe "Api::Settings", type: :request do
     expect(change.key).to eq("learning.epsilon")
     expect(change.source).to eq("api")
     expect(change.reason).to eq("manual_update")
+    expect(Trading::Learning::AiRefinementTrigger)
+      .to have_received(:call).with(reason: "setting_change:learning.epsilon")
   end
 end

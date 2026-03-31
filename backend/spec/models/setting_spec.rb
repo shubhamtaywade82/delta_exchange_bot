@@ -2,6 +2,10 @@ require "rails_helper"
 
 RSpec.describe Setting, type: :model do
   describe ".apply!" do
+    before do
+      allow(Trading::Learning::AiRefinementTrigger).to receive(:call)
+    end
+
     it "persists setting and writes audit row" do
       setting = described_class.apply!(
         key: "learning.epsilon",
@@ -27,6 +31,19 @@ RSpec.describe Setting, type: :model do
       expect do
         described_class.apply!(key: "learning.epsilon", value: 0.05, value_type: "float", source: "spec")
       end.not_to change(SettingChange, :count)
+    end
+
+    it "triggers event-driven refinement when value changes" do
+      described_class.apply!(key: "learning.epsilon", value: 0.08, value_type: "float", source: "spec")
+
+      expect(Trading::Learning::AiRefinementTrigger)
+        .to have_received(:call).with(reason: "setting_change:learning.epsilon").once
+    end
+
+    it "does not re-trigger refinement for AI-originated write" do
+      described_class.apply!(key: "learning.epsilon", value: 0.08, value_type: "float", source: "ai_refinement_job")
+
+      expect(Trading::Learning::AiRefinementTrigger).not_to have_received(:call)
     end
   end
 end

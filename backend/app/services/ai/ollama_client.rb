@@ -88,11 +88,13 @@ module Ai
     end
 
     def self.request_timeout_seconds
-      Trading::RuntimeConfig.fetch_integer("ai.ollama_timeout_seconds", default: 8, env_key: "OLLAMA_TIMEOUT_SECONDS")
+      timeout = Trading::RuntimeConfig.fetch_integer("ai.ollama_timeout_seconds", default: 8, env_key: "OLLAMA_TIMEOUT_SECONDS")
+      timeout.positive? ? timeout : 8
     end
 
     def self.max_retries
-      Trading::RuntimeConfig.fetch_integer("ai.ollama_max_retries", default: 2, env_key: "OLLAMA_MAX_RETRIES")
+      retries = Trading::RuntimeConfig.fetch_integer("ai.ollama_max_retries", default: 2, env_key: "OLLAMA_MAX_RETRIES")
+      retries.negative? ? 0 : retries
     end
 
     def self.api_key_present?

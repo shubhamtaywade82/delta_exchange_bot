@@ -1,6 +1,10 @@
 require "rails_helper"
 
 RSpec.describe Trading::Learning::AiRefinementJob, type: :job do
+  before do
+    allow(Trading::Learning::AiRefinementTrigger).to receive(:call)
+  end
+
   it "applies strategy bounds and runtime settings from AI payload" do
     StrategyParam.create!(strategy: "scalping", regime: "trending", aggression: 0.95, risk_multiplier: 1.8)
     Trade.create!(
@@ -36,5 +40,17 @@ RSpec.describe Trading::Learning::AiRefinementJob, type: :job do
     changes = SettingChange.where(source: "ai_refinement_job")
     expect(changes.count).to be >= 2
     expect(changes.pluck(:reason).uniq).to eq(["auto_calibration"])
+  end
+
+  it "skips updates when payload is invalid JSON" do
+    allow(Ai::OllamaClient).to receive(:ask).and_return("not-json")
+
+    expect { described_class.perform_now }.not_to change(Setting, :count)
+  end
+
+  it "skips updates when payload root is not an object" do
+    allow(Ai::OllamaClient).to receive(:ask).and_return([1, 2, 3].to_json)
+
+    expect { described_class.perform_now }.not_to change(Setting, :count)
   end
 end

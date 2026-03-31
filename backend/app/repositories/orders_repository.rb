@@ -46,6 +46,7 @@ module OrdersRepository
       )
       Trading::Learning::OnlineUpdater.update!(trade)
       Trading::Learning::Metrics.update(trade)
+      Trading::Learning::AiRefinementTrigger.call(reason: "trade_closed:#{position.id}")
 
       Rails.logger.warn("[OrdersRepository] Forced close position=#{position.id} reason=#{reason} mark=#{mark_price}")
     end

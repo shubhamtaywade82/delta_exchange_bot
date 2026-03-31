@@ -30,6 +30,7 @@ class Setting < ApplicationRecord
       metadata: metadata || {}
     )
     Trading::RuntimeConfig.refresh!(key)
+    trigger_ai_refinement_for_runtime_change(source: source, key: key)
     setting
   end
 
@@ -60,4 +61,11 @@ class Setting < ApplicationRecord
   def boolean_value?
     value.to_s.strip.downcase.in?(%w[1 true yes on])
   end
+
+  def self.trigger_ai_refinement_for_runtime_change(source:, key:)
+    return if source.to_s == "ai_refinement_job"
+
+    Trading::Learning::AiRefinementTrigger.call(reason: "setting_change:#{key}")
+  end
+  private_class_method :trigger_ai_refinement_for_runtime_change
 end

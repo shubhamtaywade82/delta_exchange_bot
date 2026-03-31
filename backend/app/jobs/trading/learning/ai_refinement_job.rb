@@ -11,10 +11,11 @@ module Trading
       # @return [void]
       def perform
         summary = build_summary
-        response = Ai::OllamaClient.ask(prompt(summary))
-        payload = JSON.parse(response)
-        apply_strategy_bounds(payload["strategies"] || payload)
-        apply_runtime_settings(payload["runtime"] || {})
+        payload = parse_payload(Ai::OllamaClient.ask(prompt(summary)))
+        return unless payload
+
+        apply_strategy_bounds(payload.fetch("strategies", {}))
+        apply_runtime_settings(payload.fetch("runtime", {}))
       rescue StandardError => e
         Rails.logger.warn("[AiRefinementJob] skipped: #{e.class} #{e.message}")
       end
@@ -42,7 +43,7 @@ module Trading
         gst = trade_fees * Trading::Learning::Reward::GST_RATE
         net = gross - trade_fees - gst
 
-        notional = features.fetch("notional", 0).to_d
+        notional = features.to_h.fetch("notional", 0).to_d
         return 0.to_d if notional.zero?
 
         reward = net / notional
@@ -72,6 +73,8 @@ module Trading
         return unless bounds.is_a?(Hash)
 
         bounds.each do |strategy, b|
+          next unless b.is_a?(Hash)
+
           min_aggr = b.fetch("aggression_min", 0.1).to_d
           max_aggr = b.fetch("aggression_max", 2.0).to_d
           min_risk = b.fetch("risk_min", 0.1).to_d
@@ -108,6 +111,17 @@ module Trading
           metadata: { job: self.class.name }
         )
       rescue ArgumentError, TypeError
+        nil
+      end
+
+      def parse_payload(raw_response)
+        parsed = JSON.parse(raw_response.to_s)
+        return parsed if parsed.is_a?(Hash)
+
+        Rails.logger.warn("[AiRefinementJob] ignored non-hash payload")
+        nil
+      rescue JSON::ParserError => e
+        Rails.logger.warn("[AiRefinementJob] invalid JSON payload: #{e.message}")
         nil
       end
     end
