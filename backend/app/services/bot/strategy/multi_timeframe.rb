@@ -141,9 +141,19 @@ module Bot
           return nil
         end
 
-        # CVD and Momentum checks
-        unless mom_f && vol_f
-          @logger.info("strategy_skip", symbol: symbol, reason: "filters_failed", mom: mom_f, vol: vol_f)
+        relaxed_vol_f = vol_f || relaxed_volume_allowed?(cvd_data)
+        # In dry-run demo mode we can relax neutral CVD/funding filters
+        # to verify full entry -> position -> trailing-exit pipeline.
+        unless mom_f && relaxed_vol_f
+          @logger.info(
+            "strategy_skip",
+            symbol: symbol,
+            reason: "filters_failed",
+            mom: mom_f,
+            vol: vol_f,
+            der: der_f,
+            relaxed_vol: relaxed_vol_f
+          )
           return nil
         end
 
@@ -223,6 +233,16 @@ module Bot
         @redis.hset("delta:strategy:state", symbol, data.to_json)
       rescue StandardError => e
         @logger.error("strategy_persistence_failed", symbol: symbol, message: e.message)
+      end
+
+      def relaxed_volume_allowed?(cvd_data)
+        return false unless relaxed_filters_in_dry_run?
+
+        cvd_data && cvd_data[:delta_trend] == :neutral
+      end
+
+      def relaxed_filters_in_dry_run?
+        @config.dry_run? && @config.respond_to?(:relax_filters_in_dry_run?) && @config.relax_filters_in_dry_run?
       end
     end
   end

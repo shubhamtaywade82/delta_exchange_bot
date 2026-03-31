@@ -29,6 +29,7 @@ module Bot
           }
         },
         "adx" => { "period" => 14, "threshold" => 20 },
+        "filters" => { "relax_in_dry_run" => true },
         "trailing_stop_pct" => 0.2,
         "timeframes" => { "trend" => "1h", "confirm" => "15m", "entry" => "5m" },
         "candles_lookback" => 100,
@@ -70,6 +71,7 @@ module Bot
       apply_setting!(raw, "strategy", "supertrend", "ml_adaptive", "lowvol", key: "strategy.supertrend.ml_adaptive.lowvol")
       apply_setting!(raw, "strategy", "adx", "period", key: "strategy.adx.period")
       apply_setting!(raw, "strategy", "adx", "threshold", key: "strategy.adx.threshold")
+      apply_setting!(raw, "strategy", "filters", "relax_in_dry_run", key: "strategy.filters.relax_in_dry_run")
       apply_setting!(raw, "strategy", "trailing_stop_pct", key: "strategy.trailing_stop_pct")
       apply_setting!(raw, "strategy", "timeframes", "trend", key: "strategy.timeframes.trend")
       apply_setting!(raw, "strategy", "timeframes", "confirm", key: "strategy.timeframes.confirm")
@@ -197,6 +199,13 @@ module Bot
       val = @raw.dig("strategy", "adx", "threshold")
       error("strategy.adx.threshold is required") if val.nil?
       val.to_f
+    end
+
+    def relax_filters_in_dry_run?
+      val = @raw.dig("strategy", "filters", "relax_in_dry_run")
+      return true if val.nil?
+
+      val == true
     end
 
     def trailing_stop_pct

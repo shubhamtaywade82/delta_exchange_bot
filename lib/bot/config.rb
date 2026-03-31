@@ -144,6 +144,13 @@ module Bot
       @raw.dig("strategy", "filters", "cvd_window")&.to_i || 50
     end
 
+    def relax_filters_in_dry_run?
+      val = @raw.dig("strategy", "filters", "relax_in_dry_run")
+      return true if val.nil?
+
+      val == true
+    end
+
     def oi_poll_interval
       @raw.dig("strategy", "derivatives", "oi_poll_interval")&.to_i || 30
     end

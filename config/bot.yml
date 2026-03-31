@@ -22,6 +22,7 @@ strategy:
   filters:
     funding_rate_threshold: 0.05
     cvd_window: 50
+    relax_in_dry_run: true
   derivatives:
     oi_poll_interval: 30
   trailing_stop_pct: 0.2

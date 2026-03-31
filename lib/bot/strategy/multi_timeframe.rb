@@ -135,6 +135,17 @@ module Bot
           filters:         filter_results.transform_values { |f| { passed: f[:passed], reason: f[:reason] } }
         )
 
+        filter_results[:volume] = relaxed_filter_result(
+          original: filter_results[:volume],
+          allowed: relaxed_volume_allowed?(cvd_data),
+          reason: "dry_run relax: neutral CVD allowed for demo execution"
+        )
+        filter_results[:derivatives] = relaxed_filter_result(
+          original: filter_results[:derivatives],
+          allowed: relaxed_derivatives_allowed?,
+          reason: "dry_run relax: derivatives gate bypassed for demo execution"
+        )
+
         blocked = filter_results.find { |_k, f| !f[:passed] }
         if blocked
           @logger.debug("strategy_skip", symbol: symbol, reason: "filter_blocked",
@@ -212,6 +223,26 @@ module Bot
         when "w" then value * 604800
         else value * 60
         end
+      end
+
+      def relaxed_filter_result(original:, allowed:, reason:)
+        return original unless allowed
+
+        { passed: true, reason: reason }
+      end
+
+      def relaxed_volume_allowed?(cvd_data)
+        return false unless relaxed_filters_in_dry_run?
+
+        cvd_data && cvd_data[:delta_trend] == :neutral
+      end
+
+      def relaxed_derivatives_allowed?
+        relaxed_filters_in_dry_run?
+      end
+
+      def relaxed_filters_in_dry_run?
+        @config.dry_run? && @config.respond_to?(:relax_filters_in_dry_run?) && @config.relax_filters_in_dry_run?
       end
     end
   end

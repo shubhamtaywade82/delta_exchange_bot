@@ -9,6 +9,7 @@ defaults = {
   "strategy.supertrend.ml_adaptive.lowvol" => ["0.25", "float"],
   "strategy.adx.period" => ["14", "integer"],
   "strategy.adx.threshold" => ["20", "float"],
+  "strategy.filters.relax_in_dry_run" => ["true", "boolean"],
   "strategy.trailing_stop_pct" => ["0.2", "float"],
   "strategy.timeframes.trend" => ["1h", "string"],
   "strategy.timeframes.confirm" => ["15m", "string"],
