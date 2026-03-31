@@ -1,6 +1,6 @@
 defaults = {
   "bot.mode" => ["dry_run", "string"],
-  "strategy.supertrend.variant" => ["classic", "string"],
+  "strategy.supertrend.variant" => ["ml_adaptive", "string"],
   "strategy.supertrend.atr_period" => ["10", "integer"],
   "strategy.supertrend.multiplier" => ["3.0", "float"],
   "strategy.supertrend.ml_adaptive.training_period" => ["100", "integer"],
