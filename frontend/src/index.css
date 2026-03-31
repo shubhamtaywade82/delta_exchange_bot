@@ -392,6 +392,24 @@ body::after {
   margin-left: 0.25rem;
 }
 
+/* Utilities referenced from TSX (no Tailwind in this project) */
+.text-center {
+  text-align: center;
+}
+
+.text-muted {
+  color: var(--text-muted);
+}
+
+/* Empty table body: center message under full grid width */
+td.table-empty-row {
+  text-align: center;
+  padding-block: 3rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+}
+
 /* Table Styling */
 .table-wrapper {
   overflow-x: auto;

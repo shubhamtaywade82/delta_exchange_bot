@@ -377,7 +377,11 @@ const DashboardPage: React.FC = () => {
                       </td>
                     </tr>
                   )) : (
-                    <tr><td colSpan={9} className="text-center text-muted">NO_ACTIVE_POSITIONS_FOUND</td></tr>
+                    <tr>
+                      <td colSpan={9} className="text-center text-muted table-empty-row">
+                        NO_ACTIVE_POSITIONS_FOUND
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>
@@ -452,7 +456,11 @@ const DashboardPage: React.FC = () => {
                       </td>
                     </tr>
                   )) : (
-                    <tr><td colSpan={6} className="text-center text-muted">NO_TRADES_IN_HISTORY</td></tr>
+                    <tr>
+                      <td colSpan={6} className="text-center text-muted table-empty-row">
+                        NO_TRADES_IN_HISTORY
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>

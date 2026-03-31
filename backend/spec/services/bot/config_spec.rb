@@ -17,6 +17,16 @@ RSpec.describe Bot::Config do
       expect(config.supertrend_atr_period).to eq(11)
       expect(config.adx_threshold).to eq(23.0)
     end
+
+    it "batch-loads settings in one query instead of per-key find_by" do
+      SymbolConfig.create!(symbol: "BTCUSD", leverage: 12, enabled: true)
+      Setting.create!(key: "bot.mode", value: "dry_run", value_type: "string")
+
+      expect(Setting).to receive(:where).with(key: described_class::RUNTIME_SETTING_KEYS).once.and_call_original
+      expect(Setting).not_to receive(:find_by)
+
+      described_class.load
+    end
   end
 
   let(:valid_yaml) do

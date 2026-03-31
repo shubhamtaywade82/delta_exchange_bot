@@ -5,7 +5,8 @@ module Trading
   class PaperWalletPublisher
     # Recomputes from DB (active positions) + trades, refreshes Redis, returns payload for API consumers.
     # Call this when reads must not show stale blocked margin (e.g. dashboard) — not only on fills.
-    def self.wallet_snapshot!
+    # Pass +positions+ when callers already loaded active rows to avoid duplicate queries.
+    def self.wallet_snapshot!(positions: nil)
       return nil unless PaperTrading.enabled?
 
       cfg = Bot::Config.load
@@ -14,17 +15,22 @@ module Trading
         dry_run: true,
         simulated_capital_inr: cfg.simulated_capital_inr
       )
-      blocked = Position.active.sum(:margin).to_f
-      unrealized = unrealized_pnl_usd
+      rows = positions.nil? ? Position.active.to_a : positions.to_a
+      blocked = rows.sum { |position| position.margin.to_f }
+      unrealized = unrealized_pnl_usd_for(rows)
       manager.persist_state(blocked_margin: blocked, unrealized_pnl: unrealized)
     end
 
-    def self.publish!
-      wallet_snapshot!
+    def self.publish!(positions: nil)
+      wallet_snapshot!(positions: positions)
     end
 
     def self.unrealized_pnl_usd
-      Position.active.sum do |position|
+      unrealized_pnl_usd_for(Position.active.to_a)
+    end
+
+    def self.unrealized_pnl_usd_for(positions)
+      positions.sum do |position|
         mark = Rails.cache.read("ltp:#{position.symbol}")&.to_d || position.entry_price.to_d
         Risk::PositionRisk.call(position: position, mark_price: mark).unrealized_pnl.to_f
       end

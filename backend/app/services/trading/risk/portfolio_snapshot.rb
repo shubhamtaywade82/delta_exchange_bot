@@ -8,15 +8,21 @@ module Trading
 
       # @return [Result]
       def self.current
-        positions = Position.active
+        from_positions(Position.active)
+      end
 
-        total_unrealized = positions.sum do |position|
+      # @param positions [Array<Position>, ActiveRecord::Relation]
+      # @return [Result]
+      def self.from_positions(positions)
+        list = positions.respond_to?(:to_a) ? positions.to_a : Array(positions)
+
+        total_unrealized = list.sum do |position|
           mark = Rails.cache.read("ltp:#{position.symbol}")&.to_d || position.entry_price.to_d
           PositionRisk.call(position: position, mark_price: mark).unrealized_pnl
         end
 
-        total_realized = positions.sum { |position| position.pnl_usd.to_d }
-        total_exposure = positions.sum do |position|
+        total_realized = list.sum { |position| position.pnl_usd.to_d }
+        total_exposure = list.sum do |position|
           mark = Rails.cache.read("ltp:#{position.symbol}")&.to_d || position.entry_price.to_d
           lots = position.size.to_d.abs
           lot = PositionLotSize.multiplier_for(position).to_d

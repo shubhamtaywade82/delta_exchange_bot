@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "benchmark"
 require "rails_helper"
 
 RSpec.describe Bot::Strategy::MultiTimeframe do
@@ -77,6 +78,8 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
 
   context "when candles are insufficient" do
     before do
+      stub_const("#{described_class}::CANDLE_FETCH_MAX_ATTEMPTS", 1)
+      stub_const("#{described_class}::CANDLE_RESOLUTION_STAGGER_S", 0.0)
       allow(market_data).to receive(:trades).and_return(nil)
       n = 5
       base_time = Time.now.to_i - n * 300
@@ -89,8 +92,9 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
     end
 
     it "returns nil and logs a warning" do
-      expect(logger).to receive(:warn).with("insufficient_candles", anything)
+      allow(logger).to receive(:warn)
       expect(mtf.evaluate("BTCUSD", current_price: 100.0)).to be_nil
+      expect(logger).to have_received(:warn).with(a_string_including("insufficient_candles")).at_least(:once)
     end
   end
 
@@ -105,6 +109,21 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
       second = mtf.evaluate("BTCUSD", current_price: 208.0)
       expect(first&.side).to eq(:long)
       expect(second).to be_nil
+    end
+  end
+
+  context "when REST trades stall (no read timeout upstream)" do
+    before do
+      stub_const("#{described_class}::REST_FETCH_TIMEOUT_S", 1)
+      allow(market_data).to receive(:candles).and_return(build_flip_up_candles)
+      allow(market_data).to receive(:trades) { sleep 3; { "result" => [] } }
+      allow(DeltaExchange::Models::Ticker).to receive(:find).and_return(nil)
+    end
+
+    it "times out, warns, and returns without hanging the caller" do
+      expect(logger).to receive(:warn).with(a_string_including("trades_fetch_timeout", "BTCUSD"))
+      elapsed = Benchmark.realtime { mtf.evaluate("BTCUSD", current_price: 208.0) }
+      expect(elapsed).to be < 2.5
     end
   end
 end

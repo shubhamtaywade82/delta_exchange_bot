@@ -10,11 +10,26 @@ require_relative "filters/volume_filter"
 require_relative "filters/derivatives_filter"
 require "redis"
 require "securerandom"
+require "timeout"
 require "active_support/core_ext/time"
 
 module Bot
   module Strategy
     class MultiTimeframe
+      # REST calls after candles can stall indefinitely (no default Net::HTTP read timeout).
+      # WebSocket ticks still update Rails.cache LTP while the main loop is blocked — UI looks "live"
+      # but Redis strategy state stops refreshing. Keep these bounded.
+      REST_FETCH_TIMEOUT_S =
+        Integer(ENV.fetch("STRATEGY_REST_FETCH_TIMEOUT_S", "12"))
+      CANDLE_FETCH_TIMEOUT_S =
+        Integer(ENV.fetch("STRATEGY_CANDLE_FETCH_TIMEOUT_S", "25"))
+      # Space out trend / confirm / entry candle requests (same symbol) to avoid public /history burst limits.
+      CANDLE_RESOLUTION_STAGGER_S =
+        Float(ENV.fetch("STRATEGY_CANDLE_RESOLUTION_STAGGER_S", "0.4"))
+      CANDLE_FETCH_MAX_ATTEMPTS =
+        Integer(ENV.fetch("STRATEGY_CANDLE_FETCH_MAX_ATTEMPTS", "3"))
+      CANDLE_RETRY_BASE_SLEEP_S =
+        Float(ENV.fetch("STRATEGY_CANDLE_RETRY_BASE_SLEEP_S", "1.25"))
       def initialize(config:, market_data:, logger:)
         @config      = config
         @market_data = market_data
@@ -26,9 +41,11 @@ module Bot
       # Returns a Signal or nil
       # Supertrend (including ML adaptive when configured) runs on trend, confirm, and entry resolutions.
       def evaluate(symbol, current_price:)
-        @logger.info("evaluating_symbol", symbol: symbol, price: current_price)
+        Bot::StructuredLog.log(@logger, :info, "evaluating_symbol", symbol: symbol, price: current_price)
         trend_candles  = fetch_candles(symbol, @config.timeframe_trend)
+        sleep_candle_resolution_stagger
         confirm_candles = fetch_candles(symbol, @config.timeframe_confirm)
+        sleep_candle_resolution_stagger
         entry_candles   = fetch_candles(symbol, @config.timeframe_entry)
 
         return nil unless sufficient?(trend_candles, symbol, timeframe_tag(@config.timeframe_trend)) &&
@@ -53,9 +70,9 @@ module Bot
         entry_last_dir = entry_st.last[:direction]
         entry_last_ts = entry_candles.last[:timestamp].to_i
 
-        # Real-time Metrics from Delta Exchange API
-        ticker = DeltaExchange::Models::Ticker.find(symbol) rescue nil
-        raw_trades = @market_data.trades(symbol, { limit: 100 }) rescue nil
+        # Real-time Metrics from Delta Exchange API (bounded — see class comment)
+        ticker = fetch_ticker(symbol)
+        raw_trades = fetch_recent_trades(symbol)
         trades = if raw_trades.is_a?(Hash) && raw_trades.key?("result")
                    raw_trades["result"]
                  elsif raw_trades.is_a?(Hash) && raw_trades.key?(:result)
@@ -113,19 +130,20 @@ module Bot
 
         # --- TRADE LOGIC ---
         if h1_dir.nil? || m15_dir.nil? || entry_last_dir.nil?
-          @logger.info("strategy_skip", symbol: symbol, reason: "nil_direction")
+          Bot::StructuredLog.log(@logger, :info, "strategy_skip", symbol: symbol, reason: "nil_direction")
           return nil
         end
 
         if adx_val.nil? || adx_val < @config.adx_threshold
-          @logger.info("strategy_skip", symbol: symbol, reason: "adx_below_threshold", adx: adx_val)
+          Bot::StructuredLog.log(@logger, :info, "strategy_skip", symbol: symbol, reason: "adx_below_threshold",
+            adx: adx_val)
           return nil
         end
 
         # Flip logic: In dry_run we allow continuation, in live we strictly want the fresh flip
         just_flipped = entry_prev_dir && entry_last_dir != entry_prev_dir
         unless just_flipped || @config.dry_run?
-          @logger.info("strategy_skip", symbol: symbol, reason: "no_entry_timeframe_flip")
+          Bot::StructuredLog.log(@logger, :info, "strategy_skip", symbol: symbol, reason: "no_entry_timeframe_flip")
           return nil
         end
 
@@ -140,7 +158,7 @@ module Bot
                end
 
         unless side
-          @logger.info("strategy_skip", symbol: symbol, reason: "no_confluence")
+          Bot::StructuredLog.log(@logger, :info, "strategy_skip", symbol: symbol, reason: "no_confluence")
           return nil
         end
 
@@ -148,7 +166,9 @@ module Bot
         # In dry-run demo mode we can relax neutral CVD/funding filters
         # to verify full entry -> position -> trailing-exit pipeline.
         unless mom_f && relaxed_vol_f
-          @logger.info(
+          Bot::StructuredLog.log(
+            @logger,
+            :info,
             "strategy_skip",
             symbol: symbol,
             reason: "filters_failed",
@@ -162,7 +182,8 @@ module Bot
 
         @last_acted[symbol] = entry_last_ts
         signal_id = SecureRandom.uuid
-        @logger.info("signal_generated", signal_id: signal_id, symbol: symbol, side: side, price: current_price)
+        Bot::StructuredLog.log(@logger, :info, "signal_generated", signal_id: signal_id, symbol: symbol, side: side,
+          price: current_price)
 
         Signal.new(symbol: symbol, side: side, entry_price: current_price, candle_ts: entry_last_ts, signal_id: signal_id)
       end
@@ -170,15 +191,46 @@ module Bot
       private
 
       def fetch_candles(symbol, resolution)
+        required = @config.effective_min_candles_for_supertrend
+        attempts = [CANDLE_FETCH_MAX_ATTEMPTS, 1].max
+        last = []
+
+        attempts.times do |attempt|
+          last = fetch_candles_once(symbol, resolution)
+          return last if last.size >= required
+
+          next if attempt >= attempts - 1
+
+          delay = CANDLE_RETRY_BASE_SLEEP_S * (attempt + 1)
+          Bot::StructuredLog.log(
+            @logger,
+            :warn,
+            "candle_fetch_retry",
+            symbol: symbol,
+            resolution: resolution,
+            attempt: attempt + 1,
+            count: last.size,
+            required: required,
+            sleep_s: delay
+          )
+          sleep(delay)
+        end
+
+        last
+      end
+
+      def fetch_candles_once(symbol, resolution)
         end_ts   = Time.now.to_i
         start_ts = end_ts - (resolution_to_seconds(resolution) * @config.candles_lookback)
 
-        raw = @market_data.candles({
-          "symbol"     => symbol,
-          "resolution" => resolution,
-          "start"      => start_ts,
-          "end"        => end_ts
-        })
+        raw = Timeout.timeout(CANDLE_FETCH_TIMEOUT_S) do
+          @market_data.candles({
+            "symbol"     => symbol,
+            "resolution" => resolution,
+            "start"      => start_ts,
+            "end"        => end_ts
+          })
+        end
 
         # Handle nested result array if present
         candles_payload = if raw.is_a?(Hash) && raw.key?("result")
@@ -199,15 +251,32 @@ module Bot
             volume:    (c[:volume]    || c["volume"])&.to_f    || 0.0,
             timestamp: (c[:timestamp] || c["timestamp"] || c[:time] || c["time"])&.to_i || raise("missing timestamp in candle") }
         end.sort_by { |c| c[:timestamp] }
-      rescue StandardError => e
-        @logger.error("candle_fetch_failed", symbol: symbol, resolution: resolution, message: e.message)
+      rescue Timeout::Error
+        Bot::StructuredLog.log(
+          @logger,
+          :warn,
+          "candle_fetch_timeout",
+          symbol: symbol, resolution: resolution, timeout_s: CANDLE_FETCH_TIMEOUT_S
+        )
         []
+      rescue StandardError => e
+        Bot::StructuredLog.log(@logger, :error, "candle_fetch_failed", symbol: symbol, resolution: resolution,
+          message: e.message)
+        []
+      end
+
+      def sleep_candle_resolution_stagger
+        return if CANDLE_RESOLUTION_STAGGER_S <= 0
+
+        sleep(CANDLE_RESOLUTION_STAGGER_S)
       end
 
       def sufficient?(candles, symbol, label)
         required = @config.effective_min_candles_for_supertrend
         if candles.size < required
-          @logger.warn(
+          Bot::StructuredLog.log(
+            @logger,
+            :warn,
             "insufficient_candles",
             symbol: symbol, timeframe: label, count: candles.size, required: required
           )
@@ -240,7 +309,7 @@ module Bot
         # Using the same key as the StrategyStatusController
         @redis.hset("delta:strategy:state", symbol, data.to_json)
       rescue StandardError => e
-        @logger.error("strategy_persistence_failed", symbol: symbol, message: e.message)
+        Bot::StructuredLog.log(@logger, :error, "strategy_persistence_failed", symbol: symbol, message: e.message)
       end
 
       def relaxed_volume_allowed?(cvd_data)
@@ -251,6 +320,24 @@ module Bot
 
       def relaxed_filters_in_dry_run?
         @config.dry_run? && @config.respond_to?(:relax_filters_in_dry_run?) && @config.relax_filters_in_dry_run?
+      end
+
+      def fetch_ticker(symbol)
+        Timeout.timeout(REST_FETCH_TIMEOUT_S) { DeltaExchange::Models::Ticker.find(symbol) }
+      rescue Timeout::Error
+        Bot::StructuredLog.log(@logger, :warn, "ticker_fetch_timeout", symbol: symbol, timeout_s: REST_FETCH_TIMEOUT_S)
+        nil
+      rescue StandardError
+        nil
+      end
+
+      def fetch_recent_trades(symbol)
+        Timeout.timeout(REST_FETCH_TIMEOUT_S) { @market_data.trades(symbol, { limit: 100 }) }
+      rescue Timeout::Error
+        Bot::StructuredLog.log(@logger, :warn, "trades_fetch_timeout", symbol: symbol, timeout_s: REST_FETCH_TIMEOUT_S)
+        nil
+      rescue StandardError
+        nil
       end
     end
   end

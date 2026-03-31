@@ -11,9 +11,6 @@ RSpec.describe "Api::Dashboard", type: :request do
     end
 
     before do
-      allow(Trading::Risk::PortfolioSnapshot).to receive(:current).and_return(
-        double("PortfolioSnapshot", total_pnl: 0.0)
-      )
       allow(Bot::Execution::IncidentStore).to receive(:latest).and_return(
         {
           "category" => "auth_whitelist",

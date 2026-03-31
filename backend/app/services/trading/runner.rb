@@ -81,6 +81,17 @@ module Trading
       Trading::RuntimeConfig.fetch_integer("runner.strategy_interval_seconds", default: DEFAULT_STRATEGY_INTERVAL)
     end
 
+    # History/candles is unauthenticated and heavily rate-limited. Each symbol triggers 3 sequential
+    # fetches (trend / confirm / entry). Without a gap, the 2nd+ symbols often get empty/error payloads,
+    # insufficient_candles runs, and Redis never gets persist — only the first symbol stays fresh.
+    def strategy_symbol_stagger_seconds
+      Trading::RuntimeConfig.fetch_float(
+        "runner.strategy_symbol_stagger_seconds",
+        default: 2.5,
+        env_key: "RUNNER_STRATEGY_SYMBOL_STAGGER_S"
+      )
+    end
+
     def run_strategy
       symbols = SymbolConfig.where(enabled: true).pluck(:symbol)
       config  = Bot::Config.load
@@ -92,7 +103,9 @@ module Trading
         logger:      Rails.logger
       )
 
-      symbols.each do |symbol|
+      symbols.each_with_index do |symbol, index|
+        sleep(strategy_symbol_stagger_seconds) if index.positive?
+
         ltp    = Rails.cache.read("ltp:#{symbol}") || fetch_last_price(symbol)
         signal = strategy.evaluate(symbol, current_price: ltp)
         if signal

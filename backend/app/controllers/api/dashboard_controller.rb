@@ -6,10 +6,10 @@ class Api::DashboardController < ApplicationController
   def index
     # All non-closed position rows (open as of today in-app), including legacy `open` status.
     active_positions = Position.active.order(:symbol).to_a
-    portfolio = Trading::Risk::PortfolioSnapshot.current
+    portfolio = Trading::Risk::PortfolioSnapshot.from_positions(active_positions)
 
     # Paper: recompute on every dashboard read so spendable/blocked stay aligned with DB (Redis was fill-only).
-    wallet = load_wallet_for_dashboard(portfolio: portfolio)
+    wallet = load_wallet_for_dashboard(portfolio: portfolio, positions: active_positions)
     stats_equity_usd = stats_total_equity_usd(wallet, portfolio)
 
     # Market data context from SymbolConfigs
@@ -21,21 +21,16 @@ class Api::DashboardController < ApplicationController
       }
     end
 
-    # PnL Metrics from database
-    total_realized = Trade.sum(:pnl_usd).to_f
-    total_pnl_usd = (total_realized + portfolio.total_pnl).round(2)
-    daily_pnl = Trade.where("closed_at >= ?", 24.hours.ago).sum(:pnl_usd).to_f.round(2)
-    weekly_pnl = Trade.where("closed_at >= ?", 7.days.ago).sum(:pnl_usd).to_f.round(2)
+    trade_totals = Trade.dashboard_pnl_totals
+    total_pnl_usd = (trade_totals[:total_realized] + portfolio.total_pnl).round(2)
+    daily_pnl = trade_totals[:daily_pnl].round(2)
+    weekly_pnl = trade_totals[:weekly_pnl].round(2)
     execution_health = build_execution_health
 
-    trade_count = Trade.count
-    win_rate = trade_count > 0 ? (Trade.where("pnl_usd > 0").count.to_f / trade_count * 100).round(1) : 0
+    trade_count = trade_totals[:trade_count]
+    win_rate = trade_count.positive? ? (trade_totals[:win_count].to_f / trade_count * 100).round(1) : 0
 
-    # Equity Curve from Trade history
-    equity_curve = (0..6).to_a.reverse.map do |days_ago|
-      date = days_ago.days.ago.to_date
-      Trade.where("closed_at::date = ?", date).sum(:pnl_usd).to_f.round(2)
-    end
+    equity_curve = equity_curve_from_trades
 
     trades_scope = broker_settled_trades_scope.where(closed_at: trades_day_range)
     trades_total = trades_scope.count
@@ -72,14 +67,23 @@ class Api::DashboardController < ApplicationController
 
   private
 
-  def load_wallet_for_dashboard(portfolio:)
+  def load_wallet_for_dashboard(portfolio:, positions:)
     wallet =
       if Trading::PaperTrading.enabled?
-        Trading::PaperWalletPublisher.wallet_snapshot!
+        Trading::PaperWalletPublisher.wallet_snapshot!(positions: positions)
       else
         redis_wallet_hash
       end
-    wallet.presence || default_wallet_hash(portfolio)
+    wallet.presence || default_wallet_hash(portfolio, positions: positions)
+  end
+
+  # One query for the last seven calendar days of realized PnL (same ordering as legacy per-day SUMs).
+  def equity_curve_from_trades
+    curve_dates = (0..6).to_a.reverse.map { |days_ago| days_ago.days.ago.in_time_zone.to_date }
+    rows = Trade.where.not(closed_at: nil).where("closed_at::date IN (?)", curve_dates).pluck(:closed_at, :pnl_usd)
+    by_date = Hash.new(0.0)
+    rows.each { |closed_at, pnl| by_date[closed_at.in_time_zone.to_date] += pnl.to_f }
+    curve_dates.map { |date| by_date[date].round(2) }
   end
 
   def redis_wallet_hash
@@ -91,7 +95,8 @@ class Api::DashboardController < ApplicationController
     nil
   end
 
-  def default_wallet_hash(portfolio)
+  # +positions+ reserved for paper/unrealized consistency if the Redis snapshot is missing (unused today).
+  def default_wallet_hash(portfolio, positions: nil)
     {
       "balance" => 1000.0,
       "equity" => 1000.0 + portfolio.total_pnl.to_f
