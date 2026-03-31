@@ -56,6 +56,7 @@ module Bot
         paper_capital_inr: @config.paper_capital_inr
       )
       @db_writer       = Persistence::DbWriter.new if @config.dry_run?
+      log_db_writer_state
       @state_publisher = Persistence::StatePublisher.new
       @risk_calculator  = Execution::RiskCalculator.new(usd_to_inr_rate: @config.usd_to_inr_rate)
 
@@ -90,7 +91,7 @@ module Bot
         derivatives_store: @derivatives_store,
         on_tick:           ->(symbol, price, _time) { 
           @logger.info("ltp_cache_write", symbol: symbol, price: price)
-          Rails.cache.write("ltp:#{symbol}", price, expires_in: 30.seconds) 
+          cache_write("ltp:#{symbol}", price, expires_in: 30)
         }
       )
 
@@ -250,6 +251,24 @@ module Bot
       @ws_feed&.stop
       @db_writer&.close
       exit 0
+    end
+
+    def log_db_writer_state
+      return unless @config.dry_run?
+
+      if @db_writer&.connected?
+        @logger.info("db_writer_status", enabled: true, connected: true)
+      else
+        @logger.warn("db_writer_status", enabled: true, connected: false, mode: "no_op")
+      end
+    end
+
+    def cache_write(key, value, expires_in:)
+      return unless defined?(Rails) && Rails.respond_to?(:cache) && Rails.cache
+
+      Rails.cache.write(key, value, expires_in: expires_in)
+    rescue StandardError => e
+      @logger.debug("cache_write_skipped", key: key, reason: e.message)
     end
   end
 end

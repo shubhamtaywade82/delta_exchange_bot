@@ -1,19 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
-  TrendingUp, 
-  TrendingDown, 
-  Activity, 
   Wallet, 
   History, 
-  Zap, 
-  ShieldCheck, 
   Cpu, 
   Terminal as TerminalIcon,
-  ChevronRight,
-  ChevronDown,
-  BarChart3,
-  Waves
+  BarChart3
 } from 'lucide-react';
 
 
@@ -176,6 +168,17 @@ const DashboardPage: React.FC = () => {
     return diff < 60 ? `${diff}s ago` : `${Math.floor(diff/60)}m ago`;
   };
 
+  const sideBadgeMeta = (side: unknown) => {
+    const normalized = String(side ?? '').trim().toLowerCase();
+    if (normalized === 'buy' || normalized === 'long') {
+      return { css: 'long', label: 'LONG' };
+    }
+    if (normalized === 'sell' || normalized === 'short') {
+      return { css: 'short', label: 'SHORT' };
+    }
+    return { css: 'none', label: 'UNKNOWN' };
+  };
+
   return (
     <div className="dashboard-content pt-4">
       <header className="terminal-header">
@@ -314,7 +317,11 @@ const DashboardPage: React.FC = () => {
                   {(positions && positions.length > 0) ? positions.map((p, i) => (
                     <tr key={i} className="row-hover">
                       <td className="font-bold">{p.symbol}</td>
-                      <td><span className={`side-badge ${p.side}`}>{p.side.toUpperCase()}</span></td>
+                      <td>
+                        <span className={`side-badge ${sideBadgeMeta(p.side).css}`}>
+                          {sideBadgeMeta(p.side).label}
+                        </span>
+                      </td>
                       <td>{p.entry_price}</td>
                       <td>{p.mark_price}</td>
                       <td>{p.size}</td>
@@ -357,7 +364,11 @@ const DashboardPage: React.FC = () => {
                   {trades.length > 0 ? trades.map((t, i) => (
                     <tr key={i} className="row-hover">
                       <td className="font-bold">{t.symbol}</td>
-                      <td><span className={`side-badge ${t.side}`}>{t.side.toUpperCase()}</span></td>
+                      <td>
+                        <span className={`side-badge ${sideBadgeMeta(t.side).css}`}>
+                          {sideBadgeMeta(t.side).label}
+                        </span>
+                      </td>
                       <td>{t.entry_price}</td>
                       <td>{t.exit_price}</td>
                       <td className={(t.pnl_inr || 0) >= 0 ? 'pos' : 'neg'}>

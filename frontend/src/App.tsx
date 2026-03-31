@@ -4,6 +4,7 @@ import axios from 'axios';
 import Navbar from './components/Navbar';
 import DashboardPage from './pages/DashboardPage';
 import CatalogPage from './pages/CatalogPage';
+import AdminSettingsPage from './pages/AdminSettingsPage';
 
 interface TickerData {
   symbol: string;
@@ -105,6 +106,7 @@ const App: React.FC = () => {
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/catalog" element={<CatalogPage />} />
+          <Route path="/admin/settings" element={<AdminSettingsPage />} />
         </Routes>
       </div>
     </BrowserRouter>

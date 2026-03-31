@@ -33,6 +33,24 @@ class Api::SettingsController < ApplicationController
     render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
   end
 
+  def changes
+    changes = SettingChange.order(created_at: :desc).limit(limit_param).map do |change|
+      {
+        key: change.key,
+        old_value: change.old_value,
+        new_value: change.new_value,
+        old_value_type: change.old_value_type,
+        new_value_type: change.new_value_type,
+        source: change.source,
+        reason: change.reason,
+        metadata: change.metadata,
+        created_at: change.created_at
+      }
+    end
+
+    render json: changes
+  end
+
   private
 
   def setting_params
@@ -48,5 +66,12 @@ class Api::SettingsController < ApplicationController
     return "float" if str.match?(/\A-?\d+\.\d+\z/)
 
     "string"
+  end
+
+  def limit_param
+    limit = params[:limit].to_i
+    return 50 if limit <= 0
+
+    [limit, 200].min
   end
 end

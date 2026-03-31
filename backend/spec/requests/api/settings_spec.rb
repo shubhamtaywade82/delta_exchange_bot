@@ -30,4 +30,26 @@ RSpec.describe "Api::Settings", type: :request do
     expect(Trading::Learning::AiRefinementTrigger)
       .to have_received(:call).with(reason: "setting_change:learning.epsilon")
   end
+
+  it "lists recent setting changes" do
+    setting = Setting.create!(key: "risk.max_margin_utilization", value: "0.40", value_type: "float")
+    setting.setting_changes.create!(
+      key: setting.key,
+      old_value: "0.35",
+      new_value: "0.40",
+      old_value_type: "float",
+      new_value_type: "float",
+      source: "api",
+      reason: "manual_update",
+      metadata: {}
+    )
+
+    get "/api/settings/changes", params: { limit: 10 }
+
+    expect(response).to have_http_status(:ok)
+    payload = JSON.parse(response.body)
+    expect(payload).to be_an(Array)
+    expect(payload.first["key"]).to eq("risk.max_margin_utilization")
+    expect(payload.first["new_value"]).to eq("0.40")
+  end
 end

@@ -74,6 +74,10 @@ module Bot
       def close
         @conn&.close
       end
+
+      def connected?
+        !@conn.nil?
+      end
     end
   end
 end
