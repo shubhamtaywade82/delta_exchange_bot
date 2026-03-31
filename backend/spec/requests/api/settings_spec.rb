@@ -1,18 +1,26 @@
-require 'rails_helper'
+require "rails_helper"
 
 RSpec.describe "Api::Settings", type: :request do
-  describe "GET /index" do
-    it "returns http success" do
-      get "/api/settings/index"
-      expect(response).to have_http_status(:success)
-    end
+  it "lists persisted settings" do
+    Setting.create!(key: "risk.max_concurrent_positions", value: "7", value_type: "integer")
+
+    get "/api/settings"
+
+    expect(response).to have_http_status(:ok)
+    payload = JSON.parse(response.body)
+    expect(payload).to be_an(Array)
+    expect(payload.first["key"]).to eq("risk.max_concurrent_positions")
+    expect(payload.first["typed_value"]).to eq(7)
   end
 
-  describe "GET /update" do
-    it "returns http success" do
-      get "/api/settings/update"
-      expect(response).to have_http_status(:success)
-    end
-  end
+  it "updates setting and refreshes runtime cache" do
+    Setting.create!(key: "learning.epsilon", value: "0.05", value_type: "float")
+    allow(Trading::RuntimeConfig).to receive(:refresh!).and_call_original
 
+    patch "/api/settings/learning.epsilon", params: { key: "learning.epsilon", value: "0.15", value_type: "float" }
+
+    expect(response).to have_http_status(:ok)
+    expect(Trading::RuntimeConfig).to have_received(:refresh!).with("learning.epsilon")
+    expect(Setting.find_by(key: "learning.epsilon")&.value).to eq("0.15")
+  end
 end

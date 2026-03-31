@@ -2,13 +2,14 @@
 
 module Trading
   class Runner
-    STRATEGY_INTERVAL = 60 # 1 minute
+    DEFAULT_STRATEGY_INTERVAL = 60
 
     def initialize(session_id:, client: nil)
       @session = TradingSession.find(session_id)
       @client  = client || build_client
       @running = true
       @last_strategy_run = 0
+      @last_adaptive_observed_at = {}
     end
 
     def start
@@ -60,7 +61,7 @@ module Trading
     def run_loop
       while running?
         now = Time.now.to_i
-        if now - @last_strategy_run >= STRATEGY_INTERVAL
+        if now - @last_strategy_run >= strategy_interval_seconds
           run_strategy
           @last_strategy_run = now
         end
@@ -69,6 +70,10 @@ module Trading
         FundingMonitor.check_all(client: @client)
         sleep 5
       end
+    end
+
+    def strategy_interval_seconds
+      Trading::RuntimeConfig.fetch_integer("runner.strategy_interval_seconds", default: DEFAULT_STRATEGY_INTERVAL)
     end
 
     def run_strategy
@@ -85,26 +90,105 @@ module Trading
       )
 
       symbols.each do |symbol|
-        # 1. Evaluate strategy (fetches 1H, 15M, 5M OHLCV via REST API)
         ltp    = Rails.cache.read("ltp:#{symbol}") || fetch_last_price(symbol)
         signal = strategy.evaluate(symbol, current_price: ltp)
-        next unless signal
+        if signal
+          execute_signal(
+            symbol: symbol,
+            side: signal.side,
+            entry_price: signal.entry_price,
+            candle_timestamp: signal.candle_ts,
+            strategy_name: @session.strategy,
+            source: "mtf",
+            context: {}
+          )
+          next
+        end
 
-        # 2. Process signal
-        converted = Events::SignalGenerated.new(
-          symbol:           signal.symbol,
-          side:             signal.side,
-          entry_price:      signal.entry_price,
-          candle_timestamp: signal.candle_ts,
-          strategy:         @session.strategy,
-          session_id:       @session.id
-        )
+        adaptive_signal = build_adaptive_signal(symbol: symbol, ltp: ltp)
+        next unless adaptive_signal
 
-        EventBus.publish(:signal_generated, converted)
-        ExecutionEngine.execute(converted, session: @session, client: @client)
+        execute_signal(**adaptive_signal)
       rescue => e
         Rails.logger.error("[Runner] Strategy error for #{symbol}: #{e.message}")
       end
+    end
+
+    def execute_signal(symbol:, side:, entry_price:, candle_timestamp:, strategy_name:, source:, context:)
+      signal_record = persist_signal(
+        symbol: symbol,
+        side: side,
+        entry_price: entry_price,
+        candle_timestamp: candle_timestamp,
+        strategy_name: strategy_name,
+        source: source,
+        context: context
+      )
+
+      converted = Events::SignalGenerated.new(
+        symbol: symbol,
+        side: side,
+        entry_price: entry_price,
+        candle_timestamp: candle_timestamp,
+        strategy: strategy_name,
+        session_id: @session.id
+      )
+
+      EventBus.publish(:signal_generated, converted)
+      ExecutionEngine.execute(converted, session: @session, client: @client)
+      signal_record&.update!(status: "executed")
+    rescue Trading::RiskManager::RiskError => e
+      signal_record&.update!(status: "rejected", error_message: e.message)
+      Rails.logger.warn("[Runner] Signal rejected for #{symbol}: #{e.message}")
+      nil
+    rescue StandardError => e
+      signal_record&.update!(status: "failed", error_message: e.message)
+      raise
+    end
+
+    def build_adaptive_signal(symbol:, ltp:)
+      return nil if Position.active.exists?(symbol: symbol)
+
+      context = Rails.cache.read("adaptive:entry_context:#{symbol}")
+      return nil unless context.is_a?(Hash)
+
+      decision = (context[:decision] || context["decision"]).to_s
+      side = case decision
+             when "buy" then :buy
+             when "sell" then :sell
+             else nil
+             end
+      return nil unless side
+
+      observed_at = (context[:observed_at] || context["observed_at"]).to_i
+      return nil if observed_at.zero? || observed_at == @last_adaptive_observed_at[symbol]
+
+      @last_adaptive_observed_at[symbol] = observed_at
+      strategy_name = context[:strategy] || context["strategy"] || "adaptive"
+
+      {
+        symbol: symbol,
+        side: side,
+        entry_price: ltp,
+        candle_timestamp: observed_at,
+        strategy_name: "adaptive:#{strategy_name}",
+        source: "adaptive",
+        context: context
+      }
+    end
+
+    def persist_signal(symbol:, side:, entry_price:, candle_timestamp:, strategy_name:, source:, context:)
+      GeneratedSignal.create!(
+        trading_session_id: @session.id,
+        symbol: symbol,
+        side: side.to_s,
+        entry_price: entry_price,
+        candle_timestamp: candle_timestamp.to_i,
+        strategy: strategy_name,
+        source: source,
+        status: "generated",
+        context: context || {}
+      )
     end
 
     def fetch_last_price(symbol)

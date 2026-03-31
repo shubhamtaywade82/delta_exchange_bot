@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_03_30_193001) do
+ActiveRecord::Schema[8.1].define(version: 2026_03_31_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -30,6 +30,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_30_193001) do
     t.index ["order_id"], name: "index_fills_on_order_id"
     t.check_constraint "price IS NULL OR price > 0::numeric", name: "fills_price_positive"
     t.check_constraint "quantity > 0::numeric", name: "fills_quantity_positive"
+  end
+
+  create_table "generated_signals", force: :cascade do |t|
+    t.bigint "candle_timestamp", null: false
+    t.jsonb "context", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.decimal "entry_price", precision: 20, scale: 8, null: false
+    t.string "error_message"
+    t.string "side", null: false
+    t.string "source", null: false
+    t.string "status", default: "generated", null: false
+    t.string "strategy", null: false
+    t.string "symbol", null: false
+    t.bigint "trading_session_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["status"], name: "index_generated_signals_on_status"
+    t.index ["symbol", "candle_timestamp"], name: "index_generated_signals_on_symbol_and_candle_timestamp"
+    t.index ["trading_session_id", "created_at"], name: "index_generated_signals_on_trading_session_id_and_created_at"
+    t.index ["trading_session_id"], name: "index_generated_signals_on_trading_session_id"
   end
 
   create_table "orders", force: :cascade do |t|
@@ -157,6 +176,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_03_30_193001) do
   end
 
   add_foreign_key "fills", "orders"
+  add_foreign_key "generated_signals", "trading_sessions"
   add_foreign_key "orders", "positions"
   add_foreign_key "orders", "trading_sessions"
 end

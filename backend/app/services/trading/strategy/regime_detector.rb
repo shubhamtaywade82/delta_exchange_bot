@@ -7,10 +7,14 @@ module Trading
       # @param features [Hash]
       # @return [Symbol]
       def self.call(features)
-        if features[:volatility].to_f > ENV.fetch("REGIME_VOLATILITY_THRESHOLD", 50).to_f &&
-           features[:spread].to_f > ENV.fetch("REGIME_SPREAD_THRESHOLD", 1).to_f
+        volatility_threshold = Trading::RuntimeConfig.fetch_float("regime.volatility_threshold", default: 50.0, env_key: "REGIME_VOLATILITY_THRESHOLD")
+        spread_threshold = Trading::RuntimeConfig.fetch_float("regime.spread_threshold", default: 1.0, env_key: "REGIME_SPREAD_THRESHOLD")
+        imbalance_threshold = Trading::RuntimeConfig.fetch_float("regime.imbalance_threshold", default: 0.4, env_key: "REGIME_IMBALANCE_THRESHOLD")
+
+        if features[:volatility].to_f > volatility_threshold &&
+           features[:spread].to_f > spread_threshold
           :high_volatility
-        elsif features[:imbalance].to_f.abs > ENV.fetch("REGIME_IMBALANCE_THRESHOLD", 0.4).to_f
+        elsif features[:imbalance].to_f.abs > imbalance_threshold
           :trending
         else
           :mean_reversion

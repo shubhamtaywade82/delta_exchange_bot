@@ -6,7 +6,7 @@ module Trading
       new(session_id, client).trigger!
     end
 
-    def self.force_exit_position(position, client)
+    def self.force_exit_position(position, client, reason: "FORCE_EXIT")
       close_side = position.side == "long" ? "sell" : "buy"
       client.place_order(
         product_id: position.product_id,
@@ -14,7 +14,12 @@ module Trading
         order_type: "market_order",
         size:       position.size
       )
-      position.update!(status: "closed", exit_time: Time.current)
+
+      OrdersRepository.close_position(
+        position_id: position.id,
+        reason: reason,
+        mark_price: latest_mark_price_for(position)
+      )
     rescue => e
       Rails.logger.error("[KillSwitch] force_exit_position failed for #{position.symbol}: #{e.message}")
     end
@@ -44,12 +49,16 @@ module Trading
 
     def close_open_positions!
       Position.active.each do |position|
-        self.class.force_exit_position(position, @client)
+        self.class.force_exit_position(position, @client, reason: "KILL_SWITCH_EXIT")
       end
     end
 
     def mark_session_stopped!
       TradingSession.find(@session_id).update!(status: "stopped", stopped_at: Time.current)
+    end
+
+    def self.latest_mark_price_for(position)
+      Rails.cache.read("ltp:#{position.symbol}")&.to_d || position.entry_price.to_d
     end
   end
 end

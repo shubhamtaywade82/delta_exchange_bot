@@ -48,12 +48,50 @@ module Trading
       capital = @session.capital.to_f
       leverage = (@session.leverage || 10).to_f
       entry = @signal.entry_price.to_f
-      risk_pct = 0.015
+      risk_pct = bounded_risk_pct(base_risk_pct * adaptive_risk_multiplier * bias_adjustment_factor)
 
       margin_per_trade = capital * risk_pct
       notional = margin_per_trade * leverage
       lots = (notional / entry).floor
       [lots, 1].max
+    end
+
+    def base_risk_pct
+      0.015
+    end
+
+    def bounded_risk_pct(value)
+      [[value, 0.05].min, 0.005].max
+    end
+
+    def adaptive_risk_multiplier
+      return 1.0 unless adaptive_signal?
+
+      multiplier = adaptive_context.dig("ai_config", "risk_multiplier")
+      Float(multiplier)
+    rescue ArgumentError, TypeError
+      1.0
+    end
+
+    def bias_adjustment_factor
+      return 1.0 unless adaptive_signal?
+
+      bias = Float(adaptive_context["bias"] || adaptive_context.dig("ai_config", "bias") || 0.0)
+      directional_bias = @signal.side.to_s.in?(%w[buy long]) ? bias : -bias
+      [[1.0 + (directional_bias * 0.2), 1.2].min, 0.8].max
+    rescue ArgumentError, TypeError
+      1.0
+    end
+
+    def adaptive_signal?
+      @signal.strategy.to_s.start_with?("adaptive:")
+    end
+
+    def adaptive_context
+      @adaptive_context ||= begin
+        context = Rails.cache.read("adaptive:entry_context:#{@signal.symbol}")
+        context.is_a?(Hash) ? context.deep_stringify_keys : {}
+      end
     end
   end
 end

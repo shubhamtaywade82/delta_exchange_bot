@@ -129,15 +129,15 @@ module Trading
 
         begin
           adaptive = Trading::AdaptiveEngine.tick(book: book, trades: trades, client: @client)
+          adaptive[:observed_at] = Time.current.to_i
           Rails.cache.write("adaptive:entry_context:#{symbol}", adaptive, expires_in: 10.minutes)
         rescue => e
           Rails.logger.warn("[WsClient] Adaptive engine fallback: #{e.message}")
-          signal = Trading::Microstructure::SignalEngine.call(book)
-          decision = Trading::Execution::DecisionEngine.call(signal: signal, book: book)
-          return if decision == :no_trade
-
-          qty = ENV.fetch("MICROSTRUCTURE_ORDER_QTY", "1").to_d
-          Trading::Execution::OrderRouter.place!(decision: decision, book: book, qty: qty, client: @client)
+          Rails.cache.write(
+            "adaptive:entry_context:#{symbol}",
+            fallback_adaptive_context(book: book),
+            expires_in: 10.minutes
+          )
         end
       end
 
@@ -159,6 +159,21 @@ module Trading
             [entry["price"], entry["size"]]
           end
         end
+      end
+
+      def fallback_adaptive_context(book:)
+        signal = Trading::Microstructure::SignalEngine.call(book)
+        decision = Trading::Execution::DecisionEngine.call(signal: signal, book: book)
+
+        {
+          features: {},
+          regime: :fallback,
+          ai_config: {},
+          strategy: "fallback_microstructure",
+          decision: decision,
+          expected_edge: 0.0,
+          observed_at: Time.current.to_i
+        }
       end
 
       def process_fill(payload)

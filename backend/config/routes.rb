@@ -3,6 +3,7 @@ Rails.application.routes.draw do
     get "dashboard" => "dashboard#index"
     resources :positions, only: [:index]
     resources :trades, only: [:index]
+    resources :signals, only: [:index]
     resources :settings, only: [:index, :update]
     resources :trading_sessions, only: [:index, :create, :destroy]
     get "strategy_status" => "strategy_status#index"

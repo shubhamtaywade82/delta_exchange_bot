@@ -27,10 +27,11 @@ module OrdersRepository
 
   def self.close_position(position_id:, reason:, mark_price:)
     position = Position.find(position_id)
+    target_status = liquidation_reason?(reason) ? "liquidated" : "closed"
 
     Position.transaction do
       position.update!(
-        status: "liquidated",
+        status: target_status,
         exit_price: mark_price,
         exit_time: Time.current,
         pnl_usd: position.pnl_usd.to_d,
@@ -50,5 +51,9 @@ module OrdersRepository
     end
 
     position
+  end
+
+  def self.liquidation_reason?(reason)
+    reason.to_s == "LIQUIDATION_EXIT"
   end
 end
