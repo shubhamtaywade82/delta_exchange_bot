@@ -2,6 +2,8 @@ require "rails_helper"
 
 RSpec.describe "Api::Dashboard", type: :request do
   describe "GET /api/dashboard" do
+    let(:entry_price_corrector) { instance_double(Bot::Execution::EntryPriceCorrector) }
+
     before do
       allow(Trading::Risk::PortfolioSnapshot).to receive(:current).and_return(
         double("PortfolioSnapshot", total_pnl: 0.0)
@@ -14,6 +16,8 @@ RSpec.describe "Api::Dashboard", type: :request do
         }
       )
       allow(Bot::Execution::IncidentStore).to receive(:recent).and_return([])
+      allow(Bot::Execution::EntryPriceCorrector).to receive(:new).and_return(entry_price_corrector)
+      allow(entry_price_corrector).to receive(:corrected_entry_for) { |position| position.entry_price.to_f }
       SymbolConfig.create!(symbol: "BTCUSD", leverage: 10, enabled: true)
     end
 
@@ -90,6 +94,25 @@ RSpec.describe "Api::Dashboard", type: :request do
       row = JSON.parse(response.body)["positions"].first
       expect(row["unrealized_pnl"]).to eq(2000.1)
       expect(row["unrealized_pnl_pct"]).to eq(2.98)
+    end
+
+    it "uses OHLCV-corrected entry when provided" do
+      position = create(:position,
+                        symbol: "BTCUSD",
+                        side: "short",
+                        status: "filled",
+                        entry_price: 67_016.988,
+                        size: 10.0,
+                        leverage: 10)
+      allow(entry_price_corrector).to receive(:corrected_entry_for).with(position).and_return(66_950.0)
+      Rails.cache.write("ltp:BTCUSD", 66_777.54)
+      allow(Redis).to receive(:new).and_return(instance_double(Redis, get: nil))
+
+      get "/api/dashboard"
+
+      row = JSON.parse(response.body)["positions"].first
+      expect(row["entry_price"]).to eq(66_950.0)
+      expect(row["unrealized_pnl"]).to eq(1724.6)
     end
   end
 end

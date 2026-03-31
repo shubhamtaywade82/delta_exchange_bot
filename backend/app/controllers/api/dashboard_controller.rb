@@ -68,15 +68,15 @@ class Api::DashboardController < ApplicationController
   private
 
   def position_payload(position)
-    mark = Rails.cache.read("ltp:#{position.symbol}")&.to_f || position.entry_price.to_f
-    unrealized_usd = Trading::Risk::PositionRisk
-      .call(position: position, mark_price: mark).unrealized_pnl.to_f.round(2)
+    entry_price = corrected_entry_price(position)
+    mark = Rails.cache.read("ltp:#{position.symbol}")&.to_f || entry_price
+    unrealized_usd = unrealized_pnl_usd(position: position, mark: mark, entry: entry_price).round(2)
 
     {
       symbol: position.symbol,
       side: position.side,
       size: position.size,
-      entry_price: position.entry_price,
+      entry_price: entry_price,
       mark_price: mark,
       unrealized_pnl: unrealized_usd,
       unrealized_pnl_inr: (unrealized_usd * USD_INR_FOR_DISPLAY).round(0),
@@ -107,6 +107,25 @@ class Api::DashboardController < ApplicationController
     return 0.0 if lots <= 0 || entry <= 0
 
     (lots * entry) / lev
+  end
+
+  def unrealized_pnl_usd(position:, mark:, entry:)
+    direction = position.side.in?(%w[sell short]) ? -1.0 : 1.0
+    qty = position.size.to_f.abs
+    (mark.to_f - entry.to_f) * qty * direction
+  end
+
+  def corrected_entry_price(position)
+    cache_key = "dashboard:entry_correction:#{position.symbol}:#{position.entry_time&.to_i || position.created_at&.to_i}"
+    Rails.cache.fetch(cache_key, expires_in: 30.seconds) do
+      entry_price_corrector.corrected_entry_for(position)
+    end
+  end
+
+  def entry_price_corrector
+    @entry_price_corrector ||= Bot::Execution::EntryPriceCorrector.new(
+      market_data: DeltaExchange::Client.new.market_data
+    )
   end
 
   def build_execution_health
