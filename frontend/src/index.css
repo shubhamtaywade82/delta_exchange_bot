@@ -305,6 +305,12 @@ body::after {
   gap: 1.5rem;
   padding: 1.5rem 2.5rem;
   flex: 1;
+  /* Let the main column define row height; sidebar stays content-height (no tall empty lane). */
+  align-items: start;
+}
+
+.grid-left {
+  min-width: 0;
 }
 
 .grid-right {
@@ -723,7 +729,6 @@ td.table-empty-row {
   overflow-x: auto;
   max-height: 480px;
   overflow-y: auto;
-  scrollbar-gutter: stable;
 }
 
 .table-wrapper::-webkit-scrollbar {

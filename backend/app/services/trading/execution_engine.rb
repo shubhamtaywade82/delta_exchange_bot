@@ -6,6 +6,23 @@ module Trading
       new(signal, session, client).execute
     end
 
+    def self.canonical_position_side(raw)
+      case raw.to_s.downcase
+      when "long", "buy" then "long"
+      when "short", "sell" then "short"
+      else raw.to_s
+      end
+    end
+
+    # Matches legacy rows stored as buy/sell as well as long/short.
+    def self.active_position_side_keys(raw)
+      case canonical_position_side(raw)
+      when "long" then %w[long buy]
+      when "short" then %w[short sell]
+      else [raw.to_s]
+      end
+    end
+
     def initialize(signal, session, client)
       @signal = signal
       @session = session
@@ -111,25 +128,29 @@ module Trading
 
     def find_or_create_position!
       symbol = @signal.symbol.to_s
-      side = @signal.side.to_s
+      side = self.class.canonical_position_side(@signal.side)
       contract_scalar = Trading::Risk::PositionLotSize.from_exchange(symbol)
       leverage = @session.leverage.to_i
       leverage = 10 if leverage.zero?
 
-      position = Position.find_or_initialize_by(symbol: symbol, side: side)
-      if position.new_record?
-        position.status = "init"
-        position.leverage = leverage
-        position.contract_value = contract_scalar if contract_scalar.to_f.positive?
-        position.save!
-      else
+      position = Position.active.find_by(symbol: symbol, side: self.class.active_position_side_keys(@signal.side))
+
+      if position
         updates = {}
         updates[:leverage] = leverage if position.leverage.blank? || position.leverage.to_i.zero?
         if contract_scalar.to_f.positive? && (position.contract_value.blank? || position.contract_value.to_f.zero?)
           updates[:contract_value] = contract_scalar
         end
+        updates[:side] = side if position.side.to_s != side
         position.update!(updates) if updates.any?
+        return position
       end
+
+      position = Position.new(symbol: symbol, side: side)
+      position.status = "init"
+      position.leverage = leverage
+      position.contract_value = contract_scalar if contract_scalar.to_f.positive?
+      position.save!
       position
     end
 

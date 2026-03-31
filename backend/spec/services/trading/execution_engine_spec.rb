@@ -85,4 +85,50 @@ RSpec.describe Trading::ExecutionEngine do
     expect(Trading::Risk::KillSwitch).not_to receive(:call)
     described_class.execute(signal, session: session, client: client)
   end
+
+  context "when a closed position row already exists for the symbol" do
+    let(:signal) do
+      Trading::Events::SignalGenerated.new(
+        symbol: "BTCUSD",
+        side: "short",
+        entry_price: 50_000.0,
+        candle_timestamp: Time.current,
+        strategy: "multi_timeframe",
+        session_id: session.id
+      )
+    end
+
+    before do
+      Position.create!(
+        symbol: "BTCUSD",
+        side: "short",
+        status: "closed",
+        size: 1.0,
+        entry_price: 51_000.0,
+        leverage: 10
+      )
+      key = Trading::IdempotencyGuard.key(
+        symbol: "BTCUSD", side: "short", timestamp: signal.candle_timestamp.to_i
+      )
+      Trading::IdempotencyGuard.release(key)
+    end
+
+    after do
+      key = Trading::IdempotencyGuard.key(
+        symbol: "BTCUSD", side: "short", timestamp: signal.candle_timestamp.to_i
+      )
+      Trading::IdempotencyGuard.release(key)
+    end
+
+    it "creates a new active position instead of attaching to the closed row" do
+      closed = Position.find_by!(symbol: "BTCUSD", status: "closed")
+
+      described_class.execute(signal, session: session, client: client)
+
+      active = Position.active.find_by(symbol: "BTCUSD")
+      expect(active).to be_present
+      expect(active.id).not_to eq(closed.id)
+      expect(closed.reload.status).to eq("closed")
+    end
+  end
 end
