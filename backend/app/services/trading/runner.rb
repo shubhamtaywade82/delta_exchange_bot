@@ -30,6 +30,11 @@ module Trading
     private
 
     def bootstrap!
+      if PaperTrading.enabled?
+        Rails.logger.info("[Runner] Paper mode — skipping exchange position/order bootstrap")
+        return
+      end
+
       Bootstrap::SyncPositions.call(client: @client)
       Bootstrap::SyncOrders.call(client: @client, session: @session)
     end
@@ -206,6 +211,12 @@ module Trading
     end
 
     def build_client
+      if PaperTrading.enabled?
+        key    = ENV["DELTA_API_KEY"].to_s
+        secret = ENV["DELTA_API_SECRET"].to_s
+        return DeltaExchange::Client.new(api_key: key.presence, api_secret: secret.presence)
+      end
+
       DeltaExchange::Client.new(
         api_key:    ENV.fetch("DELTA_API_KEY"),
         api_secret: ENV.fetch("DELTA_API_SECRET")

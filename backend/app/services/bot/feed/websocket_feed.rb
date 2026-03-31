@@ -5,13 +5,15 @@ require "eventmachine"
 module Bot
   module Feed
     class WebsocketFeed
-      def initialize(symbols:, price_store:, logger:, testnet: false, on_tick: nil, on_message: nil)
+      def initialize(symbols:, price_store:, logger:, testnet: false, on_tick: nil, on_message: nil,
+                     subscribe_private_streams: true)
         @symbols     = symbols
         @price_store = price_store
         @logger      = logger
         @testnet     = testnet
         @on_tick     = on_tick
         @on_message  = on_message
+        @subscribe_private_streams = subscribe_private_streams
         @client      = nil
         @running     = false
         @generation  = 0
@@ -50,9 +52,13 @@ module Bot
           @client.on(:open) do
             @logger.info("ws_connected")
             @client.subscribe([{ name: "v2/ticker", symbols: @symbols }])
-            @client.subscribe([{ name: "v2/orders", symbols: @symbols }])
-            @client.subscribe([{ name: "v2/fills", symbols: @symbols }])
             @client.subscribe([{ name: "v2/orderbook", symbols: @symbols }])
+            if @subscribe_private_streams
+              @client.subscribe([{ name: "v2/orders", symbols: @symbols }])
+              @client.subscribe([{ name: "v2/fills", symbols: @symbols }])
+            else
+              @logger.info("ws_subscribe_public_only", message: "paper mode — skipping orders/fills streams")
+            end
           end
 
           @client.on(:message) do |data|

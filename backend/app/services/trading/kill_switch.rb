@@ -7,13 +7,15 @@ module Trading
     end
 
     def self.force_exit_position(position, client, reason: "FORCE_EXIT")
-      close_side = position.side == "long" ? "sell" : "buy"
-      client.place_order(
-        product_id: position.product_id,
-        side:       close_side,
-        order_type: "market_order",
-        size:       position.size
-      )
+      unless PaperTrading.enabled?
+        close_side = position.side == "long" ? "sell" : "buy"
+        client.place_order(
+          product_id: position.product_id,
+          side:       close_side,
+          order_type: "market_order",
+          size:       position.size
+        )
+      end
 
       OrdersRepository.close_position(
         position_id: position.id,
@@ -42,7 +44,9 @@ module Trading
       Order.where(trading_session_id: @session_id).find_each do |order|
         next unless order.open?
 
-        @client.cancel_order(order.exchange_order_id)
+        if order.exchange_order_id.present? && !PaperTrading.enabled?
+          @client.cancel_order(order.exchange_order_id)
+        end
         order.update!(status: "cancelled")
       rescue => e
         Rails.logger.error("[KillSwitch] cancel_order failed for order #{order.id}: #{e.message}")

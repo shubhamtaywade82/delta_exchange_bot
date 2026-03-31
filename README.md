@@ -27,14 +27,16 @@ Edit `config/bot.yml`:
 ## Usage
 
 ### Development (All Services)
-To start the backend (Rails), the trading bot, and the frontend (Vite) concurrently, use the development script:
+To start the backend (Rails), the trading bot, the job worker (Solid Queue — AI refinement & scheduled jobs), and the frontend (Vite) concurrently:
 
 ```bash
 ./bin/dev
 ```
 
+**Default bot process (`backend/bin/bot`):** `Trading::Runner` with **paper execution** when Bot mode is `dry_run` (or `EXECUTION_MODE=paper`): real **ticker + orderbook** from Delta Exchange India, **no** private orders/fills WebSocket, simulated fills via `ExecutionEngine` (portfolio/risk/order/fill pipeline in the DB). Set `EXECUTION_MODE=live` and Bot `live` mode only for real order placement. Set `LEGACY_BOT_RUNNER=1` to use the older `Bot::Runner` only.
+
 ### Production/Single Process
-To run only the trading bot runner:
+To run only the legacy standalone gem runner from the repo root:
 
 ```bash
 TZ=Asia/Kolkata bundle exec bin/run

@@ -30,7 +30,8 @@ module Trading
             logger: Rails.logger,
             testnet: @testnet,
             on_tick: method(:handle_tick),
-            on_message: method(:enqueue_message)
+            on_message: method(:enqueue_message),
+            subscribe_private_streams: Trading::PaperTrading.subscribe_private_ws_streams?
           )
           feed.start
           sleep reconnect_interval

@@ -18,6 +18,7 @@ RSpec.describe Trading::ExecutionEngine do
   end
 
   before do
+    allow(Trading::PaperTrading).to receive(:enabled?).and_return(false)
     allow(client).to receive(:place_order).and_return({ id: "EX-001", status: "open" })
     allow(Trading::RiskManager).to receive(:validate!).and_return(true)
     allow(Rails.cache).to receive(:fetch).with(/product_id:/, anything).and_return(84)

@@ -59,6 +59,8 @@ module Trading
     private
 
     def place_order(order)
+      return simulate_fill_at_market(order) if PaperTrading.enabled?
+
       @client.place_order(
         product_id: fetch_product_id(order.symbol),
         side: order.side,
@@ -67,6 +69,40 @@ module Trading
         limit_price: order.price,
         client_order_id: order.client_order_id
       )
+    end
+
+    def simulate_fill_at_market(order)
+      exchange_id  = "paper-#{SecureRandom.hex(8)}"
+      fill_price   = synthetic_fill_price(order)
+      fill_id      = "paper-fill:#{order.id}:#{exchange_id}:#{fill_price}:#{order.size}:#{Time.current.to_i}"
+
+      FillProcessor.process(
+        Events::OrderFilled.new(
+          exchange_fill_id: fill_id,
+          exchange_order_id: exchange_id,
+          client_order_id: order.client_order_id,
+          symbol: order.symbol,
+          side: order.side,
+          quantity: order.size,
+          price: fill_price,
+          fee: 0,
+          filled_at: Time.current,
+          status: "filled",
+          raw_payload: { "source" => "paper_trading" }
+        )
+      )
+
+      { id: exchange_id, status: "filled" }
+    end
+
+    def synthetic_fill_price(order)
+      px = order.price.to_f
+      return px if px.positive?
+
+      mark = Rails.cache.read("ltp:#{order.symbol}")&.to_f
+      raise "paper fill needs order price or cached ltp:#{order.symbol}" unless mark&.positive?
+
+      mark
     end
 
     def find_or_create_position!
