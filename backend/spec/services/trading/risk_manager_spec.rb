@@ -40,4 +40,14 @@ RSpec.describe Trading::RiskManager do
       described_class.validate!(signal, session: session)
     }.to raise_error(Trading::RiskManager::RiskError, /daily loss/)
   end
+
+  it "skips validation when paper risk override is active" do
+    allow(Trading::PaperTrading).to receive(:enabled?).and_return(true)
+    Setting.create!(key: Trading::PaperRiskOverride::KEY, value: "true", value_type: "boolean")
+    Trade.create!(symbol: "BTCUSD", side: "long", size: 1.0,
+                  strategy: "multi_timeframe", regime: "mean_reversion",
+                  entry_price: 50000.0, exit_price: 49000.0,
+                  pnl_usd: -60.0, closed_at: Time.current)
+    expect { described_class.validate!(signal, session: session) }.not_to raise_error
+  end
 end

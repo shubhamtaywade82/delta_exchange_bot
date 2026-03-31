@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import axios from 'axios';
 import Navbar from './components/Navbar';
 import DashboardPage from './pages/DashboardPage';
+import OperationalStatePage from './pages/OperationalStatePage';
 import CatalogPage from './pages/CatalogPage';
 import AdminSettingsPage from './pages/AdminSettingsPage';
 
@@ -105,6 +106,7 @@ const App: React.FC = () => {
         <Navbar />
         <Routes>
           <Route path="/" element={<DashboardPage />} />
+          <Route path="/operational" element={<OperationalStatePage />} />
           <Route path="/catalog" element={<CatalogPage />} />
           <Route path="/admin/settings" element={<AdminSettingsPage />} />
         </Routes>

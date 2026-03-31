@@ -39,6 +39,10 @@ class Api::DashboardController < ApplicationController
 
     trade_calendar_days = Trade.broker_settled_calendar_days.map { |d| format_trade_calendar_day(d) }
     signal_activity = build_signal_activity
+    running_session = resolve_running_session
+    operational_state = Trading::Risk::EntryGatesSummary.call(session: running_session, portfolio: portfolio).merge(
+      recent_signals: build_recent_signals(trading_session: running_session, limit: 30)
+    )
 
     render json: {
       positions: active_positions.map { |p| position_payload(p) },
@@ -66,8 +70,26 @@ class Api::DashboardController < ApplicationController
       },
       market: market,
       execution_health: execution_health,
-      signal_activity: signal_activity
+      signal_activity: signal_activity,
+      operational_state: operational_state
     }
+  end
+
+  # Paper mode only: toggle `paper.ignore_entry_risk_gates` so RiskManager + KillSwitch gates are skipped for testing.
+  def paper_risk_override
+    unless Trading::PaperTrading.enabled?
+      render json: { error: "paper_risk_override_requires_paper_mode" }, status: :unprocessable_entity
+      return
+    end
+
+    flag = params.permit(:ignore_entry_risk_gates).require(:ignore_entry_risk_gates)
+    enabled = ActiveModel::Type::Boolean.new.cast(flag)
+    Trading::PaperRiskOverride.set!(enabled: enabled)
+    render json: { paper_risk_override_active: Trading::PaperRiskOverride.active? }
+  rescue ActionController::ParameterMissing => e
+    render json: { error: e.message }, status: :bad_request
+  rescue ArgumentError => e
+    render json: { error: e.message }, status: :unprocessable_entity
   end
 
   private
@@ -236,11 +258,24 @@ class Api::DashboardController < ApplicationController
     }
   end
 
+  def resolve_running_session
+    TradingSession.where(status: "running")
+                  .order(Arel.sql("COALESCE(started_at, created_at) DESC NULLS LAST"), id: :desc)
+                  .first
+  end
+
+  def build_recent_signals(trading_session:, limit:)
+    scope = GeneratedSignal.order(created_at: :desc)
+    scope = scope.where(trading_session_id: trading_session.id) if trading_session
+    scope.limit(limit).map { |r| signal_activity_payload(r) }
+  end
+
   def signal_activity_payload(record)
     return nil unless record
 
     {
       id: record.id,
+      trading_session_id: record.trading_session_id,
       symbol: record.symbol,
       side: record.side,
       status: record.status,

@@ -198,6 +198,40 @@ body::after {
   white-space: nowrap;
 }
 
+.dashboard-ops-link {
+  font-size: 0.62rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--primary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.dashboard-ops-link:hover {
+  text-decoration: underline;
+}
+
+.operational-back-link {
+  font-size: 0.62rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.operational-back-link:hover {
+  color: var(--primary);
+}
+
+.operational-page-main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem 2.5rem;
+}
+
 .system-status {
   font-size: 0.65rem;
   color: var(--text-muted);
@@ -431,6 +465,173 @@ body::after {
   color: var(--danger);
   background: rgba(255, 77, 77, 0.08);
   border-color: rgba(255, 77, 77, 0.25);
+}
+
+.mode-badge.blocked {
+  background: rgba(255, 77, 77, 0.12);
+  color: #f87171;
+  border: 1px solid rgba(255, 77, 77, 0.35);
+}
+
+.paper-override-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 1rem;
+}
+
+.paper-override-btn {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-accent);
+  color: var(--text-dim);
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.35rem 0.65rem;
+  cursor: pointer;
+}
+
+.paper-override-btn:hover:not(:disabled) {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.paper-override-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.paper-override-btn.primary {
+  border-color: rgba(250, 204, 21, 0.5);
+  color: #facc15;
+}
+
+.paper-override-hint {
+  font-size: 0.62rem;
+  flex: 1 1 200px;
+  line-height: 1.35;
+}
+
+.paper-override-banner {
+  margin: 0 1rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid rgba(250, 204, 21, 0.45);
+  background: rgba(250, 204, 21, 0.08);
+  color: #facc15;
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  line-height: 1.35;
+}
+
+.operational-state-section .operational-state-body {
+  padding: 0 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.operational-mode-badge {
+  text-transform: uppercase;
+}
+
+.operational-session-line,
+.operational-kill-line {
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.operational-blockers {
+  background: rgba(255, 77, 77, 0.06);
+  border: 1px solid rgba(255, 77, 77, 0.22);
+  border-radius: 6px;
+  padding: 0.65rem 0.85rem;
+}
+
+.operational-blockers-title {
+  font-size: 0.58rem;
+  letter-spacing: 1.2px;
+  color: #f87171;
+  font-weight: 800;
+  margin-bottom: 0.45rem;
+}
+
+.operational-blocker-row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 12rem) 1fr;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  margin-bottom: 0.35rem;
+}
+
+.operational-blocker-row:last-child {
+  margin-bottom: 0;
+}
+
+.blocker-code {
+  font-family: var(--font-mono);
+  color: #fda4af;
+  font-weight: 700;
+}
+
+.blocker-msg {
+  color: var(--text-dim);
+}
+
+.operational-gates-table-wrap {
+  overflow-x: auto;
+}
+
+.operational-gates-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.operational-gates-table th {
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+}
+
+.operational-gates-table td {
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.gate-ok {
+  color: var(--success);
+  font-weight: 800;
+  font-size: 0.65rem;
+}
+
+.gate-bad {
+  color: var(--danger);
+  font-weight: 800;
+  font-size: 0.65rem;
+}
+
+.operational-recent-title {
+  font-size: 0.6rem;
+  letter-spacing: 1.2px;
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-bottom: 0.35rem;
+  padding-left: 0.15rem;
+}
+
+.operational-signals-scroll {
+  max-height: 320px;
+}
+
+.signal-err-cell {
+  color: #f87171;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.35;
 }
 
 .trade-history-filters {

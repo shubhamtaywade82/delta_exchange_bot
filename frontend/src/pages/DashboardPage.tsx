@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { NavLink } from 'react-router-dom';
 import axios from 'axios';
 import { 
   Wallet, 
@@ -8,6 +9,8 @@ import {
   BarChart3,
   Activity
 } from 'lucide-react';
+import type { SignalActivity, OperationalState } from '../types/operationalState';
+import { formatSignalActivityTimestamp, sideBadgeMeta } from '../utils/tradingDisplay';
 
 
 interface FilterResult {
@@ -57,25 +60,6 @@ interface StrategyStatus {
   symbols: SymbolState[];
 }
 
-interface SignalActivityEntry {
-  id: number;
-  symbol: string;
-  side: string;
-  status: string;
-  strategy: string;
-  source: string;
-  entry_price: number;
-  candle_timestamp: number;
-  error_message: string | null;
-  created_at: string;
-}
-
-interface SignalActivity {
-  last_signal: SignalActivityEntry | null;
-  last_rejection: SignalActivityEntry | null;
-}
-
-
 function filterBadge(result?: FilterResult) {
   if (!result) return null;
   return (
@@ -96,15 +80,6 @@ function localCalendarDateISO(d = new Date()) {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
-}
-
-function formatSignalActivityTimestamp(iso: string | undefined) {
-  if (!iso) return '--';
-  try {
-    return new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'medium' });
-  } catch {
-    return iso;
-  }
 }
 
 /** YYYY-MM-DD → localized medium date for dropdown labels */
@@ -186,6 +161,7 @@ const DashboardPage: React.FC = () => {
   const [stats, setStats] = useState<any>(null);
   const [executionHealth, setExecutionHealth] = useState<any>(null);
   const [signalActivity, setSignalActivity] = useState<SignalActivity | null>(null);
+  const [operationalState, setOperationalState] = useState<OperationalState | null>(null);
   const [expandedSym, setExpandedSym] = useState<string | null>(null);
   const [tradeHistoryDay, setTradeHistoryDay] = useState<string>(() => localCalendarDateISO());
   const [tradesMeta, setTradesMeta] = useState<{ total_count: number; limit: number; day: string | null } | null>(
@@ -226,6 +202,7 @@ const DashboardPage: React.FC = () => {
       setStats(dash.stats);
       setExecutionHealth(dash.execution_health);
       setSignalActivity(dash.signal_activity ?? null);
+      setOperationalState(dash.operational_state ?? null);
 
       const { data: strat } = await axios.get('/api/strategy_status');
       setStrategyStatus(strat);
@@ -239,17 +216,6 @@ const DashboardPage: React.FC = () => {
     return diff < 60 ? `${diff}s ago` : `${Math.floor(diff/60)}m ago`;
   };
 
-  const sideBadgeMeta = (side: unknown) => {
-    const normalized = String(side ?? '').trim().toLowerCase();
-    if (normalized === 'buy' || normalized === 'long') {
-      return { css: 'long', label: 'LONG' };
-    }
-    if (normalized === 'sell' || normalized === 'short') {
-      return { css: 'short', label: 'SHORT' };
-    }
-    return { css: 'none', label: 'UNKNOWN' };
-  };
-
   return (
     <div className="dashboard-content pt-4">
       <header className="terminal-header">
@@ -257,6 +223,9 @@ const DashboardPage: React.FC = () => {
           <div className="brand-text">
             <TerminalIcon size={18} className="icon-pulse" />
             <h1>DELTA_BOT</h1>
+            <NavLink to="/operational" className="dashboard-ops-link" title="Gates, blockers, signal timeline">
+              OPERATIONAL →
+            </NavLink>
             <div className="system-status">
               <span className="dot online"></span>
               <span className="status-online">ONLINE_ v2.0</span>
@@ -292,6 +261,12 @@ const DashboardPage: React.FC = () => {
             <label>EXECUTION</label>
             <span className={`value ${executionHealth?.healthy ? 'pos' : executionHealth ? 'neg' : ''}`}>
               {executionHealth?.healthy ? 'HEALTHY' : executionHealth?.category?.toUpperCase() || 'UNKNOWN'}
+            </span>
+          </div>
+          <div className="mini-stat">
+            <label>AUTO_ENTRY</label>
+            <span className={`value ${operationalState?.auto_entry_allowed ? 'pos' : operationalState ? 'neg' : ''}`}>
+              {operationalState == null ? '—' : operationalState.auto_entry_allowed ? 'ALLOWED' : 'BLOCKED'}
             </span>
           </div>
         </div>

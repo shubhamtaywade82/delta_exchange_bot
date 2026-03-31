@@ -43,6 +43,28 @@ RSpec.describe "Api::Dashboard", type: :request do
       )
     end
 
+    it "returns operational_state with gates and recent_signals for paper debugging" do
+      session = create(:trading_session)
+      create(
+        :generated_signal,
+        trading_session: session,
+        symbol: "BTCUSD",
+        side: "buy",
+        status: "executed",
+        created_at: 1.minute.ago
+      )
+
+      get "/api/dashboard"
+
+      body = JSON.parse(response.body)
+      op = body["operational_state"]
+      expect(op["paper_trading"]).to eq(false)
+      expect(op["blockers"]).to be_a(Array)
+      expect(op["risk_gates"]).to be_a(Hash)
+      expect(op["recent_signals"].first["symbol"]).to eq("BTCUSD")
+      expect(op["recent_signals"].first["status"]).to eq("executed")
+    end
+
     it "returns signal_activity with last signal and last rejection" do
       session = create(:trading_session)
       create(
@@ -237,6 +259,33 @@ RSpec.describe "Api::Dashboard", type: :request do
       row = JSON.parse(response.body)["positions"].first
       expect(row["entry_price"]).to eq(67_010.5)
       expect(row["unrealized_pnl"]).to eq(315.0)
+    end
+  end
+
+  describe "POST /api/dashboard/paper_risk_override" do
+    around do |example|
+      previous_cache = Rails.cache
+      Rails.cache = ActiveSupport::Cache::MemoryStore.new
+      example.run
+    ensure
+      Rails.cache = previous_cache
+    end
+
+    it "returns unprocessable_entity when not in paper mode" do
+      allow(Trading::PaperTrading).to receive(:enabled?).and_return(false)
+      post "/api/dashboard/paper_risk_override", params: { ignore_entry_risk_gates: true }, as: :json
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
+    it "persists ignore_entry_risk_gates for paper mode" do
+      allow(Trading::PaperTrading).to receive(:enabled?).and_return(true)
+      post "/api/dashboard/paper_risk_override", params: { ignore_entry_risk_gates: true }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)["paper_risk_override_active"]).to be true
+
+      post "/api/dashboard/paper_risk_override", params: { ignore_entry_risk_gates: false }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)["paper_risk_override_active"]).to be false
     end
   end
 end

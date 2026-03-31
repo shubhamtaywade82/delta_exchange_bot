@@ -14,6 +14,8 @@ module Trading
     end
 
     def validate!
+      return if PaperRiskOverride.active?
+
       check_max_concurrent_positions!
       check_margin_utilization!
       check_daily_loss_cap!

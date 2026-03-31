@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutGrid, Search, SlidersHorizontal } from 'lucide-react';
+import { LayoutGrid, Search, SlidersHorizontal, ShieldAlert } from 'lucide-react';
 
 const Navbar: React.FC = () => {
   return (
@@ -9,6 +9,10 @@ const Navbar: React.FC = () => {
         <NavLink to="/" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
           <LayoutGrid size={18} />
           <span>DASHBOARD</span>
+        </NavLink>
+        <NavLink to="/operational" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+          <ShieldAlert size={18} />
+          <span>OPERATIONAL</span>
         </NavLink>
         <NavLink to="/catalog" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
           <Search size={18} />

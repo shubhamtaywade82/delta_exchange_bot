@@ -78,4 +78,11 @@ RSpec.describe Trading::ExecutionEngine do
     }.to raise_error(Trading::RiskManager::RiskError)
     expect(Order.count).to eq(0)
   end
+
+  it "does not evaluate kill switch when paper risk override is active" do
+    allow(Trading::RiskManager).to receive(:validate!).and_return(true)
+    allow(Trading::PaperRiskOverride).to receive(:active?).and_return(true)
+    expect(Trading::Risk::KillSwitch).not_to receive(:call)
+    described_class.execute(signal, session: session, client: client)
+  end
 end

@@ -26,12 +26,13 @@ module Trading
 
       RiskManager.validate!(@signal, session: @session)
 
-
-      kill_signal = Trading::Risk::KillSwitch.call(portfolio: Trading::Risk::PortfolioSnapshot.current)
-      if kill_signal == :halt_trading
-        raise Trading::RiskManager::RiskError, "kill switch: trading halted"
-      elsif kill_signal == :block_new_trades
-        raise Trading::RiskManager::RiskError, "kill switch: exposure cap reached"
+      unless PaperRiskOverride.active?
+        kill_signal = Trading::Risk::KillSwitch.call(portfolio: Trading::Risk::PortfolioSnapshot.current)
+        if kill_signal == :halt_trading
+          raise Trading::RiskManager::RiskError, "kill switch: trading halted"
+        elsif kill_signal == :block_new_trades
+          raise Trading::RiskManager::RiskError, "kill switch: exposure cap reached"
+        end
       end
 
       position = find_or_create_position!
