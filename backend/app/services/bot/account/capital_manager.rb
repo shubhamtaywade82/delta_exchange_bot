@@ -41,23 +41,33 @@ module Bot
         total_equity_usdt(unrealized_pnl: unrealized_pnl) * @usd_to_inr_rate
       end
 
+      # @return [Hash, nil] wallet fields for API / Redis; nil if Redis write fails
       def persist_state(blocked_margin: 0.0, unrealized_pnl: 0.0)
-        equity_usd    = total_equity_usdt(unrealized_pnl: unrealized_pnl)
-        spendable_usd = spendable_usdt(blocked_margin: blocked_margin, unrealized_pnl: unrealized_pnl)
-        
-        data = {
-          total_equity_usd: equity_usd,
-          total_equity_inr: (equity_usd * @usd_to_inr_rate).round(0),
-          available_usd:    spendable_usd, # renamed for backward compat with existing UI
-          available_inr:    (spendable_usd * @usd_to_inr_rate).round(0),
-          capital_inr:      @simulated_capital_inr.round(0),
-          paper_mode:       @dry_run,
-          updated_at:       Time.current.iso8601,
-          stale:            false
-        }
+        data = wallet_payload(blocked_margin: blocked_margin, unrealized_pnl: unrealized_pnl)
         @redis.set(REDIS_KEY, data.to_json)
+        data
       rescue StandardError => e
         puts "Error persisting wallet state: #{e.message}"
+        nil
+      end
+
+      def wallet_payload(blocked_margin: 0.0, unrealized_pnl: 0.0)
+        equity_usd    = total_equity_usdt(unrealized_pnl: unrealized_pnl)
+        spendable_usd = spendable_usdt(blocked_margin: blocked_margin, unrealized_pnl: unrealized_pnl)
+        blocked       = blocked_margin.to_f
+
+        {
+          "total_equity_usd" => equity_usd,
+          "total_equity_inr" => (equity_usd * @usd_to_inr_rate).round(0),
+          "available_usd" => spendable_usd,
+          "available_inr" => (spendable_usd * @usd_to_inr_rate).round(0),
+          "blocked_margin_usd" => blocked.round(2),
+          "blocked_margin_inr" => (blocked * @usd_to_inr_rate).round(0),
+          "capital_inr" => @simulated_capital_inr.round(0),
+          "paper_mode" => @dry_run,
+          "updated_at" => Time.current.iso8601,
+          "stale" => false
+        }
       end
     end
   end

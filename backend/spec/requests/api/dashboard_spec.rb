@@ -22,7 +22,16 @@ RSpec.describe "Api::Dashboard", type: :request do
         }
       )
       allow(Bot::Execution::IncidentStore).to receive(:recent).and_return([])
+      allow(Trading::PaperTrading).to receive(:enabled?).and_return(false)
       SymbolConfig.create!(symbol: "BTCUSD", leverage: 10, enabled: true)
+    end
+
+    it "uses calendar_day for positions_meta (client local day, not server UTC drift)" do
+      get "/api/dashboard", params: { calendar_day: "2026-06-01", trades_limit: 500 }
+
+      expect(response).to have_http_status(:ok)
+      meta = JSON.parse(response.body)["positions_meta"]
+      expect(meta["as_of_date"]).to eq("2026-06-01")
     end
 
     it "returns execution health fields in payload" do
@@ -52,10 +61,36 @@ RSpec.describe "Api::Dashboard", type: :request do
       get "/api/dashboard"
 
       expect(response).to have_http_status(:ok)
-      row = JSON.parse(response.body)["positions"].first
+      body = JSON.parse(response.body)
+      row = body["positions"].first
       expect(row["unrealized_pnl"]).to eq(1.0)
       expect(row["unrealized_pnl_inr"]).to eq(85)
       expect(row["unrealized_pnl_pct"]).to eq(10.0)
+      expect(body["positions_meta"]).to include(
+        "as_of_date" => Time.zone.today.strftime("%Y-%m-%d"),
+        "count" => 1
+      )
+      expect(row["opened_at"]).to be_present
+    end
+
+    it "lists legacy open status positions in active list" do
+      create(:position,
+             symbol: "BTCUSD",
+             side: "long",
+             status: "open",
+             entry_price: 50_000.0,
+             size: 1.0,
+             leverage: 10,
+             margin: 100.0)
+      Rails.cache.write("ltp:BTCUSD", 50_000.0)
+      allow(Redis).to receive(:new).and_return(instance_double(Redis, get: nil))
+
+      get "/api/dashboard"
+
+      expect(response).to have_http_status(:ok)
+      rows = JSON.parse(response.body)["positions"]
+      expect(rows.size).to eq(1)
+      expect(rows.first["status"]).to eq("open")
     end
 
     it "uses computed initial margin for ROE% when persisted margin is wrong scale" do

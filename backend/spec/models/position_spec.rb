@@ -11,7 +11,7 @@ RSpec.describe Position, type: :model do
     end
 
     it "rejects unsupported statuses" do
-      position = described_class.new(symbol: "BTCUSD", side: "buy", size: 1, status: "open")
+      position = described_class.new(symbol: "BTCUSD", side: "buy", size: 1, status: "bogus")
 
       expect(position).not_to be_valid
       expect(position.errors[:status]).to include("is not included in the list")

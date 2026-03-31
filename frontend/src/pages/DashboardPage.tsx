@@ -154,6 +154,7 @@ const DashboardPage: React.FC = () => {
   const [tradesMeta, setTradesMeta] = useState<{ total_count: number; limit: number; day: string | null } | null>(
     null
   );
+  const [positionsMeta, setPositionsMeta] = useState<{ as_of_date: string; count: number } | null>(null);
 
   const todayLocal = useCallback(() => localCalendarDateISO(), []);
 
@@ -168,8 +169,10 @@ const DashboardPage: React.FC = () => {
       const params = new URLSearchParams();
       params.set('trades_limit', '500');
       params.set('trades_day', tradeHistoryDay || todayLocal());
+      params.set('calendar_day', todayLocal());
       const { data: dash } = await axios.get(`/api/dashboard?${params.toString()}`);
       setPositions(dash.positions);
+      setPositionsMeta(dash.positions_meta ?? null);
       setTrades(dash.trades);
       setTradesMeta(dash.trades_meta ?? null);
       setWallet(dash.wallet);
@@ -226,7 +229,7 @@ const DashboardPage: React.FC = () => {
           </div>
           {wallet && (
             <div className="mini-stat">
-              <label>AVAILABLE_CAPITAL</label>
+              <label>TOTAL_EQUITY</label>
               <span className="value">
                 {wallet.paper_mode ? '📄 ' : ''}
                 {wallet.total_equity_inr != null 
@@ -322,6 +325,11 @@ const DashboardPage: React.FC = () => {
               <div className="header-title-group">
                 <BarChart3 size={18} className="icon-accent" />
                 <h2>ACTIVE_POSITIONS</h2>
+                {positionsMeta?.as_of_date && (
+                  <span className="text-muted trade-day-label" style={{ marginLeft: "0.5rem" }}>
+                    LOCAL_DATE {positionsMeta.as_of_date}
+                  </span>
+                )}
               </div>
               <span className="section-badge">{positions?.length || 0}</span>
             </div>
@@ -332,6 +340,7 @@ const DashboardPage: React.FC = () => {
                     <th>SYMBOL</th>
                     <th>SIDE</th>
                     <th>ENTRY</th>
+                    <th>OPENED</th>
                     <th>LTP</th>
                     <th>SIZE</th>
                     <th>LEVERAGE</th>
@@ -349,6 +358,14 @@ const DashboardPage: React.FC = () => {
                         </span>
                       </td>
                       <td>{p.entry_price}</td>
+                      <td className="text-muted">
+                        {p.opened_at
+                          ? new Date(p.opened_at).toLocaleString(undefined, {
+                              dateStyle: "short",
+                              timeStyle: "short",
+                            })
+                          : "--"}
+                      </td>
                       <td>{p.mark_price}</td>
                       <td>{p.size}</td>
                       <td className="font-mono text-zinc-400">{p.leverage}x</td>
@@ -360,7 +377,7 @@ const DashboardPage: React.FC = () => {
                       </td>
                     </tr>
                   )) : (
-                    <tr><td colSpan={7} className="text-center text-muted">NO_ACTIVE_POSITIONS_FOUND</td></tr>
+                    <tr><td colSpan={9} className="text-center text-muted">NO_ACTIVE_POSITIONS_FOUND</td></tr>
                   )}
                 </tbody>
               </table>
@@ -457,6 +474,26 @@ const DashboardPage: React.FC = () => {
                 <label>TOTAL EQUITY</label>
                 <div className="wallet-value">
                   {wallet?.total_equity_inr != null ? `₹${wallet.total_equity_inr.toLocaleString()}` : '--'}
+                </div>
+              </div>
+              <div className="wallet-item">
+                <label>BLOCKED MARGIN (USD)</label>
+                <div className="wallet-value">
+                  {wallet?.blocked_margin_usd != null && wallet.blocked_margin_usd > 0
+                    ? `$${Number(wallet.blocked_margin_usd).toFixed(2)}`
+                    : wallet?.blocked_margin_usd != null
+                      ? '$0.00'
+                      : '--'}
+                </div>
+              </div>
+              <div className="wallet-item">
+                <label>BLOCKED MARGIN (INR)</label>
+                <div className="wallet-value">
+                  {wallet?.blocked_margin_inr != null && wallet.blocked_margin_inr > 0
+                    ? `₹${Number(wallet.blocked_margin_inr).toLocaleString()}`
+                    : wallet?.blocked_margin_inr != null
+                      ? '₹0'
+                      : '--'}
                 </div>
               </div>
               <div className="wallet-item">

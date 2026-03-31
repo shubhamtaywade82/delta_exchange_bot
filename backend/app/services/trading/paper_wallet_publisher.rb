@@ -3,8 +3,10 @@
 module Trading
   # Pushes blocked margin + unrealized PnL into Redis for the wallet API when running unified paper mode.
   class PaperWalletPublisher
-    def self.publish!
-      return unless PaperTrading.enabled?
+    # Recomputes from DB (active positions) + trades, refreshes Redis, returns payload for API consumers.
+    # Call this when reads must not show stale blocked margin (e.g. dashboard) — not only on fills.
+    def self.wallet_snapshot!
+      return nil unless PaperTrading.enabled?
 
       cfg = Bot::Config.load
       manager = Bot::Account::CapitalManager.new(
@@ -15,6 +17,10 @@ module Trading
       blocked = Position.active.sum(:margin).to_f
       unrealized = unrealized_pnl_usd
       manager.persist_state(blocked_margin: blocked, unrealized_pnl: unrealized)
+    end
+
+    def self.publish!
+      wallet_snapshot!
     end
 
     def self.unrealized_pnl_usd

@@ -4,14 +4,13 @@ class Api::DashboardController < ApplicationController
   BROKER_TRADES_LIMIT_MAX = 2000
 
   def index
-    # Use the new production architecture sources of truth
-    active_positions = Position.active.to_a
+    # All non-closed position rows (open as of today in-app), including legacy `open` status.
+    active_positions = Position.active.order(:symbol).to_a
     portfolio = Trading::Risk::PortfolioSnapshot.current
 
-    # For now, we still pull wallet from Redis if it's there, but default to calculated
-    redis = Redis.new
-    wallet_json = redis.get("delta:wallet:state")
-    wallet = wallet_json ? JSON.parse(wallet_json) : { "balance" => 1000.0, "equity" => 1000.0 + portfolio.total_pnl }
+    # Paper: recompute on every dashboard read so spendable/blocked stay aligned with DB (Redis was fill-only).
+    wallet = load_wallet_for_dashboard(portfolio: portfolio)
+    stats_equity_usd = stats_total_equity_usd(wallet, portfolio)
 
     # Market data context from SymbolConfigs
     market = SymbolConfig.where(enabled: true).map do |config|
@@ -45,6 +44,10 @@ class Api::DashboardController < ApplicationController
 
     render json: {
       positions: active_positions.map { |p| position_payload(p) },
+      positions_meta: {
+        as_of_date: calendar_day_param,
+        count: active_positions.size
+      },
       trades: trade_rows.map { |t| trade_payload(t) },
       trades_meta: {
         total_count: trades_total,
@@ -55,8 +58,8 @@ class Api::DashboardController < ApplicationController
       stats: {
         total_pnl_usd: total_pnl_usd,
         total_pnl_inr: (total_pnl_usd * USD_INR_FOR_DISPLAY).round(0),
-        total_equity_usd: (wallet["balance"].to_f + portfolio.total_pnl).round(2),
-        total_equity_inr: ((wallet["balance"].to_f + portfolio.total_pnl) * USD_INR_FOR_DISPLAY).round(0),
+        total_equity_usd: stats_equity_usd,
+        total_equity_inr: (stats_equity_usd * USD_INR_FOR_DISPLAY).round(0),
         win_rate: win_rate,
         daily_pnl: daily_pnl,
         weekly_pnl: weekly_pnl,
@@ -68,6 +71,50 @@ class Api::DashboardController < ApplicationController
   end
 
   private
+
+  def load_wallet_for_dashboard(portfolio:)
+    wallet =
+      if Trading::PaperTrading.enabled?
+        Trading::PaperWalletPublisher.wallet_snapshot!
+      else
+        redis_wallet_hash
+      end
+    wallet.presence || default_wallet_hash(portfolio)
+  end
+
+  def redis_wallet_hash
+    raw = Redis.new.get("delta:wallet:state")
+    return nil if raw.blank?
+
+    JSON.parse(raw)
+  rescue JSON::ParserError
+    nil
+  end
+
+  def default_wallet_hash(portfolio)
+    {
+      "balance" => 1000.0,
+      "equity" => 1000.0 + portfolio.total_pnl.to_f
+    }
+  end
+
+  def stats_total_equity_usd(wallet, portfolio)
+    if wallet["total_equity_usd"].present?
+      wallet["total_equity_usd"].to_f.round(2)
+    else
+      (wallet["balance"].to_f + portfolio.total_pnl.to_f).round(2)
+    end
+  end
+
+  # Browser local calendar day (YYYY-MM-DD) for labels; avoids server UTC vs local mismatch.
+  def calendar_day_param
+    raw = params[:calendar_day].to_s.strip
+    return Time.zone.today.strftime("%Y-%m-%d") if raw.blank?
+
+    Date.iso8601(raw).strftime("%Y-%m-%d")
+  rescue ArgumentError
+    Time.zone.today.strftime("%Y-%m-%d")
+  end
 
   # Lists only exchange/bot closed trades (symbol present). Omits learning-only rows
   # (e.g. CreditAssigner) that have no symbol and produced bogus UNKNOWN lines in the UI.
@@ -117,12 +164,15 @@ class Api::DashboardController < ApplicationController
     mark = Rails.cache.read("ltp:#{position.symbol}")&.to_f || entry_price
     unrealized_usd = unrealized_pnl_usd(position: position, mark: mark, entry: entry_price).round(2)
 
+    opened_at = position.entry_time || position.created_at
+
     {
       symbol: position.symbol,
       side: position.side,
       size: position.size,
       entry_price: entry_price,
       mark_price: mark,
+      opened_at: opened_at&.iso8601,
       unrealized_pnl: unrealized_usd,
       unrealized_pnl_inr: (unrealized_usd * USD_INR_FOR_DISPLAY).round(0),
       unrealized_pnl_pct: unrealized_pnl_pct(position, unrealized_usd),

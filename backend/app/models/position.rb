@@ -7,7 +7,8 @@
 class Position < ApplicationRecord
   has_many :orders, dependent: :nullify
 
-  STATES = %w[init entry_pending partially_filled filled exit_pending closed liquidated rejected].freeze
+  # `open` is legacy / exchange-facing wording; treat like `filled` for listing & margin.
+  STATES = %w[init entry_pending partially_filled filled exit_pending closed liquidated rejected open].freeze
   SIDES = %w[buy sell long short].freeze
 
   validates :symbol, presence: true
@@ -15,13 +16,16 @@ class Position < ApplicationRecord
   validates :side, inclusion: { in: SIDES }, allow_nil: true
   validates :size, numericality: { greater_than: 0 }, allow_nil: true
 
-  scope :active, -> { where(status: %w[entry_pending partially_filled filled exit_pending]) }
+  scope :active, lambda {
+    where(status: %w[entry_pending partially_filled filled exit_pending open])
+  }
 
   TRANSITIONS = {
     "init" => %w[entry_pending rejected],
     "entry_pending" => %w[partially_filled filled rejected],
     "partially_filled" => %w[partially_filled filled exit_pending rejected],
     "filled" => %w[exit_pending liquidated],
+    "open" => %w[exit_pending liquidated],
     "exit_pending" => %w[closed liquidated],
     "closed" => [],
     "liquidated" => [],
