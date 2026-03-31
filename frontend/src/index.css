@@ -342,6 +342,56 @@ body::after {
   border: 1px solid var(--border-accent);
 }
 
+.trade-history-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.trade-day-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+}
+
+.trade-day-label {
+  font-size: 0.65rem;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+
+.trade-day-input {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-glass);
+  border-radius: 4px;
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  padding: 0.25rem 0.4rem;
+}
+
+.trade-day-clear {
+  background: transparent;
+  border: 1px solid var(--border-accent);
+  color: var(--text-dim);
+  border-radius: 4px;
+  font-size: 0.65rem;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  font-family: var(--font-mono);
+}
+
+.trade-day-clear:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.trade-count-badge {
+  margin-left: 0.25rem;
+}
+
 /* Table Styling */
 .table-wrapper {
   overflow-x: auto;

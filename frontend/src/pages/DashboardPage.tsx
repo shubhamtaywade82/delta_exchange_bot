@@ -142,18 +142,26 @@ const DashboardPage: React.FC = () => {
   const [stats, setStats] = useState<any>(null);
   const [executionHealth, setExecutionHealth] = useState<any>(null);
   const [expandedSym, setExpandedSym] = useState<string | null>(null);
+  const [tradeHistoryDay, setTradeHistoryDay] = useState<string>('');
+  const [tradesMeta, setTradesMeta] = useState<{ total_count: number; limit: number; day: string | null } | null>(
+    null
+  );
 
   useEffect(() => {
     fetchEverything();
     const interval = setInterval(fetchEverything, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [tradeHistoryDay]);
 
   const fetchEverything = async () => {
     try {
-      const { data: dash } = await axios.get('/api/dashboard');
+      const params = new URLSearchParams();
+      params.set('trades_limit', '500');
+      if (tradeHistoryDay) params.set('trades_day', tradeHistoryDay);
+      const { data: dash } = await axios.get(`/api/dashboard?${params.toString()}`);
       setPositions(dash.positions);
       setTrades(dash.trades);
+      setTradesMeta(dash.trades_meta ?? null);
       setWallet(dash.wallet);
       setStats(dash.stats);
       setExecutionHealth(dash.execution_health);
@@ -355,6 +363,30 @@ const DashboardPage: React.FC = () => {
                 <History size={18} className="icon-accent" />
                 <h2>TRADE_HISTORY</h2>
               </div>
+              <div className="header-badge-group trade-history-filters">
+                <label className="trade-day-filter">
+                  <span className="trade-day-label">DAY</span>
+                  <input
+                    type="date"
+                    value={tradeHistoryDay}
+                    onChange={(e) => setTradeHistoryDay(e.target.value)}
+                    className="trade-day-input"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="trade-day-clear"
+                  disabled={!tradeHistoryDay}
+                  onClick={() => setTradeHistoryDay('')}
+                >
+                  ALL
+                </button>
+                {tradesMeta && (
+                  <span className="section-badge trade-count-badge">
+                    {trades.length}/{tradesMeta.total_count}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="table-wrapper">
               <table>
@@ -370,7 +402,7 @@ const DashboardPage: React.FC = () => {
                 </thead>
                 <tbody>
                   {trades.length > 0 ? trades.map((t, i) => (
-                    <tr key={i} className="row-hover">
+                    <tr key={`${t.symbol}-${t.timestamp}-${i}`} className="row-hover">
                       <td className="font-bold">{t.symbol}</td>
                       <td>
                         <span className={`side-badge ${sideBadgeMeta(t.side).css}`}>
@@ -382,7 +414,14 @@ const DashboardPage: React.FC = () => {
                       <td className={(t.pnl_inr || 0) >= 0 ? 'pos' : 'neg'}>
                         {t.pnl_inr >= 0 ? '+' : ''}₹{(t.pnl_inr || 0).toLocaleString()}
                       </td>
-                      <td className="text-muted">{new Date(t.timestamp).toLocaleTimeString()}</td>
+                      <td className="text-muted">
+                        {t.timestamp
+                          ? new Date(t.timestamp).toLocaleString(undefined, {
+                              dateStyle: 'short',
+                              timeStyle: 'medium',
+                            })
+                          : '--'}
+                      </td>
                     </tr>
                   )) : (
                     <tr><td colSpan={6} className="text-center text-muted">NO_TRADES_IN_HISTORY</td></tr>

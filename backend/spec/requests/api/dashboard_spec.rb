@@ -104,6 +104,24 @@ RSpec.describe "Api::Dashboard", type: :request do
       expect(row["unrealized_pnl_pct"]).to eq(2.99)
     end
 
+    it "lists only broker-settled trades with a symbol and supports day filter" do
+      allow(Redis).to receive(:new).and_return(instance_double(Redis, get: nil))
+      day = Date.new(2026, 3, 31)
+      create(:trade, symbol: "ETHUSD", side: "long", closed_at: day.in_time_zone.change(hour: 12),
+             strategy: "multi_timeframe", regime: "trending", pnl_usd: 1.0)
+      create(:trade, symbol: "BTCUSD", side: "long", closed_at: (day - 1).in_time_zone.change(hour: 12),
+             strategy: "multi_timeframe", regime: "trending", pnl_usd: 1.0)
+      create(:trade, symbol: nil, side: nil, closed_at: day.in_time_zone.change(hour: 10),
+             strategy: "learn", regime: "explore", pnl_usd: 0.0)
+
+      get "/api/dashboard", params: { trades_day: "2026-03-31" }
+
+      body = JSON.parse(response.body)
+      expect(body["trades"].map { |t| t["symbol"] }).to eq(["ETHUSD"])
+      expect(body["trades_meta"]["total_count"]).to eq(1)
+      expect(body["trades_meta"]["day"]).to eq("2026-03-31")
+    end
+
     it "uses OHLCV-corrected entry when provided" do
       position = create(:position,
                         symbol: "BTCUSD",

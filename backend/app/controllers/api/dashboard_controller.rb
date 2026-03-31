@@ -1,5 +1,7 @@
 class Api::DashboardController < ApplicationController
   USD_INR_FOR_DISPLAY = 85.0
+  BROKER_TRADES_LIMIT_DEFAULT = 500
+  BROKER_TRADES_LIMIT_MAX = 2000
 
   def index
     # Use the new production architecture sources of truth
@@ -36,18 +38,19 @@ class Api::DashboardController < ApplicationController
       Trade.where("closed_at::date = ?", date).sum(:pnl_usd).to_f.round(2)
     end
 
+    trades_scope = broker_settled_trades_scope
+    trades_scope = trades_scope.where(closed_at: trades_day_range) if trades_day_range
+    trades_total = trades_scope.count
+    trades_limit = trades_limit_param
+    trade_rows = trades_scope.order(closed_at: :desc).limit(trades_limit)
+
     render json: {
       positions: active_positions.map { |p| position_payload(p) },
-      trades: Trade.order(closed_at: :desc).limit(50).map { |t|
-        {
-          symbol: t.symbol,
-          side: t.side,
-          entry_price: t.entry_price,
-          exit_price: t.exit_price,
-          pnl_usd: t.pnl_usd,
-          pnl_inr: (t.pnl_usd.to_f * USD_INR_FOR_DISPLAY).round(0),
-          timestamp: t.closed_at
-        }
+      trades: trade_rows.map { |t| trade_payload(t) },
+      trades_meta: {
+        total_count: trades_total,
+        limit: trades_limit,
+        day: trades_day_param&.strftime("%Y-%m-%d")
       },
       wallet: wallet,
       stats: {
@@ -66,6 +69,47 @@ class Api::DashboardController < ApplicationController
   end
 
   private
+
+  # Lists only exchange/bot closed trades (symbol present). Omits learning-only rows
+  # (e.g. CreditAssigner) that have no symbol and produced bogus UNKNOWN lines in the UI.
+  def broker_settled_trades_scope
+    Trade.where.not(symbol: [nil, ""])
+         .where.not(closed_at: nil)
+  end
+
+  def trades_day_param
+    raw = params[:trades_day].to_s.strip
+    return nil if raw.blank?
+
+    Date.iso8601(raw)
+  rescue ArgumentError
+    nil
+  end
+
+  def trades_day_range
+    day = trades_day_param
+    return nil unless day
+
+    day.in_time_zone.all_day
+  end
+
+  def trades_limit_param
+    limit = params.fetch(:trades_limit, BROKER_TRADES_LIMIT_DEFAULT).to_i
+    limit = BROKER_TRADES_LIMIT_DEFAULT if limit <= 0
+    [limit, BROKER_TRADES_LIMIT_MAX].min
+  end
+
+  def trade_payload(trade)
+    {
+      symbol: trade.symbol,
+      side: trade.side,
+      entry_price: trade.entry_price,
+      exit_price: trade.exit_price,
+      pnl_usd: trade.pnl_usd,
+      pnl_inr: (trade.pnl_usd.to_f * USD_INR_FOR_DISPLAY).round(0),
+      timestamp: trade.closed_at
+    }
+  end
 
   def position_payload(position)
     entry_price = corrected_entry_price(position)
