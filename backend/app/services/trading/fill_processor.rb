@@ -43,6 +43,8 @@ module Trading
     end
 
     def persist_fill!(order)
+      return nil if Fill.exists?(exchange_fill_id: @fill_event.exchange_fill_id)
+
       order.fills.create!(
         exchange_fill_id: @fill_event.exchange_fill_id,
         quantity: @fill_event.quantity,

@@ -15,7 +15,7 @@ RSpec.describe Trading::RiskManager do
 
   it "raises RiskError when max concurrent positions reached" do
     5.times do |i|
-      Position.create!(symbol: "SYM#{i}", side: "long", status: "open",
+      Position.create!(symbol: "SYM#{i}", side: "long", status: "filled",
                        size: 1.0, entry_price: 100.0, leverage: 10)
     end
     expect {
@@ -24,7 +24,7 @@ RSpec.describe Trading::RiskManager do
   end
 
   it "raises RiskError when margin utilization exceeds 40%" do
-    Position.create!(symbol: "ETHUSD", side: "long", status: "open",
+    Position.create!(symbol: "ETHUSD", side: "long", status: "filled",
                      size: 1.0, entry_price: 100.0, leverage: 10, margin: 420.0)
     expect {
       described_class.validate!(signal, session: session)
@@ -33,6 +33,7 @@ RSpec.describe Trading::RiskManager do
 
   it "raises RiskError when daily loss cap exceeded" do
     Trade.create!(symbol: "BTCUSD", side: "long", size: 1.0,
+                  strategy: "multi_timeframe", regime: "mean_reversion",
                   entry_price: 50000.0, exit_price: 49000.0,
                   pnl_usd: -60.0, closed_at: Time.current)
     expect {

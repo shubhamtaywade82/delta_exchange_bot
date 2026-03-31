@@ -2,6 +2,8 @@ FactoryBot.define do
   factory :trade do
     symbol { "MyString" }
     side { "MyString" }
+    strategy { "multi_timeframe" }
+    regime { "mean_reversion" }
     entry_price { "9.99" }
     exit_price { "9.99" }
     size { "9.99" }

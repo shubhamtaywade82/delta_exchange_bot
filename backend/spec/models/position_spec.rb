@@ -45,7 +45,7 @@ RSpec.describe Position, type: :model do
     it "derives partially_filled from linked orders" do
       position = described_class.create!(symbol: "BTCUSD", side: "buy", size: 1)
 
-      Order.create!(
+      order = Order.create!(
         trading_session: session,
         position: position,
         symbol: "BTCUSD",
@@ -56,6 +56,14 @@ RSpec.describe Position, type: :model do
         status: "partially_filled",
         client_order_id: SecureRandom.uuid,
         idempotency_key: "idem-pos-1"
+      )
+
+      Fill.create!(
+        order: order,
+        exchange_fill_id: "fill-pos-recalc-1",
+        quantity: 1,
+        price: 50_000,
+        filled_at: Time.current
       )
 
       position.recalculate_from_orders!

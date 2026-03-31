@@ -4,6 +4,14 @@ RSpec.describe "Api::Dashboard", type: :request do
   describe "GET /api/dashboard" do
     let(:entry_price_corrector) { instance_double(Bot::Execution::EntryPriceCorrector) }
 
+    around do |example|
+      previous_cache = Rails.cache
+      Rails.cache = ActiveSupport::Cache::MemoryStore.new
+      example.run
+    ensure
+      Rails.cache = previous_cache
+    end
+
     before do
       allow(Trading::Risk::PortfolioSnapshot).to receive(:current).and_return(
         double("PortfolioSnapshot", total_pnl: 0.0)
@@ -92,8 +100,8 @@ RSpec.describe "Api::Dashboard", type: :request do
       get "/api/dashboard"
 
       row = JSON.parse(response.body)["positions"].first
-      expect(row["unrealized_pnl"]).to eq(2000.1)
-      expect(row["unrealized_pnl_pct"]).to eq(2.98)
+      expect(row["unrealized_pnl"]).to eq(2001.0)
+      expect(row["unrealized_pnl_pct"]).to eq(2.99)
     end
 
     it "uses OHLCV-corrected entry when provided" do

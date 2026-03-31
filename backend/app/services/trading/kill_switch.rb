@@ -39,7 +39,9 @@ module Trading
     private
 
     def cancel_open_orders!
-      Order.where(trading_session_id: @session_id, status: %w[pending open]).each do |order|
+      Order.where(trading_session_id: @session_id).find_each do |order|
+        next unless order.open?
+
         @client.cancel_order(order.exchange_order_id)
         order.update!(status: "cancelled")
       rescue => e
