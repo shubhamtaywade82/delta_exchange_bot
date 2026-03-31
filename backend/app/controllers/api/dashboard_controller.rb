@@ -112,7 +112,10 @@ class Api::DashboardController < ApplicationController
   end
 
   def position_payload(position)
-    entry_price = corrected_entry_price(position)
+    # Always show persisted `entry_price` / LTP — do not rewrite entry from OHLCV.
+    # One active Position row per symbol is typically updated on new fills; `entry_time`
+    # often stays at the first open, so candle-based "correction" skewed displayed entry.
+    entry_price = position.entry_price.to_f
     mark = Rails.cache.read("ltp:#{position.symbol}")&.to_f || entry_price
     unrealized_usd = unrealized_pnl_usd(position: position, mark: mark, entry: entry_price).round(2)
 
@@ -157,19 +160,6 @@ class Api::DashboardController < ApplicationController
     direction = position.side.in?(%w[sell short]) ? -1.0 : 1.0
     qty = position.size.to_f.abs
     (mark.to_f - entry.to_f) * qty * direction
-  end
-
-  def corrected_entry_price(position)
-    cache_key = "dashboard:entry_correction:#{position.symbol}:#{position.entry_time&.to_i || position.created_at&.to_i}"
-    Rails.cache.fetch(cache_key, expires_in: 30.seconds) do
-      entry_price_corrector.corrected_entry_for(position)
-    end
-  end
-
-  def entry_price_corrector
-    @entry_price_corrector ||= Bot::Execution::EntryPriceCorrector.new(
-      market_data: DeltaExchange::Client.new.market_data
-    )
   end
 
   def build_execution_health

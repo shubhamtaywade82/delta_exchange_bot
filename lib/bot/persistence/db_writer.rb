@@ -7,6 +7,9 @@ module Bot
     # Writes position and trade records directly to the Rails PostgreSQL database
     # so the frontend dashboard reflects live bot activity.
     class DbWriter
+      DEFAULT_TRADE_REGIME   = ENV.fetch("BOT_TRADE_REGIME", "unknown").freeze
+      DEFAULT_TRADE_STRATEGY = ENV.fetch("BOT_TRADE_STRATEGY", "multi_timeframe").freeze
+
       def initialize(database: ENV.fetch("BOT_DB_NAME", "backend_development"),
                      host:     ENV.fetch("BOT_DB_HOST", "localhost"),
                      port:     ENV.fetch("BOT_DB_PORT", "5432").to_i,
@@ -59,11 +62,12 @@ module Bot
           <<~SQL,
             INSERT INTO trades
               (symbol, side, entry_price, exit_price, size, pnl_usd, pnl_inr,
-               duration_seconds, closed_at, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $9)
+               duration_seconds, closed_at, regime, strategy, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $9, $9)
           SQL
           [symbol, side.to_s, entry_price, exit_price, lots,
-           pnl_usd, pnl_inr, duration_seconds, now.iso8601]
+           pnl_usd, pnl_inr, duration_seconds, now.iso8601,
+           DEFAULT_TRADE_REGIME, DEFAULT_TRADE_STRATEGY]
         )
       rescue PG::UniqueViolation
         # Ignore duplicate trade records to ensure data integrity without crashing.

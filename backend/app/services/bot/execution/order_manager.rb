@@ -140,7 +140,9 @@ module Bot
           pnl_usd:          pnl_usd,
           pnl_inr:          pnl_inr,
           duration_seconds: duration,
-          closed_at:        Time.now.utc
+          closed_at:        Time.now.utc,
+          regime:           ENV.fetch("BOT_TRADE_REGIME", "unknown"),
+          strategy:         ENV.fetch("BOT_TRADE_STRATEGY", "multi_timeframe")
         )
 
         @logger.info("trade_closed", symbol: symbol, exit_usd: exit_price,
