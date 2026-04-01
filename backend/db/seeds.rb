@@ -43,7 +43,8 @@ defaults = {
   "ai.ollama_model" => ["llama3", "string"],
   "ai.ollama_timeout_seconds" => ["8", "integer"],
   "ai.ollama_max_retries" => ["2", "integer"],
-  "runner.strategy_interval_seconds" => ["60", "integer"]
+  "runner.strategy_interval_seconds" => ["30", "integer"],
+  "runner.strategy_symbol_stagger_seconds" => ["1.0", "float"]
 }
 
 defaults.each do |key, (value, value_type)|

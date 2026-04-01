@@ -2,7 +2,7 @@
 
 module Trading
   class Runner
-    DEFAULT_STRATEGY_INTERVAL = 60
+    DEFAULT_STRATEGY_INTERVAL = 30
 
     def initialize(session_id:, client: nil)
       @session = TradingSession.find(session_id)
@@ -77,25 +77,26 @@ module Trading
       end
     end
 
+    # How often to start a new full pass over the watchlist (not aligned to chart candle closes).
     def strategy_interval_seconds
       Trading::RuntimeConfig.fetch_integer("runner.strategy_interval_seconds", default: DEFAULT_STRATEGY_INTERVAL)
     end
 
-    # History/candles is unauthenticated and heavily rate-limited. Each symbol triggers 3 sequential
-    # fetches (trend / confirm / entry). Without a gap, the 2nd+ symbols often get empty/error payloads,
-    # insufficient_candles runs, and Redis never gets persist — only the first symbol stays fresh.
+    # Within a single pass, pause between symbols (seconds) so public /history/candles is not burst.
+    # This is rate-limit spacing only — the next symbol runs a few seconds later, not on the next 5m bar.
     def strategy_symbol_stagger_seconds
       Trading::RuntimeConfig.fetch_float(
         "runner.strategy_symbol_stagger_seconds",
-        default: 2.5,
+        default: 1.0,
         env_key: "RUNNER_STRATEGY_SYMBOL_STAGGER_S"
       )
     end
 
     def run_strategy
+      pass_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       symbols = SymbolConfig.where(enabled: true).pluck(:symbol)
       config  = Bot::Config.load
-      
+
       # Reuse the migrated strategy logic which fetches OHLCV from API
       strategy = Bot::Strategy::MultiTimeframe.new(
         config:      config,
@@ -128,6 +129,12 @@ module Trading
       rescue => e
         Rails.logger.error("[Runner] Strategy error for #{symbol}: #{e.message}")
       end
+
+      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - pass_started
+      Rails.logger.info(
+        "[Runner] Strategy pass complete symbols=#{symbols.size} elapsed_s=#{elapsed.round(2)} " \
+        "(stagger=#{strategy_symbol_stagger_seconds}s between symbols; interval=#{strategy_interval_seconds}s between passes)"
+      )
     end
 
     def execute_signal(symbol:, side:, entry_price:, candle_timestamp:, strategy_name:, source:, context:)
