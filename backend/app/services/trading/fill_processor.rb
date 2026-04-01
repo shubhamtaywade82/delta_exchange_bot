@@ -3,6 +3,8 @@
 module Trading
   # FillProcessor persists exchange fills idempotently and derives order/position state deterministically.
   class FillProcessor
+    class OverfillError < StandardError; end
+
     def self.process(fill_event)
       new(fill_event).process
     end
@@ -82,17 +84,18 @@ module Trading
       incoming_qty = BigDecimal(@fill_event.quantity.to_s)
       return unless existing_qty + incoming_qty > order.size.to_d
 
-      raise StandardError, "Overfill detected for order #{order.id}"
+      raise OverfillError, "Overfill detected for order #{order.id}"
     end
 
 
 
     def apply_entry_context!(position)
-      context = Rails.cache.read("adaptive:entry_context:#{position.symbol}") || {}
+      raw = Rails.cache.read("adaptive:entry_context:#{position.symbol}") || {}
+      context = raw.respond_to?(:deep_stringify_keys) ? raw.deep_stringify_keys : raw
       position.update!(
-        strategy: context[:strategy] || position.strategy,
-        regime: context[:regime]&.to_s || position.regime,
-        entry_features: context[:features] || position.entry_features
+        strategy: context["strategy"].presence || position.strategy,
+        regime: context["regime"]&.to_s.presence || position.regime,
+        entry_features: context["features"].presence || position.entry_features
       )
     end
 

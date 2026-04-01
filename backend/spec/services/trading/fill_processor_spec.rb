@@ -64,6 +64,26 @@ RSpec.describe Trading::FillProcessor do
     expect(Trading::PaperWalletPublisher).to have_received(:publish!)
   end
 
+  it "raises OverfillError when cumulative fills would exceed order size" do
+    order
+    create(:fill, order: order, exchange_fill_id: "F-partial", quantity: 2, price: 49_900)
+
+    event = Trading::Events::OrderFilled.new(
+      exchange_fill_id: "F-overflow",
+      exchange_order_id: "EX-1",
+      quantity: 1,
+      price: 49_900,
+      fee: 0,
+      filled_at: Time.current,
+      status: "open",
+      raw_payload: { source: "spec" }
+    )
+
+    expect {
+      described_class.process(event)
+    }.to raise_error(Trading::FillProcessor::OverfillError, /Overfill/)
+  end
+
   it "skips side effects for duplicate fill id" do
     order
     create(:fill, order: order, exchange_fill_id: "F-1", quantity: 1, price: 49_900)

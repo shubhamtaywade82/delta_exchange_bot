@@ -2,7 +2,7 @@
 
 module Trading
   module Risk
-    # Read-only snapshot of the same gates as RiskManager + KillSwitch, for dashboards / paper testing.
+    # Read-only snapshot of the same gates as RiskManager + PortfolioGuard, for dashboards / paper testing.
     class EntryGatesSummary
       OVERRIDABLE_BLOCKER_CODES = %w[
         kill_switch_halt kill_switch_exposure daily_loss_cap margin_utilization max_concurrent_positions
@@ -16,7 +16,7 @@ module Trading
       def initialize(session, portfolio)
         @session = session
         @portfolio = portfolio
-        @kill_state = KillSwitch.call(portfolio: portfolio)
+        @guard_state = PortfolioGuard.call(portfolio: portfolio)
       end
 
       def to_h
@@ -29,7 +29,7 @@ module Trading
           paper_trading: PaperTrading.enabled?,
           execution_mode_label: execution_mode_label,
           trading_session: trading_session_payload,
-          kill_switch: kill_switch_payload,
+          kill_switch: portfolio_guard_payload,
           risk_gates: @session ? risk_gates_payload : nil,
           blockers: list,
           paper_risk_override_active: override,
@@ -70,14 +70,14 @@ module Trading
         }
       end
 
-      def kill_switch_payload
+      def portfolio_guard_payload
         {
-          state: @kill_state.to_s,
+          state: @guard_state.to_s,
           total_pnl_usd: @portfolio.total_pnl.to_f,
           total_exposure_usd: @portfolio.total_exposure.to_f,
-          halt_if_pnl_at_or_below_usd: KillSwitch::MAX_DAILY_LOSS.to_f,
-          exposure_must_stay_below_usd: KillSwitch::MAX_EXPOSURE.to_f,
-          blocks_new_entries: @kill_state != :ok
+          halt_if_pnl_at_or_below_usd: PortfolioGuard::MAX_DAILY_LOSS.to_f,
+          exposure_must_stay_below_usd: PortfolioGuard::MAX_EXPOSURE.to_f,
+          blocks_new_entries: @guard_state != :ok
         }
       end
 
@@ -145,22 +145,22 @@ module Trading
           }
         end
 
-        reasons.concat(kill_switch_blockers)
+        reasons.concat(portfolio_guard_blockers)
         reasons.concat(session_risk_blockers) if @session
         reasons
       end
 
-      def kill_switch_blockers
-        case @kill_state
+      def portfolio_guard_blockers
+        case @guard_state
         when :halt_trading
           [{
             code: "kill_switch_halt",
-            message: "Kill switch: trading halted (portfolio PnL #{@portfolio.total_pnl.to_f.round(2)} USD at or below #{KillSwitch::MAX_DAILY_LOSS.to_f} USD)."
+            message: "Portfolio guard: trading halted (portfolio PnL #{@portfolio.total_pnl.to_f.round(2)} USD at or below #{PortfolioGuard::MAX_DAILY_LOSS.to_f} USD)."
           }]
         when :block_new_trades
           [{
             code: "kill_switch_exposure",
-            message: "Kill switch: new entries blocked (exposure #{@portfolio.total_exposure.to_f.round(2)} USD ≥ cap #{KillSwitch::MAX_EXPOSURE.to_f} USD)."
+            message: "Portfolio guard: new entries blocked (exposure #{@portfolio.total_exposure.to_f.round(2)} USD ≥ cap #{PortfolioGuard::MAX_EXPOSURE.to_f} USD)."
           }]
         else
           []

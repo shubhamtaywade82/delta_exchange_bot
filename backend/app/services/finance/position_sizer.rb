@@ -41,7 +41,7 @@ module Finance
       end
 
       def default_usd_inr
-        Setting.find_by(key: "usd_to_inr_rate")&.value&.to_f&.nonzero? || 85.0
+        Finance::UsdInrRate.current
       end
     end
   end

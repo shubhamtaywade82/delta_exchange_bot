@@ -1,6 +1,6 @@
 require "rails_helper"
 
-RSpec.describe Trading::KillSwitch do
+RSpec.describe Trading::EmergencyShutdown do
   let(:session) { TradingSession.create!(strategy: "multi_timeframe", status: "running", capital: 1000.0) }
   let(:client)  { double("DeltaExchange::Client") }
 

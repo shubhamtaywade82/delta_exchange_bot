@@ -58,11 +58,11 @@ Modules:
 - `Trading::Risk::PositionRisk`
 - `Trading::Risk::MarginCalculator`
 - `Trading::Risk::LiquidationGuard`
-- `Trading::Risk::KillSwitch`
+- `Trading::Risk::PortfolioGuard` (PnL / exposure limits for new entries)
 - `Trading::Risk::Engine`
 - `Trading::Risk::Executor`
 
-`ExecutionEngine` checks kill-switch before placing any new order.
+`Trading::EmergencyShutdown` flattens positions and cancels session orders (operational stop). `ExecutionEngine` checks `PortfolioGuard` before placing any new order.
 
 
 ## Microstructure execution layer

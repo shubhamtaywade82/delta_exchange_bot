@@ -18,7 +18,7 @@ module Trading
         # 2. Trigger Exit if stop hit
         if action == :exit
           Rails.logger.warn("[TrailingStopHandler] STOP HIT for #{position.symbol} at #{@tick.price}")
-          KillSwitch.force_exit_position(position, @client, reason: "TRAILING_STOP_EXIT")
+          EmergencyShutdown.force_exit_position(position, @client, reason: "TRAILING_STOP_EXIT")
         end
       end
 

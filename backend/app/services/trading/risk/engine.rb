@@ -12,9 +12,9 @@ module Trading
         pnl = PositionRisk.call(position: position, mark_price: mark_price)
         margin = MarginCalculator.call(position: position, mark_price: mark_price)
         liquidation = LiquidationGuard.call(position: position, mark_price: mark_price)
-        kill = KillSwitch.call(portfolio: portfolio)
+        portfolio_guard = PortfolioGuard.call(portfolio: portfolio)
 
-        { pnl: pnl, margin: margin, liquidation: liquidation, kill: kill }
+        { pnl: pnl, margin: margin, liquidation: liquidation, portfolio_guard: portfolio_guard }
       end
     end
   end

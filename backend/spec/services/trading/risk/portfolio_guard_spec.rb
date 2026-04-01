@@ -1,6 +1,6 @@
 require "rails_helper"
 
-RSpec.describe Trading::Risk::KillSwitch do
+RSpec.describe Trading::Risk::PortfolioGuard do
   it "halts when pnl breaches threshold" do
     portfolio = Trading::Risk::PortfolioSnapshot::Result.new(total_pnl: -20_000.to_d, total_exposure: 1.to_d)
 

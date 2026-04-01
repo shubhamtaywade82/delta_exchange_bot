@@ -2,8 +2,9 @@
 
 module Trading
   module Risk
-    # KillSwitch enforces global drawdown and exposure guardrails.
-    class KillSwitch
+    # Portfolio-level PnL and exposure limits that block new entries or halt trading.
+    # For cancel-all / flatten-session behavior, use Trading::EmergencyShutdown.
+    class PortfolioGuard
       MAX_DAILY_LOSS = ENV.fetch("RISK_MAX_DAILY_LOSS", "-10000").to_d
       MAX_EXPOSURE = ENV.fetch("RISK_MAX_EXPOSURE", "100000").to_d
 

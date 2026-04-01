@@ -1,4 +1,7 @@
 # app/models/trading_session.rb
+# +capital+ is interpreted as USD equity for risk sizing: OrderBuilder multiplies by Finance::UsdInrRate
+# then Finance::PositionSizer divides back to USD. +RiskManager+ daily loss compares +Trade.pnl_usd+ to
+# a cap derived from the same field — keep capital and pnl in USD for consistent gates.
 class TradingSession < ApplicationRecord
   has_many :generated_signals, dependent: :delete_all
 
