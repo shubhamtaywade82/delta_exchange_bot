@@ -12,7 +12,9 @@ class TradingSession < ApplicationRecord
   validates :status, inclusion: { in: STATUSES }
 
   before_validation :set_default_status
-  before_validation :ensure_portfolio, on: :create
+  # Must run in before_validation (not before_save) so belongs_to :portfolio passes.
+  # Include every save, not only :create — otherwise find_or_initialize_by + update! leaves legacy nil portfolio_id.
+  before_validation :ensure_portfolio
 
   def running?
     status == "running"

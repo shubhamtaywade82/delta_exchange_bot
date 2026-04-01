@@ -18,6 +18,7 @@ module Trading
       side = map_side(@signal.side)
       {
         trading_session_id: @session.id,
+        portfolio_id: @session.portfolio_id,
         position_id: @position.id,
         symbol: @signal.symbol,
         side: side,

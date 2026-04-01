@@ -33,6 +33,8 @@ module Trading
       idem_key = IdempotencyGuard.key_for_signal(@signal)
       return nil unless acquire_idempotency!(idem_key)
 
+      ensure_session_has_portfolio!
+
       validate_risk_and_portfolio_guard!
 
       position = find_or_create_position!
@@ -63,6 +65,13 @@ module Trading
 
       Rails.logger.warn("[ExecutionEngine] Duplicate signal skipped: #{idem_key}")
       false
+    end
+
+    def ensure_session_has_portfolio!
+      return if @session.portfolio_id.present?
+
+      @session.save!
+      @session.reload
     end
 
     def validate_risk_and_portfolio_guard!
