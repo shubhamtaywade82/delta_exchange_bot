@@ -73,6 +73,47 @@ If the JSON API is reachable beyond a trusted network, set **`API_ACCESS_TOKEN`*
 
 When unset, authentication is not enforced (local development default). **Action Cable** is not covered by this mechanism; restrict WebSocket exposure separately if needed.
 
+## Fresh start (trades + documented Redis/cache)
+
+Use one command when you want an empty **trade history**, **order/fill chain**, **positions**, **signals**, **strategy learning rows**, and a **defined Redis + cache reset** so auto-calibration (e.g. `AiRefinementJob`, adaptive cache) starts from a clean slate.
+
+**Stop the bot and `bin/jobs` (or any worker running `Trading::Runner` / `DeltaTradingJob`) before running this**, so nothing writes while you wipe state.
+
+```bash
+cd backend
+CONFIRM=YES bin/rails trading:fresh_start
+```
+
+### What it deletes (PostgreSQL)
+
+- `portfolio_ledger_entries`, `fills`, `orders` (after clearing `orders.position_id`)
+- `trades`
+- `generated_signals`, `positions`
+- `strategy_params` (online-learning parameters; they repopulate as new trades close)
+
+It does **not** delete `trading_sessions`, `portfolios`, `settings`, `symbol_configs`, or Solid Queue data.
+
+### Redis scope (`Redis.current`, typically DB `0` from `REDIS_URL`)
+
+Exact keys removed:
+
+- `delta:positions:live`, `delta:wallet:state`, `delta:execution:incidents`, `delta:strategy:state`
+- `learning:ai_refinement:enqueue_lock`, `delta_bot_session_resumer:boot_lock`
+
+`SCAN` + `DEL` for every key matching:
+
+- `delta_bot_lock:*` (session locks)
+- `delta:order:*` (signal idempotency keys)
+- `delta_bot:prices:*` (legacy price store prefix)
+
+### Cache scope (`Rails.cache`)
+
+- **`Rails.cache.clear`** — in development/production this is the Redis cache store (often DB `1` in `config/environments/development.rb`), namespaced per environment. This drops **LTP/mark**, **`adaptive:*`**, **`runtime_config:*`**, **`ai:edge:*`**, **`learning:metrics:*`**, **`funding:*`**, **`delta:product:lot_multiplier:*`**, and other keys written only through Rails cache.
+
+Implementation: [`Trading::FreshStart`](backend/app/services/trading/fresh_start.rb), task `trading:fresh_start` in [`backend/lib/tasks/trading_reset.rake`](backend/lib/tasks/trading_reset.rake).
+
+For a **lighter** reset (positions + signals only, no trades), use `CONFIRM=YES bin/rails trading:reset_positions_and_signals`.
+
 ## Stopping & restarting
 
 ### Normal stop
@@ -92,11 +133,13 @@ rm -f backend/tmp/pids/server.pid
 
 ### Clearing locks
 
-If the bot ran via `DeltaTradingJob` and crashed, clear Redis:
+If the bot ran via `DeltaTradingJob` and crashed, clear session locks (Redis `SCAN`, since `DEL` does not expand globs):
 
 ```bash
-redis-cli del "delta_bot_lock:*"
+redis-cli --scan --pattern 'delta_bot_lock:*' | xargs -r redis-cli del
 ```
+
+Or run a full documented reset (includes locks): `CONFIRM=YES bin/rails trading:fresh_start` (see **Fresh start** above).
 
 ## Tests
 
