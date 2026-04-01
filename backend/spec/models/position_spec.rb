@@ -1,9 +1,11 @@
 require "rails_helper"
 
 RSpec.describe Position, type: :model do
+  let(:portfolio) { create(:portfolio) }
+
   describe "validations" do
     it "defaults to init status" do
-      position = described_class.new(symbol: "BTCUSD", side: "buy", size: 1)
+      position = described_class.new(symbol: "BTCUSD", side: "buy", size: 1, portfolio: portfolio)
 
       position.validate
 
@@ -11,7 +13,7 @@ RSpec.describe Position, type: :model do
     end
 
     it "rejects unsupported statuses" do
-      position = described_class.new(symbol: "BTCUSD", side: "buy", size: 1, status: "bogus")
+      position = described_class.new(symbol: "BTCUSD", side: "buy", size: 1, status: "bogus", portfolio: portfolio)
 
       expect(position).not_to be_valid
       expect(position.errors[:status]).to include("is not included in the list")
@@ -20,7 +22,7 @@ RSpec.describe Position, type: :model do
 
   describe "#transition_to!" do
     it "allows valid transition chain" do
-      position = described_class.create!(symbol: "BTCUSD", side: "buy", size: 1)
+      position = described_class.create!(symbol: "BTCUSD", side: "buy", size: 1, portfolio: portfolio)
 
       expect { position.transition_to!("entry_pending") }
         .to change { position.reload.status }
@@ -32,7 +34,7 @@ RSpec.describe Position, type: :model do
     end
 
     it "raises when transition is invalid" do
-      position = described_class.create!(symbol: "BTCUSD", side: "buy", size: 1)
+      position = described_class.create!(symbol: "BTCUSD", side: "buy", size: 1, portfolio: portfolio)
 
       expect { position.transition_to!("closed") }
         .to raise_error(Position::InvalidTransitionError, "init -> closed is invalid")
@@ -40,10 +42,10 @@ RSpec.describe Position, type: :model do
   end
 
   describe "#recalculate_from_orders!" do
-    let(:session) { TradingSession.create!(strategy: "multi_timeframe", status: "running", capital: 1000.0) }
+    let(:session) { create(:trading_session) }
 
     it "derives partially_filled from linked orders" do
-      position = described_class.create!(symbol: "BTCUSD", side: "buy", size: 1)
+      position = described_class.create!(symbol: "BTCUSD", side: "buy", size: 1, portfolio: session.portfolio)
 
       order = Order.create!(
         trading_session: session,

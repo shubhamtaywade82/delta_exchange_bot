@@ -139,7 +139,9 @@ module Trading
       leverage = @session.leverage.to_i
       leverage = 10 if leverage.zero?
 
-      position = Position.active.find_by(symbol: symbol, side: self.class.active_position_side_keys(@signal.side))
+      position = Position.where(portfolio_id: @session.portfolio_id, symbol: symbol)
+                         .where(status: Position::NET_OPEN_STATUSES)
+                         .first
 
       if position
         updates = {}
@@ -152,7 +154,11 @@ module Trading
         return position
       end
 
-      position = Position.new(symbol: symbol, side: side)
+      position = Position.new(
+        portfolio: @session.portfolio,
+        symbol: symbol,
+        side: side
+      )
       position.status = "init"
       position.leverage = leverage
       position.contract_value = contract_scalar if contract_scalar.to_f.positive?

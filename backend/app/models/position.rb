@@ -5,16 +5,21 @@
 # State progression:
 # INIT -> ENTRY_PENDING -> PARTIALLY_FILLED -> FILLED -> EXIT_PENDING -> CLOSED
 class Position < ApplicationRecord
+  belongs_to :portfolio
   has_many :orders, dependent: :nullify
 
   # `open` is legacy / exchange-facing wording; treat like `filled` for listing & margin.
   STATES = %w[init entry_pending partially_filled filled exit_pending closed liquidated rejected open].freeze
   SIDES = %w[buy sell long short].freeze
 
+  # One net exposure row per (portfolio, symbol); matches partial unique index.
+  NET_OPEN_STATUSES = %w[init entry_pending partially_filled filled exit_pending open].freeze
+
+  validates :portfolio, presence: true
   validates :symbol, presence: true
   validates :status, inclusion: { in: STATES }
   validates :side, inclusion: { in: SIDES }, allow_nil: true
-  validates :size, numericality: { greater_than: 0 }, allow_nil: true
+  validates :size, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
 
   scope :active, lambda {
     where(status: %w[entry_pending partially_filled filled exit_pending open])

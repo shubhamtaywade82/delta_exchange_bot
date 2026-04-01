@@ -6,6 +6,7 @@ RSpec.describe Trading::PositionRecalculator do
   let(:session) { create(:trading_session) }
   let(:position) do
     Position.create!(
+      portfolio: session.portfolio,
       symbol: "BTCUSD",
       side: "buy",
       status: "init",

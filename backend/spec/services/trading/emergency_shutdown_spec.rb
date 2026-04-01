@@ -1,7 +1,7 @@
 require "rails_helper"
 
 RSpec.describe Trading::EmergencyShutdown do
-  let(:session) { TradingSession.create!(strategy: "multi_timeframe", status: "running", capital: 1000.0) }
+  let(:session) { create(:trading_session, strategy: "multi_timeframe", capital: 1000.0) }
   let(:client)  { double("DeltaExchange::Client") }
 
   before do
@@ -28,7 +28,7 @@ RSpec.describe Trading::EmergencyShutdown do
     end
 
     it "closes all open positions by placing market orders" do
-      Position.create!(symbol: "BTCUSD", side: "long", status: "filled",
+      Position.create!(portfolio: session.portfolio, symbol: "BTCUSD", side: "long", status: "filled",
                        size: 1.0, entry_price: 50000.0, leverage: 10, product_id: 84)
       described_class.call(session.id, client: client)
       expect(client).to have_received(:place_order).with(hash_including(side: "sell", order_type: "market_order"))
@@ -43,7 +43,7 @@ RSpec.describe Trading::EmergencyShutdown do
 
   describe ".force_exit_position" do
     it "places a sell order for a long position" do
-      position = Position.create!(symbol: "BTCUSD", side: "long", status: "filled",
+      position = Position.create!(portfolio: session.portfolio, symbol: "BTCUSD", side: "long", status: "filled",
                                   size: 1.0, entry_price: 50000.0, leverage: 10, product_id: 84)
       described_class.force_exit_position(position, client)
       expect(client).to have_received(:place_order).with(
@@ -53,7 +53,7 @@ RSpec.describe Trading::EmergencyShutdown do
     end
 
     it "places a buy order for a short position" do
-      position = Position.create!(symbol: "ETHUSD", side: "short", status: "filled",
+      position = Position.create!(portfolio: session.portfolio, symbol: "ETHUSD", side: "short", status: "filled",
                                   size: 2.0, entry_price: 3000.0, leverage: 15, product_id: 3)
       described_class.force_exit_position(position, client)
       expect(client).to have_received(:place_order).with(hash_including(side: "buy"))

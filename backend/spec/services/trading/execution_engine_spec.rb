@@ -108,6 +108,7 @@ RSpec.describe Trading::ExecutionEngine do
 
     before do
       Position.create!(
+        portfolio: session.portfolio,
         symbol: "BTCUSD",
         side: "short",
         status: "closed",

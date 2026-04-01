@@ -97,6 +97,7 @@ module Trading
 
       def handle_tick(symbol, price, timestamp)
         Rails.cache.write("ltp:#{symbol}", price, expires_in: 30.seconds)
+        Rails.cache.write("mark:#{symbol}", price, expires_in: 30.seconds)
         evaluate_tick_risk(symbol: symbol, mark_price: price)
 
         EventBus.publish(

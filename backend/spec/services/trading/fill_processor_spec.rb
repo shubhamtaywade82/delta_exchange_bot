@@ -2,7 +2,16 @@ require "rails_helper"
 
 RSpec.describe Trading::FillProcessor do
   let(:session) { create(:trading_session) }
-  let(:position) { Position.create!(symbol: "BTCUSD", side: "buy", status: "init", size: 1, leverage: 10) }
+  let(:position) do
+    Position.create!(
+      portfolio: session.portfolio,
+      symbol: "BTCUSD",
+      side: "buy",
+      status: "init",
+      size: 1,
+      leverage: 10
+    )
+  end
 
   before do
     allow(Trading::PaperTrading).to receive(:enabled?).and_return(false)
