@@ -7,8 +7,8 @@ export function formatSignalActivityTimestamp(iso: string | undefined) {
   }
 }
 
-/** Fixed 4 fractional digits when non-whole; trailing zeros; whole values render without a decimal part. */
-export const DISPLAY_DECIMAL_PLACES = 4 as const;
+/** Fixed 2 fractional digits when non-whole; trailing zeros; whole values render without a decimal part. */
+export const DISPLAY_DECIMAL_PLACES = 2 as const;
 
 export function formatDisplayDecimal(value: unknown): string {
   if (value == null || value === '') return '--';
@@ -46,18 +46,14 @@ export function formatQuotePrice(value: unknown): string {
   return formatDisplayDecimal(value);
 }
 
-/**
- * Shorter numbers for dense SMC bands (large handles get fewer decimals).
- */
+/** SMC / analysis bands — same 2-decimal cap as the rest of the dashboard. */
 export function formatSmcPrice(value: unknown): string {
   if (value == null || value === '') return '—';
   const n = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(n)) return '—';
-  const abs = Math.abs(n);
-  const decimals = abs >= 10_000 ? 1 : abs >= 1_000 ? 2 : abs >= 1 ? 3 : 4;
   return n.toLocaleString(undefined, {
     minimumFractionDigits: 0,
-    maximumFractionDigits: decimals,
+    maximumFractionDigits: DISPLAY_DECIMAL_PLACES,
   });
 }
 
