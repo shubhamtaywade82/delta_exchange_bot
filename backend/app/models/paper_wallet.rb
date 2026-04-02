@@ -20,6 +20,14 @@ class PaperWallet < ApplicationRecord
     cash_balance.to_d + realized_pnl.to_d
   end
 
+  # Sum of initial margin for each open paper position (matches PaperTrading::PositionManager margin math).
+  def margin_reserved_from_open_positions
+    paper_positions.reduce(0.to_d) do |sum, pos|
+      lev = [ pos.leverage.to_i, 1 ].max.to_d
+      sum + (pos.avg_entry_price.to_d * pos.net_quantity * pos.risk_unit_per_contract.to_d) / lev
+    end
+  end
+
   # ltp_map: { product_id(Integer) => BigDecimal }
   def refresh_snapshot!(ltp_map: {})
     with_lock do
@@ -31,8 +39,11 @@ class PaperWallet < ApplicationRecord
         sum + pos.unrealized_pnl(ltp)
       end
 
+      reserved = margin_reserved_from_open_positions
+
       update!(
         unrealized_pnl: unrealized,
+        reserved_margin: reserved,
         equity: cash_balance.to_d + realized_pnl.to_d + unrealized
       )
     end

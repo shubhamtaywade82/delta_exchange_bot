@@ -40,6 +40,8 @@ module Trading
     end
 
     def self.persist_portfolio_payload(cfg, portfolio)
+      # +used_margin+ can drift if fills bypass the normal path; recompute from open positions before UI.
+      portfolio.sync_margin_from_positions!
       blocked = portfolio.used_margin.to_f
       unrealized = portfolio.unrealized_pnl_total.to_f
       balance_usd = portfolio.balance.to_f

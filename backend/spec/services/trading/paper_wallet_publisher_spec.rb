@@ -38,5 +38,30 @@ RSpec.describe Trading::PaperWalletPublisher do
       expect(payload["available_inr"]).to eq(payload["total_equity_inr"])
       expect(payload["ledger_margin_exceeds_cash"]).to be(false)
     end
+
+    it "recomputes blocked margin from open positions so stale used_margin does not persist" do
+      allow(Trading::PaperTrading).to receive(:enabled?).and_return(true)
+      allow(Bot::Config).to receive(:load).and_return(
+        double("Config", usd_to_inr_rate: 85.0, simulated_capital_inr: 850_000.0)
+      )
+
+      session = create(:trading_session, status: "running")
+      session.portfolio.update!(
+        balance: BigDecimal("117.65"),
+        available_balance: BigDecimal("0.77"),
+        used_margin: BigDecimal("116.88")
+      )
+
+      redis_store = {}
+      redis = instance_double(Redis)
+      allow(redis).to receive(:set) { |k, v, **| redis_store[k] = v }
+      allow(Redis).to receive(:current).and_return(redis)
+
+      payload = described_class.wallet_snapshot!
+
+      expect(payload["blocked_margin_usd"]).to eq(0.0)
+      expect(session.portfolio.reload.used_margin).to eq(0)
+      expect(session.portfolio.available_balance).to eq(BigDecimal("117.65"))
+    end
   end
 end

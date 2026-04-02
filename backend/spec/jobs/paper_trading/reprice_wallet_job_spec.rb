@@ -25,6 +25,7 @@ RSpec.describe PaperTrading::RepriceWalletJob do
 
     wallet.reload
     expect(wallet.unrealized_pnl).to eq(BigDecimal("20"))
+    expect(wallet.reserved_margin).to eq(BigDecimal("180"))
     expect(wallet.equity).to eq(BigDecimal("20"))
   end
 
@@ -36,5 +37,6 @@ RSpec.describe PaperTrading::RepriceWalletJob do
 
     wallet.reload
     expect(wallet.unrealized_pnl).to eq(BigDecimal("40"))
+    expect(wallet.reserved_margin).to eq(BigDecimal("180"))
   end
 end
