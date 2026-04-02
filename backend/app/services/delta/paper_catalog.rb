@@ -68,6 +68,7 @@ module Delta
         valuation_strategy: v[:valuation_strategy],
         tick_size: product.tick_size.to_s.to_d,
         position_size_limit: product.respond_to?(:position_size_limit) ? product.position_size_limit&.to_i : nil,
+        default_leverage: integer_leverage(product),
         mark_price: nil,
         close_price: nil,
         raw_metadata: product.respond_to?(:raw_attributes) ? product.raw_attributes : {},
@@ -80,6 +81,14 @@ module Delta
       return nil if val.blank?
 
       val.to_d
+    end
+
+    def self.integer_leverage(product)
+      return nil unless product.respond_to?(:default_leverage)
+
+      v = product.default_leverage
+      v = v.to_s.to_i if v
+      v.positive? ? v : nil
     end
   end
 end

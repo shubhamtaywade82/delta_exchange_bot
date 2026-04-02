@@ -69,7 +69,7 @@ module Trading
       lev = effective_leverage(position)
       margin = if lev.positive? && lot_d.positive? && avg.present?
                  (q.abs * lot_d * avg.abs) / lev
-               end
+      end
 
       side = q.positive? ? "long" : "short"
       position.assign_attributes(size: q.abs, side: side, entry_price: avg, margin: margin)
@@ -81,6 +81,7 @@ module Trading
         side: side,
         entry_price: avg,
         margin: margin,
+        leverage: lev.to_i,
         unrealized_pnl_usd: unrealized,
         pnl_usd: nil,
         status: next_state,
@@ -104,18 +105,29 @@ module Trading
       pending_orders.exists? ? "partially_filled" : "filled"
     end
 
+    # Prefer +trading_sessions.leverage+ from the position's orders (execution truth). A stale +positions.leverage+
+    # of 1 would otherwise force initial margin = full notional and blow past portfolio +balance+ in the UI.
     def effective_leverage(position)
-      lev = position.leverage.to_d
-      return lev if lev.positive?
+      session_lev = Order.where(position_id: position.id)
+                         .joins(:trading_session)
+                         .order(:id)
+                         .limit(1)
+                         .pick("trading_sessions.leverage")
+      if session_lev.present? && session_lev.to_i.positive?
+        return BigDecimal(session_lev.to_s)
+      end
 
-      picked = Order.where(position_id: position.id)
-                    .joins(:trading_session)
-                    .limit(1)
-                    .pick("trading_sessions.leverage")
-      lev = picked.to_d
-      return lev if lev.positive?
+      pos_lev = position.leverage
+      if pos_lev.present? && pos_lev.to_i.positive?
+        return BigDecimal(pos_lev.to_s)
+      end
 
-      1.to_d
+      sym_lev = SymbolConfig.find_by(symbol: position.symbol.to_s)&.leverage
+      if sym_lev.present? && sym_lev.to_i.positive?
+        return BigDecimal(sym_lev.to_s)
+      end
+
+      BigDecimal("1")
     end
 
     def merge_trailing_stop!(attrs, position, avg_entry)
@@ -132,9 +144,9 @@ module Trading
       peak = avg
       stop = if side.in?(%w[long buy])
                avg * (BigDecimal("1") - trail_frac)
-             else
+      else
                avg * (BigDecimal("1") + trail_frac)
-             end
+      end
 
       attrs[:trail_pct] = trail
       attrs[:peak_price] = peak

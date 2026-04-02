@@ -76,6 +76,38 @@ RSpec.describe Trading::Positions::EntryOneMinuteSanity do
     expect(rows.first.ok).to be(false)
   end
 
+  it "flags a single fill when stored entry drifts materially from that fill even if the fill matches the 1m close" do
+    position = create(:position,
+                      portfolio: portfolio,
+                      symbol: "BTCUSD",
+                      side: "short",
+                      status: "filled",
+                      entry_price: 106.0,
+                      size: 1.0,
+                      leverage: 10)
+    order = create(:order,
+                   trading_session: session,
+                   portfolio: portfolio,
+                   position: position,
+                   symbol: "BTCUSD",
+                   side: "sell",
+                   size: "1.0",
+                   status: "filled")
+    create(:fill,
+           order: order,
+           price: 100.0,
+           quantity: 1.0,
+           filled_at: fill_time,
+           exchange_fill_id: "f-entry-drift")
+
+    allow(market_data).to receive(:candles).and_return(candle_payload(close: 100.05))
+
+    rows = described_class.call(positions: Position.where(id: position.id), tolerance_pct: 1.0, market_data: market_data)
+    expect(rows.first.ok).to be(false)
+    expect(rows.first.diff_first_fill_vs_close_pct).to be <= 1.0
+    expect(rows.first.note).to include("reconcile")
+  end
+
   it "matches when Delta uses period-end time for the candle row" do
     position = create(:position,
                         portfolio: portfolio,
@@ -141,8 +173,10 @@ RSpec.describe Trading::Positions::EntryOneMinuteSanity do
 
     allow(market_data).to receive(:candles).and_return(candle_payload(close: 100.0))
 
-    rows = described_class.call(positions: Position.where(id: position.id), tolerance_pct: 50.0, market_data: market_data)
+    rows = described_class.call(positions: Position.where(id: position.id), tolerance_pct: 0.25, market_data: market_data)
     expect(rows.first.fill_count).to eq(2)
+    expect(rows.first).to have_attributes(ok: true, diff_first_fill_vs_close_pct: 0.0)
+    expect(rows.first.diff_entry_vs_close_pct).to be > 0.25
     expect(rows.first.note).to include("VWAP")
   end
 
@@ -179,5 +213,85 @@ RSpec.describe Trading::Positions::EntryOneMinuteSanity do
     rows = described_class.call(positions: Position.where(id: position.id), tolerance_pct: 1.0, market_data: market_data)
     expect(rows.first.fill_count).to eq(2)
     expect(rows.first.note).to include("VWAP")
+  end
+
+  it "includes closed positions with entry in default_positions_scope" do
+    active_row = create(:position,
+                        portfolio: portfolio,
+                        symbol: "BTCUSD",
+                        side: "short",
+                        status: "filled",
+                        entry_price: 100.0,
+                        size: 1.0,
+                        leverage: 10)
+    closed_row = create(:position,
+                        portfolio: portfolio,
+                        symbol: "ETHUSD",
+                        side: "short",
+                        status: "closed",
+                        entry_price: 50.0,
+                        size: 0,
+                        leverage: 10)
+
+    ids = described_class.default_positions_scope.pluck(:id)
+    expect(ids).to include(active_row.id, closed_row.id)
+  end
+
+  it "uses only fills from orders linked to the position when the row is closed" do
+    closed = create(:position,
+                    portfolio: portfolio,
+                    symbol: "BTCUSD",
+                    side: "short",
+                    status: "closed",
+                    entry_price: 100.0,
+                    size: 0,
+                    leverage: 10)
+    active = create(:position,
+                    portfolio: portfolio,
+                    symbol: "BTCUSD",
+                    side: "short",
+                    status: "filled",
+                    entry_price: 200.0,
+                    size: 1.0,
+                    leverage: 10)
+
+    old_order = create(:order,
+                       trading_session: session,
+                       portfolio: portfolio,
+                       position: closed,
+                       symbol: "BTCUSD",
+                       side: "sell",
+                       size: "1.0",
+                       status: "filled")
+    create(:fill,
+           order: old_order,
+           price: 100.0,
+           quantity: 1.0,
+           filled_at: fill_time,
+           exchange_fill_id: "f-closed-cycle")
+
+    new_order = create(:order,
+                       trading_session: session,
+                       portfolio: portfolio,
+                       position: active,
+                       symbol: "BTCUSD",
+                       side: "sell",
+                       size: "1.0",
+                       status: "filled")
+    create(:fill,
+           order: new_order,
+           price: 200.0,
+           quantity: 1.0,
+           filled_at: fill_time + 1.hour,
+           exchange_fill_id: "f-active-cycle")
+
+    allow(market_data).to receive(:candles).and_return(candle_payload(close: 100.05))
+
+    closed_rows = described_class.call(positions: Position.where(id: closed.id), tolerance_pct: 0.25, market_data: market_data)
+    expect(closed_rows.first).to have_attributes(first_fill_price: 100.0, fill_count: 1, ok: true)
+
+    active_rows = described_class.call(positions: Position.where(id: active.id), tolerance_pct: 50.0, market_data: market_data)
+    expect(active_rows.first.fill_count).to eq(2)
+    expect(active_rows.first.first_fill_price).to eq(100.0)
   end
 end

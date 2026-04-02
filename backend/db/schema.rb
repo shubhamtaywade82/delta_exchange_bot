@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_02_150001) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_02_180000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -115,6 +115,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_150001) do
   create_table "paper_positions", force: :cascade do |t|
     t.decimal "avg_entry_price", precision: 36, scale: 18, null: false
     t.datetime "created_at", null: false
+    t.integer "leverage", default: 1, null: false
     t.integer "net_quantity", default: 0, null: false
     t.bigint "paper_product_snapshot_id", null: false
     t.bigint "paper_wallet_id", null: false
@@ -131,6 +132,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_150001) do
     t.string "contract_type"
     t.decimal "contract_value", precision: 36, scale: 18, null: false
     t.datetime "created_at", null: false
+    t.integer "default_leverage"
     t.decimal "mark_price", precision: 36, scale: 18
     t.string "notional_type"
     t.integer "position_size_limit"

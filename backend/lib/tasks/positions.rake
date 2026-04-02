@@ -60,7 +60,7 @@ namespace :trading do
       tol = 0.25 if tol.nil? || tol <= 0
       rows = Trading::Positions::EntryOneMinuteSanity.call(tolerance_pct: tol)
       if rows.empty?
-        puts "No active positions with fills to check."
+        puts "No positions (open or closed) with entry and fills to check."
       else
         rows.each do |r|
           status = r.ok ? "OK" : "CHECK"

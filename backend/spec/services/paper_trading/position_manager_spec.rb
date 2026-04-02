@@ -4,7 +4,9 @@ require "rails_helper"
 
 RSpec.describe PaperTrading::PositionManager do
   let(:wallet) { create(:paper_wallet, cash_balance: "100_000", equity: "100_000", reserved_margin: "0") }
-  let(:product) { create(:paper_product_snapshot, contract_value: "0.001", risk_unit_per_contract: "0.001") }
+  let(:product) do
+    create(:paper_product_snapshot, contract_value: "0.001", risk_unit_per_contract: "0.001", default_leverage: 1)
+  end
   let(:signal) { create(:paper_trading_signal, paper_wallet: wallet, product_id: product.product_id) }
   let(:order) do
     create(:paper_order,

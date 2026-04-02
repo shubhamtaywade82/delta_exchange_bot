@@ -36,6 +36,7 @@ RSpec.describe Trading::PaperWalletPublisher do
       expect(payload["unrealized_pnl_usd"]).to eq(0.0)
       expect(payload["available_usd"]).to eq(payload["total_equity_usd"])
       expect(payload["available_inr"]).to eq(payload["total_equity_inr"])
+      expect(payload["ledger_margin_exceeds_cash"]).to be(false)
     end
   end
 end

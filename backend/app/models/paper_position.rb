@@ -6,6 +6,7 @@ class PaperPosition < ApplicationRecord
 
   validates :side, inclusion: { in: %w[buy sell] }
   validates :net_quantity, numericality: { only_integer: true }
+  validates :leverage, numericality: { only_integer: true, greater_than: 0 }
   validates :avg_entry_price, :risk_unit_per_contract, presence: true
 
   def unrealized_pnl(ltp)

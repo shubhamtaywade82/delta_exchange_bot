@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+# Paper wallet amounts (+PaperProductSnapshot+ prices) are USD, aligned with Delta settlement;
+# INR display uses +Finance::UsdInrRate+ / +risk.usd_to_inr_rate+ (see +Trading::PaperWalletPublisher+).
 class PaperWallet < ApplicationRecord
   has_many :paper_trading_signals, dependent: :restrict_with_exception
   has_many :paper_orders, dependent: :restrict_with_exception

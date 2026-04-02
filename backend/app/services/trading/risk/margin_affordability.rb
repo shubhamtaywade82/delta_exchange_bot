@@ -33,7 +33,7 @@ module Trading
             order_side: order_side.to_s
           )
 
-          calc = Ledger::NetPositionCalculator.from_fills(existing + [hypo])
+          calc = Ledger::NetPositionCalculator.from_fills(existing + [ hypo ])
           lot_d = PositionLotSize.multiplier_for(position).to_d
           lev = effective_leverage(position, session)
           margin_after = margin_for_net(calc.signed_qty, calc.avg_entry, lot_d, lev)
@@ -62,18 +62,21 @@ module Trading
         end
 
         def effective_leverage(position, session)
-          lev = position.leverage.to_d
-          return lev if lev.positive?
+          order_lev = Order.where(position_id: position.id)
+                           .joins(:trading_session)
+                           .order(:id)
+                           .limit(1)
+                           .pick("trading_sessions.leverage")
+          return order_lev.to_d if order_lev.present? && order_lev.to_i.positive?
 
-          picked = Order.where(position_id: position.id)
-                        .joins(:trading_session)
-                        .limit(1)
-                        .pick("trading_sessions.leverage")
-          lev = picked.to_d
-          return lev if lev.positive?
+          ctx = session&.leverage
+          return ctx.to_d if ctx.present? && ctx.to_i.positive?
 
-          slev = session&.leverage.to_d
-          return slev if slev.positive?
+          pos_lev = position.leverage
+          return pos_lev.to_d if pos_lev.present? && pos_lev.to_i.positive?
+
+          sym_lev = SymbolConfig.find_by(symbol: position.symbol.to_s)&.leverage
+          return sym_lev.to_d if sym_lev.present? && sym_lev.to_i.positive?
 
           1.to_d
         end

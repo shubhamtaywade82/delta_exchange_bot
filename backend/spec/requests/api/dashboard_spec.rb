@@ -281,6 +281,7 @@ RSpec.describe "Api::Dashboard", type: :request do
         row = JSON.parse(response.body)["trades"].first
         expect(row["pnl_usd"]).to eq(-10.0)
         expect(row["pnl_inr"]).to eq(-850)
+        expect(row["size"]).to eq(2.0)
       end
     end
 

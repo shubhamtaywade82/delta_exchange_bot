@@ -82,4 +82,19 @@ RSpec.describe Trading::PositionRecalculator do
     expected_margin = (3 * BigDecimal("0.001") * avg) / 10
     expect(position.margin.to_d).to eq(expected_margin)
   end
+
+  it "uses trading session leverage from orders when position row wrongly stores 1x" do
+    position.update_columns(leverage: 1, size: 0, entry_price: nil, margin: nil)
+    order.update!(size: 3)
+    session.update!(leverage: 10)
+    create(:fill, order: order, quantity: 3, price: 50_000, exchange_fill_id: "F-lev-fix")
+
+    described_class.call(position.id)
+
+    position.reload
+    avg = BigDecimal("50000")
+    expect(position.leverage).to eq(10)
+    expected_margin = (3 * BigDecimal("0.001") * avg) / 10
+    expect(position.margin.to_d).to eq(expected_margin)
+  end
 end

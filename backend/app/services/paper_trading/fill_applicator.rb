@@ -9,7 +9,7 @@ module PaperTrading
       @product = product
     end
 
-    def call(price:, size:)
+    def call(price:, size:, leverage: nil)
       price = price.to_d
       size = Integer(size)
 
@@ -24,7 +24,8 @@ module PaperTrading
         fill: fill,
         fill_side: @order.side,
         quantity: size,
-        price: price
+        price: price,
+        leverage: leverage
       )
     end
   end

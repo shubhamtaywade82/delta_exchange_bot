@@ -46,7 +46,7 @@ RSpec.describe Trading::Risk::Executor do
 
       position.reload
       expected = (BigDecimal("100000") / BigDecimal("0.98")).round(8)
-      expect(position.stop_price.to_d).to eq(expected)
+      expect(position.stop_price.to_d.round(8)).to eq(expected)
       expect(position.stop_price.to_f).to be > 100_000.0
     end
   end

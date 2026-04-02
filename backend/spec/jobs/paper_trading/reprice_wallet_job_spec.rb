@@ -13,7 +13,8 @@ RSpec.describe PaperTrading::RepriceWalletJob do
       side: "buy",
       net_quantity: 2,
       avg_entry_price: "90",
-      risk_unit_per_contract: "1"
+      risk_unit_per_contract: "1",
+      leverage: 1
     )
   end
 

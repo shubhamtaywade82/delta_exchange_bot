@@ -563,6 +563,7 @@ const DashboardPage: React.FC = () => {
                   <tr>
                     <th>SYMBOL</th>
                     <th>SIDE</th>
+                    <th>SIZE</th>
                     <th>ENTRY</th>
                     <th>EXIT</th>
                     <th>PNL_REALIZED</th>
@@ -577,6 +578,9 @@ const DashboardPage: React.FC = () => {
                         <span className={`side-badge ${sideBadgeMeta(t.side).css}`}>
                           {sideBadgeMeta(t.side).label}
                         </span>
+                      </td>
+                      <td className="font-mono" title="Contracts / net quantity for the closed leg">
+                        {formatDisplayDecimal(t.size)}
                       </td>
                       <td className="font-mono">{formatQuotePrice(t.entry_price)}</td>
                       <td className="font-mono">{formatQuotePrice(t.exit_price)}</td>
@@ -595,7 +599,7 @@ const DashboardPage: React.FC = () => {
                     </tr>
                   )) : (
                     <tr>
-                      <td colSpan={6} className="text-center text-muted table-empty-row">
+                      <td colSpan={7} className="text-center text-muted table-empty-row">
                         NO_TRADES_IN_HISTORY
                       </td>
                     </tr>
@@ -703,6 +707,12 @@ const DashboardPage: React.FC = () => {
             </div>
             {wallet?.stale && (
               <div className="wallet-stale">⚠ Wallet data sync failed — check bot status</div>
+            )}
+            {wallet?.ledger_margin_exceeds_cash && (
+              <div className="wallet-stale">
+                Blocked margin exceeds ledger cash — margin rows are inconsistent with balance (often wrong leverage
+                on open positions). Re-run position reconciliation or let the next fill recompute margin.
+              </div>
             )}
           </section>
 

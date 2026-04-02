@@ -9,6 +9,7 @@ FactoryBot.define do
     risk_unit_per_contract { BigDecimal("0.001") }
     valuation_strategy { "contract_linear" }
     tick_size { BigDecimal("0.5") }
+    default_leverage { 10 }
     mark_price { BigDecimal("50_000") }
     close_price { BigDecimal("49_950") }
     raw_metadata { {} }

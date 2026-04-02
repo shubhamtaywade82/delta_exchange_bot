@@ -50,5 +50,30 @@ RSpec.describe Trading::Risk::MarginAffordability do
         )
       end.to raise_error(Trading::RiskManager::RiskError, /insufficient cash for margin/)
     end
+
+    it "uses session leverage before a stale 1x on the position row (no orders yet)" do
+      bad = create(:position,
+                   portfolio: portfolio,
+                   symbol: "BTCUSD",
+                   side: "long",
+                   status: "init",
+                   leverage: 1,
+                   contract_value: 0.001,
+                   entry_price: nil,
+                   size: nil,
+                   margin: nil)
+
+      expect do
+        described_class.verify!(
+          portfolio: portfolio,
+          symbol: "BTCUSD",
+          order_side: "buy",
+          order_size: 3,
+          fill_price: 50_000,
+          position: bad,
+          session: session
+        )
+      end.not_to raise_error
+    end
   end
 end

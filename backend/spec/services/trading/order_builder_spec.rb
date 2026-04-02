@@ -84,5 +84,34 @@ RSpec.describe Trading::OrderBuilder do
         described_class.build(tiny, session: session, position: position)
       }.to raise_error(Trading::OrderBuilder::SizingError, /zero contracts/)
     end
+
+    it "caps size by portfolio available_balance (margin budget in USD)" do
+      session.portfolio.update!(available_balance: 12.0, balance: 10_000, used_margin: 9_988)
+      capped = SignalStub.new(
+        symbol: "BTCUSD",
+        side: :long,
+        entry_price: 3000.0,
+        candle_timestamp: 1,
+        strategy: "mtf",
+        stop_price: 2950.0
+      )
+      order = described_class.build(capped, session: session, position: position)
+      # qty_risk = 3000; qty_margin = floor(12 * 0.98 * 10 / (0.001 * 3000)) = floor(39.2) = 39
+      expect(order[:size]).to eq(39)
+    end
+
+    it "caps size by PaperProductSnapshot position_size_limit when present" do
+      create(:paper_product_snapshot, symbol: "BTCUSD", product_id: 99_001, position_size_limit: 50)
+      limited = SignalStub.new(
+        symbol: "BTCUSD",
+        side: :long,
+        entry_price: 3000.0,
+        candle_timestamp: 1,
+        strategy: "mtf",
+        stop_price: 2950.0
+      )
+      order = described_class.build(limited, session: session, position: position)
+      expect(order[:size]).to eq(50)
+    end
   end
 end

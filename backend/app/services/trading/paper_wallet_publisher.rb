@@ -45,6 +45,7 @@ module Trading
       balance_usd = portfolio.balance.to_f
       equity_usd = balance_usd + unrealized
       spendable = portfolio.available_balance.to_f
+      ledger_margin_exceeds_cash = blocked > balance_usd + 1e-6
 
       data = {
         "cash_balance_usd" => balance_usd.round(2),
@@ -57,6 +58,7 @@ module Trading
         "available_inr" => (spendable * cfg.usd_to_inr_rate).round(0),
         "blocked_margin_usd" => blocked.round(2),
         "blocked_margin_inr" => (blocked * cfg.usd_to_inr_rate).round(0),
+        "ledger_margin_exceeds_cash" => ledger_margin_exceeds_cash,
         "capital_inr" => cfg.simulated_capital_inr.round(0),
         "paper_mode" => true,
         "updated_at" => Time.current.iso8601,

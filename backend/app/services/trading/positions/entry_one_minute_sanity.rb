@@ -9,10 +9,12 @@ module Trading
     # period open or period end; we match both. Epochs may be seconds or milliseconds.
     #
     # Caveats:
-    # - +entry_price+ is VWAP across all opening fills; a single 1m close only matches exactly when there is one fill.
+    # - +entry_price+ is VWAP across all opening fills; comparing VWAP to one 1m close is misleading when +fill_count+ > 1.
+    #   +ok+ uses first-fill vs close for those rows; +diff_entry_vs_close_pct+ remains for inspection only.
     # - Market / paper fills use mark or last trade; the official 1m close is the last print in that minute — not identical.
     # - +created_at+ / +updated_at+ on +Position+ are row lifecycle times; they do not define the fill price.
-    # - Fill set matches +PositionRecalculator+ — all fills for +(portfolio_id, symbol)+, not only +orders.position_id+.
+    # - Open rows: fill set matches +PositionRecalculator+ — all fills for +(portfolio_id, symbol)+.
+    # - Closed / liquidated: fills for +(portfolio_id, symbol, position_id)+ so later cycles on the same symbol do not mix in.
     class EntryOneMinuteSanity
       ONE_MINUTE = 60
       WINDOW_SECONDS = 600
@@ -43,8 +45,21 @@ module Trading
         ).call
       end
 
+      # Mirrors Position.active plus settled rows (historical trades) for the same entry/fill sanity check.
+      ENTRY_CHECK_STATUSES = %w[
+        entry_pending partially_filled filled exit_pending open closed liquidated
+      ].freeze
+
+      TERMINAL_STATUSES = %w[closed liquidated].freeze
+
+      # Single-fill rows: +entry_price+ must be near the one fill price; above this rel error, +ok+ is false even if
+      # first fill vs 1m close looks fine (stored entry is misleading). Looser than the note threshold below.
+      ENTRY_VS_FIRST_OK_MAX_REL = BigDecimal("0.001")
+
       def self.default_positions_scope
-        Position.active.where.not(entry_price: nil).order(:id)
+        Position.where(status: ENTRY_CHECK_STATUSES)
+                .where.not(entry_price: nil)
+                .order(:id)
       end
 
       def self.build_default_market_data
@@ -58,16 +73,20 @@ module Trading
       end
 
       def call
-        @positions.map { |p| row_for(p) }.compact
+        list = @positions.respond_to?(:to_a) ? @positions.to_a : Array(@positions)
+        return [] if list.empty?
+
+        fills_index = build_fills_index(list)
+        list.map { |p| row_for(p, fills_index) }.compact
       end
 
       private
 
-      def row_for(position)
-        fills = fills_for(position).to_a
+      def row_for(position, fills_index)
+        fills = fills_for_position(position, fills_index)
         return nil if fills.empty?
 
-        first = fills.min_by { |f| [f.filled_at, f.id] }
+        first = fills.min_by { |f| [ f.filled_at, f.id ] }
         anchor = first.filled_at
         return nil if anchor.blank?
 
@@ -82,7 +101,7 @@ module Trading
         first_px = first.price.to_d
         diff_entry_pct = pct_abs_diff(entry, close)
         diff_first_pct = pct_abs_diff(first_px, close)
-        ok = diff_entry_pct <= @tolerance_pct && diff_first_pct <= @tolerance_pct
+        ok = row_ok?(fills, position, first, diff_first_pct)
 
         note = note_for(fills, position, first)
 
@@ -103,6 +122,23 @@ module Trading
         )
       end
 
+      def row_ok?(fills, position, first, diff_first_pct)
+        return false if diff_first_pct > @tolerance_pct
+
+        return true if fills.size > 1
+
+        single_fill_entry_aligned_for_ok?(position, first)
+      end
+
+      def single_fill_entry_aligned_for_ok?(position, first)
+        e = position.entry_price.to_d
+        p = first.price.to_d
+        return true if e.blank? || p.blank? || p.zero?
+
+        rel = (e - p).abs / p.abs
+        rel < ENTRY_VS_FIRST_OK_MAX_REL
+      end
+
       def note_for(fills, position, first)
         if fills.size > 1
           return "VWAP over #{fills.size} fills (ledger scope) — entry may diverge from one 1m close."
@@ -120,9 +156,47 @@ module Trading
         "Single fill but entry_price != that fill (#{rel.round(8)} rel); run bin/rails trading:reconcile_positions."
       end
 
-      def fills_for(position)
-        Fill.joins(:order)
-            .where(orders: { portfolio_id: position.portfolio_id, symbol: position.symbol })
+      # One query batch for terminal positions (+position_id+), one OR-combined query for open (+portfolio_id+, +symbol+).
+      def build_fills_index(list)
+        index = {}
+        terminal = list.select { |p| TERMINAL_STATUSES.include?(p.status.to_s) }
+        open = list.reject { |p| TERMINAL_STATUSES.include?(p.status.to_s) }
+
+        if terminal.any?
+          ids = terminal.map(&:id).uniq
+          Fill.joins(:order)
+              .where(orders: { position_id: ids })
+              .includes(:order)
+              .to_a
+              .group_by { |f| f.order.position_id }
+              .each { |pid, arr| index[[ :terminal, pid ]] = arr }
+        end
+
+        if open.any?
+          keys = open.map { |p| [ p.portfolio_id, p.symbol.to_s ] }.uniq
+          fills_scope_for_open_keys(keys).includes(:order).to_a
+            .group_by { |f| [ f.order.portfolio_id, f.order.symbol.to_s ] }
+            .each { |k, arr| index[[ :open, k[0], k[1] ]] = arr }
+        end
+
+        index
+      end
+
+      def fills_scope_for_open_keys(keys)
+        return Fill.none if keys.empty?
+
+        rels = keys.map do |portfolio_id, symbol|
+          Fill.joins(:order).where(orders: { portfolio_id: portfolio_id, symbol: symbol })
+        end
+        rels.reduce { |acc, r| acc.or(r) }
+      end
+
+      def fills_for_position(position, index)
+        if TERMINAL_STATUSES.include?(position.status.to_s)
+          index[[ :terminal, position.id ]] || []
+        else
+          index[[ :open, position.portfolio_id, position.symbol.to_s ]] || []
+        end
       end
 
       def fetch_1m_bars(symbol, anchor)

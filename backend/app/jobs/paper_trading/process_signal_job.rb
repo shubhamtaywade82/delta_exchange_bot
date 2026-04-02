@@ -19,24 +19,30 @@ module PaperTrading
       end
       ltp = ltp.to_d
 
-      allocator = PaperTrading::CapitalAllocator.new(
-        equity: wallet.equity,
-        risk_pct: signal.risk_pct,
-        target_profit_pct: BigDecimal("0.1"),
-        risk_unit_value: product.risk_unit_per_contract
-      )
-      allocation = allocator.call(
-        side: signal.side,
-        entry_price: signal.entry_price,
-        stop_price: signal.stop_price
+      rate = Finance::UsdInrRate.current
+      # Wallet amounts are USD (Delta settlement); convert via rate for PositionSizer INR↔USD bridge.
+      balance_inr = (wallet.equity.to_d * rate).to_f
+      margin_wallet_usd = wallet.available_capital.to_d.to_f
+      leverage = [ product.default_leverage.to_i, 1 ].max
+
+      result = Finance::PositionSizer.compute!(
+        balance_inr: balance_inr,
+        risk_percent: signal.risk_pct.to_f,
+        entry_price: signal.entry_price.to_f,
+        stop_price: signal.stop_price.to_f,
+        contract_value: product.contract_value.to_f,
+        usd_inr: rate,
+        leverage: leverage,
+        margin_wallet_usd: margin_wallet_usd,
+        position_size_limit: product.position_size_limit
       )
 
-      unless allocation.valid?
+      unless result.final_contracts >= 1
         signal.update!(status: "rejected", rejection_reason: "quantity below 1 after allocation")
         return
       end
 
-      qty = allocation.quantity.to_i
+      qty = result.final_contracts
 
       ActiveRecord::Base.transaction do
         order = PaperOrder.create!(
@@ -51,7 +57,11 @@ module PaperTrading
           avg_fill_price: ltp
         )
 
-        FillApplicator.new(order: order, wallet: wallet, product: product).call(price: ltp, size: qty)
+        FillApplicator.new(order: order, wallet: wallet, product: product).call(
+          price: ltp,
+          size: qty,
+          leverage: leverage
+        )
         signal.update!(status: "filled")
       end
 

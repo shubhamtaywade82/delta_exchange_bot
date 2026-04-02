@@ -13,7 +13,8 @@ module PaperTrading
     end
 
     # Caller must wrap in a transaction. Idempotent per PaperFill via ledger reference uniqueness.
-    def apply_fill(fill:, fill_side:, quantity:, price:)
+    # Initial margin reserved = (price × quantity × risk_unit) / leverage, matching linear perp margin.
+    def apply_fill(fill:, fill_side:, quantity:, price:, leverage: nil)
       if PaperWalletLedgerEntry.exists?(paper_wallet: @wallet, reference: fill)
         return Result.new(action: :noop, realized_pnl: 0.to_d, margin_delta: 0.to_d)
       end
@@ -22,6 +23,7 @@ module PaperTrading
       quantity = Integer(quantity)
       price = price.to_d
       unit = @product.risk_unit_per_contract.to_d
+      fill_leverage = resolve_leverage(leverage)
 
       position = PaperPosition.lock.find_by(
         paper_wallet_id: @wallet.id,
@@ -29,11 +31,11 @@ module PaperTrading
       )
 
       if position.nil? || position.net_quantity.zero?
-        open_position(side, quantity, price, unit, fill)
+        open_position(side, quantity, price, unit, fill, leverage: fill_leverage)
       elsif position.side == side
         add_position(position, quantity, price, unit, fill)
       else
-        close_and_maybe_flip(position, side, quantity, price, unit, fill)
+        close_and_maybe_flip(position, side, quantity, price, unit, fill, flip_leverage: fill_leverage)
       end
     end
 
@@ -52,21 +54,36 @@ module PaperTrading
       side == "buy" ? :buy : :sell
     end
 
-    def open_position(side, quantity, price, unit, fill)
-      position = PaperPosition.create!(
+    def resolve_leverage(explicit)
+      v = explicit.to_i
+      return v if v.positive?
+
+      p = @product.default_leverage.to_i
+      p.positive? ? p : 1
+    end
+
+    def initial_margin(price, quantity, unit, leverage)
+      lev = [ leverage.to_i, 1 ].max.to_d
+      (price.to_d * quantity * unit) / lev
+    end
+
+    def open_position(side, quantity, price, unit, fill, leverage:)
+      lev = resolve_leverage(leverage)
+      PaperPosition.create!(
         paper_wallet: @wallet,
         paper_product_snapshot: @product,
         side: side,
         net_quantity: quantity,
         avg_entry_price: price,
-        risk_unit_per_contract: unit
+        risk_unit_per_contract: unit,
+        leverage: lev
       )
 
-      notional = price * quantity * unit
-      write_ledger!(:margin_reserved, :debit, notional, fill)
-      bump_reserved_margin!(notional)
+      margin = initial_margin(price, quantity, unit, lev)
+      write_ledger!(:margin_reserved, :debit, margin, fill)
+      bump_reserved_margin!(margin)
 
-      Result.new(action: :opened, realized_pnl: 0.to_d, margin_delta: notional)
+      Result.new(action: :opened, realized_pnl: 0.to_d, margin_delta: margin)
     end
 
     def add_position(position, quantity, price, unit, fill)
@@ -75,14 +92,16 @@ module PaperTrading
       new_avg = ((prev_qty * position.avg_entry_price.to_d) + (quantity * price)) / new_qty
       position.update!(net_quantity: new_qty.to_i, avg_entry_price: new_avg)
 
-      notional = price * quantity * unit
-      write_ledger!(:margin_reserved, :debit, notional, fill)
-      bump_reserved_margin!(notional)
+      lev = position.leverage.to_i
+      lev = 1 unless lev.positive?
+      margin = initial_margin(price, quantity, unit, lev)
+      write_ledger!(:margin_reserved, :debit, margin, fill)
+      bump_reserved_margin!(margin)
 
-      Result.new(action: :added, realized_pnl: 0.to_d, margin_delta: notional)
+      Result.new(action: :added, realized_pnl: 0.to_d, margin_delta: margin)
     end
 
-    def close_and_maybe_flip(position, incoming_side, quantity, price, unit, fill)
+    def close_and_maybe_flip(position, incoming_side, quantity, price, unit, fill, flip_leverage:)
       pos_qty = position.net_quantity
       close_qty = [ pos_qty, quantity ].min
       excess = quantity - close_qty
@@ -96,7 +115,9 @@ module PaperTrading
       )
       net_pnl = pnl_hash[:net_pnl]
 
-      released = position.avg_entry_price.to_d * close_qty * unit
+      lev = position.leverage.to_i
+      lev = 1 unless lev.positive?
+      released = initial_margin(position.avg_entry_price, close_qty, unit, lev)
       write_ledger!(:margin_released, :credit, released, fill)
       write_ledger!(:realized_pnl, net_pnl >= 0 ? :credit : :debit, net_pnl.abs, fill)
 
@@ -110,8 +131,9 @@ module PaperTrading
 
       action = :closed
       if excess.positive?
-        open_after_flip(incoming_side, excess, price, unit, fill)
-        new_reserve = price * excess * unit
+        flip_lev = resolve_leverage(flip_leverage)
+        open_after_flip(incoming_side, excess, price, unit, fill, leverage: flip_lev)
+        new_reserve = initial_margin(price, excess, unit, flip_lev)
         action = :flipped
       end
 
@@ -125,17 +147,19 @@ module PaperTrading
       Result.new(action: action, realized_pnl: net_pnl, margin_delta: new_reserve - released)
     end
 
-    def open_after_flip(side, quantity, price, unit, fill)
+    def open_after_flip(side, quantity, price, unit, fill, leverage:)
+      lev = resolve_leverage(leverage)
       PaperPosition.create!(
         paper_wallet: @wallet,
         paper_product_snapshot: @product,
         side: side,
         net_quantity: quantity,
         avg_entry_price: price,
-        risk_unit_per_contract: unit
+        risk_unit_per_contract: unit,
+        leverage: lev
       )
-      notional = price * quantity * unit
-      write_ledger!(:margin_reserved, :debit, notional, fill)
+      margin = initial_margin(price, quantity, unit, lev)
+      write_ledger!(:margin_reserved, :debit, margin, fill)
     end
 
     def write_ledger!(entry_type, direction, amount, reference)

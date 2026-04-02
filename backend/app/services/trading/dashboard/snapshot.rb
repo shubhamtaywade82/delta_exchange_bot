@@ -18,13 +18,14 @@ module Trading
       end
 
       def to_h
-        active_positions = Position.active.order(:symbol).to_a
+        running_session = resolve_running_session
+        active_positions = dashboard_active_positions(running_session)
         portfolio = Trading::Risk::PortfolioSnapshot.from_positions(active_positions)
         wallet = load_wallet_for_dashboard(portfolio: portfolio, positions: active_positions)
         stats_equity_usd = stats_total_equity_usd(wallet, portfolio)
         market = build_market_rows
         trade_totals = Trade.dashboard_pnl_totals
-        total_pnl_usd = (trade_totals[:total_realized] + portfolio.total_pnl).round(2)
+        total_pnl_usd = dashboard_total_pnl_usd(running_session, portfolio, trade_totals)
         daily_pnl = trade_totals[:daily_pnl].round(2)
         weekly_pnl = trade_totals[:weekly_pnl].round(2)
         execution_health = build_execution_health
@@ -37,7 +38,6 @@ module Trading
         trade_rows = trades_scope.order(closed_at: :desc).limit(trades_limit)
         trade_calendar_days = Trade.broker_settled_calendar_days.map { |d| format_trade_calendar_day(d) }
         signal_activity = build_signal_activity
-        running_session = resolve_running_session
         operational_state = Trading::Risk::EntryGatesSummary.call(session: running_session, portfolio: portfolio).merge(
           recent_signals: build_recent_signals(limit: 30)
         )
@@ -74,6 +74,25 @@ module Trading
       end
 
       private
+
+      # Paper wallet is portfolio-scoped; without this, TOTAL_PNL and open PnL mix all +Trade+ rows and every
+      # +Position.active+ row while equity comes from the running session portfolio only.
+      def dashboard_active_positions(running_session)
+        scope = Position.active.order(:symbol)
+        if Trading::PaperTrading.enabled? && running_session&.portfolio_id.present?
+          scope = scope.where(portfolio_id: running_session.portfolio_id)
+        end
+        scope.to_a
+      end
+
+      def dashboard_total_pnl_usd(running_session, portfolio, trade_totals)
+        if Trading::PaperTrading.enabled? && running_session&.portfolio_id.present?
+          realized = PortfolioLedgerEntry.where(portfolio_id: running_session.portfolio_id).sum(:realized_pnl_delta).to_f
+          (realized + portfolio.total_pnl.to_f).round(2)
+        else
+          (trade_totals[:total_realized] + portfolio.total_pnl.to_f).round(2)
+        end
+      end
 
       def format_trade_calendar_day(value)
         return value.strftime("%Y-%m-%d") if value.respond_to?(:strftime)
@@ -189,6 +208,7 @@ module Trading
         {
           symbol: trade.symbol,
           side: trade.side,
+          size: trade.size&.to_f,
           entry_price: trade.entry_price,
           exit_price: trade.exit_price,
           pnl_usd: pnl_usd,
