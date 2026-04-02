@@ -46,7 +46,7 @@ Edit `config/bot.yml` (or `backend/config/bot.yml` — keep them aligned if you 
 
 ### Telegram (default `Trading::Runner`)
 
-`LEGACY_BOT_RUNNER=1` (`Bot::Runner`) has always supported Telegram. **`Trading::Runner`** (default `backend/bin/bot` and `./bin/dev`) now uses the same notifier: it reads **`notifications.telegram.*`** from **Settings** (merged via `Bot::Config.load` — same keys as `db/seeds.rb`).
+`LEGACY_BOT_RUNNER=1` (`Bot::Runner`) has always supported Telegram. **`Trading::Runner`** (default `backend/bin/bot` and `./bin/dev`) uses the same notifier: `Bot::Config.load` builds config from **defaults**, then **`backend/config/bot.yml`** (only keys that overlap the runtime shape), then **Settings** from the DB (same keys as `db/seeds.rb`), then environment fallbacks below.
 
 1. In **Admin → Settings** (or SQL), set:
    - `notifications.telegram.enabled` = `true` (boolean)
@@ -55,7 +55,9 @@ Edit `config/bot.yml` (or `backend/config/bot.yml` — keep them aligned if you 
 2. Optionally toggle event keys: `notifications.telegram.events.signals`, `.positions`, `.trailing`, `.status`, `.errors` (booleans).
 3. Restart **`bin/bot`** (or the process running `Trading::Runner`) so config is picked up.
 
-Seeds default **`notifications.telegram.enabled` to `false`**, so nothing is sent until you enable it. `.env` `TELEGRAM_*` variables are **not** read by `Bot::Config`; use Settings or extend `Bot::Config` if you want env-based tokens.
+**Precedence:** a value in Settings overrides `bot.yml`. If `bot_token` or `chat_id` is still blank after that, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` from the environment are applied. If `TELEGRAM_ENABLED` is set in the environment, it forces `notifications.telegram.enabled` on or off (`1` / `true` / `yes` / `on` vs anything else).
+
+Seeds default **`notifications.telegram.enabled` to `false`**, so nothing is sent until you enable it via Settings, `backend/config/bot.yml`, or `TELEGRAM_ENABLED`. API send failures from `Trading::Runner` are logged to **Rails.logger** (and stderr if no logger is passed).
 
 ## Usage
 
@@ -162,4 +164,8 @@ Or run a full documented reset (includes locks): `CONFIRM=YES bin/rails trading:
 cd backend && bundle exec rspec
 ```
 
-Legacy specs at repo root `spec/` (against `lib/bot/`) are optional; CI should treat **`backend`** as the source of truth.
+Legacy specs at repo root `spec/` (against `lib/bot/`) are optional; treat **`backend`** as the source of truth.
+
+## CI/CD
+
+GitHub Actions live under [`.github/workflows/`](.github/workflows/). See [`.github/README.md`](.github/README.md) for required checks, the `delta_exchange` path gem variable, and optional Kamal deploy.

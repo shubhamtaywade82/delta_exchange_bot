@@ -4,6 +4,8 @@ require "rails_helper"
 
 RSpec.describe Bot::Config do
   describe ".load" do
+    before { allow(described_class).to receive(:bot_yml_hash).and_return(nil) }
+
     it "builds runtime config from DB settings and symbol configs" do
       SymbolConfig.create!(symbol: "BTCUSD", leverage: 12, enabled: true)
       Setting.create!(key: "bot.mode", value: "testnet", value_type: "string")
@@ -26,6 +28,106 @@ RSpec.describe Bot::Config do
       expect(Setting).not_to receive(:find_by)
 
       described_class.load
+    end
+  end
+
+  describe ".runtime_raw" do
+    before do
+      SymbolConfig.create!(symbol: "BTCUSD", leverage: 10, enabled: true)
+    end
+
+    it "merges notifications.telegram from bot.yml when no DB row overrides" do
+      allow(described_class).to receive(:bot_yml_hash).and_return(
+        "notifications" => {
+          "telegram" => {
+            "enabled" => true,
+            "bot_token" => "yaml-token",
+            "chat_id" => "yaml-chat"
+          }
+        }
+      )
+
+      raw = described_class.runtime_raw
+      tg = raw["notifications"]["telegram"]
+      expect(tg["enabled"]).to eq(true)
+      expect(tg["bot_token"]).to eq("yaml-token")
+      expect(tg["chat_id"]).to eq("yaml-chat")
+    end
+
+    it "lets DB settings override bot.yml for telegram" do
+      allow(described_class).to receive(:bot_yml_hash).and_return(
+        "notifications" => {
+          "telegram" => {
+            "enabled" => true,
+            "bot_token" => "yaml-token",
+            "chat_id" => "yaml-chat"
+          }
+        }
+      )
+
+      Setting.create!(key: "notifications.telegram.bot_token", value: "db-token", value_type: "string")
+
+      raw = described_class.runtime_raw
+      expect(raw.dig("notifications", "telegram", "bot_token")).to eq("db-token")
+      expect(raw.dig("notifications", "telegram", "chat_id")).to eq("yaml-chat")
+    end
+
+    it "fills blank telegram bot_token from TELEGRAM_BOT_TOKEN after DB merge" do
+      allow(described_class).to receive(:bot_yml_hash).and_return(nil)
+      Setting.create!(key: "notifications.telegram.enabled", value: "true", value_type: "boolean")
+      Setting.create!(key: "notifications.telegram.chat_id", value: "1", value_type: "string")
+
+      old = ENV["TELEGRAM_BOT_TOKEN"]
+      begin
+        ENV["TELEGRAM_BOT_TOKEN"] = "from-env"
+        raw = described_class.runtime_raw
+        expect(raw.dig("notifications", "telegram", "bot_token")).to eq("from-env")
+      ensure
+        if old
+          ENV["TELEGRAM_BOT_TOKEN"] = old
+        else
+          ENV.delete("TELEGRAM_BOT_TOKEN")
+        end
+      end
+    end
+
+    it "sets telegram enabled from TELEGRAM_ENABLED when the variable is present" do
+      allow(described_class).to receive(:bot_yml_hash).and_return(
+        "notifications" => {
+          "telegram" => {
+            "enabled" => false,
+            "bot_token" => "t",
+            "chat_id" => "1"
+          }
+        }
+      )
+
+      old = ENV["TELEGRAM_ENABLED"]
+      begin
+        ENV["TELEGRAM_ENABLED"] = "1"
+        raw = described_class.runtime_raw
+        expect(raw.dig("notifications", "telegram", "enabled")).to eq(true)
+      ensure
+        if old
+          ENV["TELEGRAM_ENABLED"] = old
+        else
+          ENV.delete("TELEGRAM_ENABLED")
+        end
+      end
+    end
+
+    it "includes telegram notification keys in RUNTIME_SETTING_KEYS" do
+      keys = described_class::RUNTIME_SETTING_KEYS
+      expect(keys).to include(
+        "notifications.telegram.enabled",
+        "notifications.telegram.bot_token",
+        "notifications.telegram.chat_id",
+        "notifications.telegram.events.status",
+        "notifications.telegram.events.signals",
+        "notifications.telegram.events.positions",
+        "notifications.telegram.events.trailing",
+        "notifications.telegram.events.errors"
+      )
     end
   end
 

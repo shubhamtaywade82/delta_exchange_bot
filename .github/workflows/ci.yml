@@ -1,44 +1,26 @@
-name: Backend CI/CD
+# Monorepo CI: backend (Rails) + frontend (Vite/React).
+# Requires sibling gem `delta_exchange` — set repo variable DELTA_EXCHANGE_REPOSITORY
+# (e.g. owner/delta_exchange) so the checkout + symlink step can satisfy Gemfile path.
+
+name: CI
 
 on:
   pull_request:
-    branches: [refactor, main]
-    paths:
-      - "backend/**"
+    branches: [main]
   push:
-    branches: [refactor, main]
-    tags:
-      - "v*"
-    paths:
-      - "backend/**"
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      deploy_environment:
-        description: "Deployment target"
-        required: true
-        type: choice
-        options:
-          - staging
-          - production
-        default: staging
-      deploy_ref:
-        description: "Optional branch/tag/SHA to deploy"
-        required: false
-        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: backend-cicd-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  RUBY_VERSION: "3.3.4"
-
 jobs:
-  quality:
-    name: Quality checks
+  quality-backend:
+    name: Backend — style & Zeitwerk
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -47,12 +29,10 @@ jobs:
     env:
       RUBOCOP_CACHE_ROOT: tmp/rubocop
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.deploy_ref || github.sha }}
 
-      - name: Checkout delta_exchange dependency (optional)
+      - name: Checkout delta_exchange (path gem)
         if: vars.DELTA_EXCHANGE_REPOSITORY != ''
         uses: actions/checkout@v4
         with:
@@ -60,25 +40,24 @@ jobs:
           path: delta_exchange
           fetch-depth: 1
 
-      - name: Validate local path dependencies
+      - name: Link delta_exchange for Gemfile path ../../delta_exchange
         run: |
           if [ -d "${GITHUB_WORKSPACE}/delta_exchange" ]; then
             ln -sfn "${GITHUB_WORKSPACE}/delta_exchange" "${GITHUB_WORKSPACE}/../delta_exchange"
           fi
-
           if [ ! -d "${GITHUB_WORKSPACE}/../delta_exchange" ]; then
-            echo "::error::Missing required path gem at ../../delta_exchange."
-            echo "::error::Set repository variable DELTA_EXCHANGE_REPOSITORY so CI can checkout that dependency, or replace the path gem with a registry/git source."
+            echo "::error::Missing path gem at ../../delta_exchange. Set GitHub variable DELTA_EXCHANGE_REPOSITORY to the repo that contains the delta_exchange gem (checked out next to this repo on disk), or vendor the gem."
             exit 1
           fi
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: ${{ env.RUBY_VERSION }}
+          ruby-version-file: backend/.ruby-version
           bundler-cache: true
+          working-directory: backend
 
-      - name: Prepare RuboCop cache
+      - name: RuboCop cache
         uses: actions/cache@v4
         env:
           DEPENDENCIES_HASH: ${{ hashFiles('backend/.ruby-version', 'backend/**/.rubocop.yml', 'backend/**/.rubocop_todo.yml', 'backend/Gemfile.lock') }}
@@ -88,27 +67,26 @@ jobs:
           restore-keys: |
             rubocop-${{ runner.os }}-${{ env.DEPENDENCIES_HASH }}-
 
-      - name: Lint Ruby style
+      - name: RuboCop
         run: bin/rubocop -f github
 
-      - name: Validate Zeitwerk autoloading
+      - name: Zeitwerk check
         run: bin/rails zeitwerk:check
 
-  security:
-    name: Security gates
+  security-backend:
+    name: Backend — security scans
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
       run:
         working-directory: backend
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.inputs.deploy_ref || github.sha }}
 
-      - name: Checkout delta_exchange dependency (optional)
+      - name: Checkout delta_exchange (path gem)
         if: vars.DELTA_EXCHANGE_REPOSITORY != ''
         uses: actions/checkout@v4
         with:
@@ -116,57 +94,99 @@ jobs:
           path: delta_exchange
           fetch-depth: 1
 
-      - name: Validate local path dependencies
+      - name: Link delta_exchange for Gemfile path ../../delta_exchange
         run: |
           if [ -d "${GITHUB_WORKSPACE}/delta_exchange" ]; then
             ln -sfn "${GITHUB_WORKSPACE}/delta_exchange" "${GITHUB_WORKSPACE}/../delta_exchange"
           fi
-
           if [ ! -d "${GITHUB_WORKSPACE}/../delta_exchange" ]; then
-            echo "::error::Missing required path gem at ../../delta_exchange."
-            echo "::error::Set repository variable DELTA_EXCHANGE_REPOSITORY so CI can checkout that dependency, or replace the path gem with a registry/git source."
+            echo "::error::Missing path gem at ../../delta_exchange. Set GitHub variable DELTA_EXCHANGE_REPOSITORY."
             exit 1
           fi
 
-      - name: Secret scan (gitleaks)
+      - name: Gitleaks
         uses: gitleaks/gitleaks-action@v2
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: ${{ env.RUBY_VERSION }}
+          ruby-version-file: backend/.ruby-version
           bundler-cache: true
+          working-directory: backend
 
-      - name: Scan gem vulnerabilities
+      - name: Bundler audit
         run: bin/bundler-audit update && bin/bundler-audit
 
-      - name: Scan Rails code vulnerabilities
+      - name: Brakeman
         run: bin/brakeman --quiet --no-pager --exit-on-warn --exit-on-error
 
-  dependency_review:
-    name: Dependency review (PR)
+  docker-lint:
+    name: Dockerfile (Hadolint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: backend/Dockerfile
+          failure-threshold: error
+
+  dependency-review:
+    name: Dependency review (PRs)
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     permissions:
       contents: read
       pull-requests: read
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.deploy_ref || github.sha }}
 
-      - name: Review dependency changes
+      - name: Dependency review
         uses: actions/dependency-review-action@v4
 
-  test:
-    name: Test suite
+  frontend:
+    name: Frontend — lint & build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Audit (high+)
+        run: npm audit --audit-level=high
+        continue-on-error: false
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Typecheck & production build
+        run: npm run build
+
+  test-backend:
+    name: Backend — RSpec
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: [quality, security]
+    needs: [quality-backend, security-backend]
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -179,7 +199,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
       redis:
-        image: redis:7
+        image: redis:7-alpine
         ports:
           - "6379:6379"
         options: >-
@@ -190,19 +210,17 @@ jobs:
     env:
       CI: "true"
       RAILS_ENV: test
-      SECRET_KEY_BASE: test_secret_key_base_for_ci
+      SECRET_KEY_BASE: test_secret_key_base_for_ci_only
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/backend_test
       REDIS_URL: redis://127.0.0.1:6379/1
     defaults:
       run:
         working-directory: backend
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.deploy_ref || github.sha }}
 
-      - name: Checkout delta_exchange dependency (optional)
+      - name: Checkout delta_exchange (path gem)
         if: vars.DELTA_EXCHANGE_REPOSITORY != ''
         uses: actions/checkout@v4
         with:
@@ -210,93 +228,50 @@ jobs:
           path: delta_exchange
           fetch-depth: 1
 
-      - name: Validate local path dependencies
+      - name: Link delta_exchange for Gemfile path ../../delta_exchange
         run: |
           if [ -d "${GITHUB_WORKSPACE}/delta_exchange" ]; then
             ln -sfn "${GITHUB_WORKSPACE}/delta_exchange" "${GITHUB_WORKSPACE}/../delta_exchange"
           fi
-
           if [ ! -d "${GITHUB_WORKSPACE}/../delta_exchange" ]; then
-            echo "::error::Missing required path gem at ../../delta_exchange."
-            echo "::error::Set repository variable DELTA_EXCHANGE_REPOSITORY so CI can checkout that dependency, or replace the path gem with a registry/git source."
+            echo "::error::Missing path gem at ../../delta_exchange. Set GitHub variable DELTA_EXCHANGE_REPOSITORY."
             exit 1
           fi
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: ${{ env.RUBY_VERSION }}
+          ruby-version-file: backend/.ruby-version
           bundler-cache: true
+          working-directory: backend
 
-      - name: Prepare test database
+      - name: Database prepare
         run: bin/rails db:prepare
 
-      - name: Run backend specs
+      - name: RSpec
         run: bundle exec rspec --format progress
 
-  package:
-    name: Package release artifact
+  # Artifact for deploy pipelines or manual promotion (short retention).
+  package-backend:
+    name: Package backend tarball
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: [quality, security, test]
+    timeout-minutes: 10
+    needs: [test-backend, frontend, docker-lint]
     if: github.event_name != 'pull_request'
     permissions:
       contents: read
       actions: write
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.deploy_ref || github.sha }}
 
-      - name: Create backend release tarball
+      - name: Create tarball
         run: tar -czf backend-${{ github.sha }}.tar.gz backend
 
-      - name: Upload release artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: backend-${{ github.sha }}
           path: backend-${{ github.sha }}.tar.gz
           if-no-files-found: error
           retention-days: 14
-
-  deploy_staging:
-    name: Deploy to staging
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: [package]
-    if: >
-      (github.event_name == 'push' && github.ref == 'refs/heads/refactor') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_environment == 'staging')
-    environment: staging
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.deploy_ref || github.sha }}
-
-      - name: Validate staging deploy command
-        run: echo "Staging deployment gate passed. Configure secrets and replace with bin/kamal deploy."
-
-  deploy_production:
-    name: Deploy to production
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: [package]
-    if: >
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_environment == 'production' && github.ref == 'refs/heads/main')
-    environment: production
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.deploy_ref || github.sha }}
-
-      - name: Validate production deploy command
-        run: echo "Production deployment gate passed. Configure protected environment and replace with bin/kamal deploy."
-

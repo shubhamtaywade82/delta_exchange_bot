@@ -11,7 +11,7 @@ module Trading
         enabled: config.telegram_enabled?,
         token: config.telegram_token,
         chat_id: config.telegram_chat_id,
-        logger: nil,
+        logger: Rails.logger,
         event_settings: {
           status: config.telegram_event_enabled?(:status),
           signals: config.telegram_event_enabled?(:signals),

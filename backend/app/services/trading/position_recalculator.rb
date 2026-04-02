@@ -37,10 +37,12 @@ module Trading
 
           position
         end
-      rescue ActiveRecord::StaleObjectError
+      rescue ActiveRecord::StaleObjectError, ActiveRecord::SerializationFailure => e
         retries += 1
-        retry if retries < MAX_RETRIES
-        raise
+        raise if retries >= MAX_RETRIES
+
+        sleep(0.05 * retries) if e.is_a?(ActiveRecord::SerializationFailure)
+        retry
       end
     end
 

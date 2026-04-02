@@ -5,6 +5,8 @@ module Trading
   class FillProcessor
     class OverfillError < StandardError; end
 
+    MAX_RETRIES = 5
+
     def self.process(fill_event)
       new(fill_event).process
     end
@@ -21,20 +23,31 @@ module Trading
       return order if @fill_event.exchange_fill_id.blank?
 
       applied_fill = false
-      ActiveRecord::Base.transaction(isolation: :repeatable_read) do
-        order.lock!
+      retries = 0
+      begin
+        order.reload if retries.positive?
 
-        guard_overfill!(order)
-        fill = persist_fill!(order)
-        return order unless fill
+        ActiveRecord::Base.transaction(isolation: :repeatable_read) do
+          order.lock!
 
-        mark_position_dirty(order.position_id)
-        apply_order_aggregation!(order)
-        position = PositionRecalculator.call(order.position_id) if order.position_id.present?
-        apply_entry_context!(position) if position
-        apply_portfolio_after_fill!(order, fill) if fill
-        evaluate_risk!(position) if position
-        applied_fill = true
+          guard_overfill!(order)
+          fill = persist_fill!(order)
+          return order unless fill
+
+          mark_position_dirty(order.position_id)
+          apply_order_aggregation!(order)
+          position = PositionRecalculator.call(order.position_id) if order.position_id.present?
+          apply_entry_context!(position) if position
+          apply_portfolio_after_fill!(order, fill) if fill
+          evaluate_risk!(position) if position
+          applied_fill = true
+        end
+      rescue ActiveRecord::SerializationFailure
+        retries += 1
+        raise if retries >= MAX_RETRIES
+
+        sleep(0.05 * retries)
+        retry
       end
 
       publish_paper_wallet_after_fill if applied_fill

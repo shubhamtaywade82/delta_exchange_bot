@@ -6,6 +6,7 @@ module Trading
     queue_as :critical
     retry_on ActiveRecord::Deadlocked, wait: :polynomially_longer, attempts: 5
     retry_on ActiveRecord::StaleObjectError, wait: :polynomially_longer, attempts: 5
+    retry_on ActiveRecord::SerializationFailure, wait: :polynomially_longer, attempts: 5
 
     # Recomputes dirty positions only.
     # @return [void]

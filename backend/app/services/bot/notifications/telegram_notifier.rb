@@ -18,14 +18,23 @@ module Bot
 
         client.api.send_message(chat_id: @chat_id, text: text, parse_mode: "HTML")
       rescue StandardError => e
-        if @logger
-          @logger.error("telegram_send_failed", message: e.message)
-        else
-          $stderr.puts("[TelegramNotifier] Failed to send: #{e.message}")
-        end
+        log_send_failure(e.message)
       end
 
       private
+
+      def log_send_failure(message)
+        unless @logger
+          $stderr.puts("[TelegramNotifier] Failed to send: #{message}")
+          return
+        end
+
+        if @logger.is_a?(Bot::Notifications::Logger)
+          @logger.error("telegram_send_failed", message: message)
+        else
+          @logger.error("[TelegramNotifier] telegram_send_failed: #{message}")
+        end
+      end
 
       def enabled_for?(event)
         return false unless @enabled && !@token.to_s.empty?

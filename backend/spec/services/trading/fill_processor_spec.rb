@@ -30,6 +30,34 @@ RSpec.describe Trading::FillProcessor do
     )
   end
 
+  it "retries when repeatable-read transaction aborts due to concurrent update" do
+    order
+    attempts = 0
+    allow(Trading::PositionRecalculator).to receive(:call).and_wrap_original do |original, position_id|
+      attempts += 1
+      raise ActiveRecord::SerializationFailure, "concurrent update" if attempts == 1
+
+      original.call(position_id)
+    end
+
+    event = Trading::Events::OrderFilled.new(
+      exchange_fill_id: "F-serial",
+      exchange_order_id: "EX-1",
+      quantity: 1,
+      price: 49_900,
+      fee: 2,
+      filled_at: Time.current,
+      status: "open",
+      raw_payload: { source: "spec" }
+    )
+
+    described_class.process(event)
+
+    expect(attempts).to eq(2)
+    expect(Fill.find_by(exchange_fill_id: "F-serial")).to be_present
+    expect(order.reload.status).to eq("partially_filled")
+  end
+
   it "persists unique fill and derives order/position state" do
     order
     event = Trading::Events::OrderFilled.new(

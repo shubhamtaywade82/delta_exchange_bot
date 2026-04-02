@@ -22,6 +22,24 @@ RSpec.describe Trading::PositionRecalculator do
     allow(Trading::Risk::PositionLotSize).to receive(:multiplier_for).and_return(BigDecimal("0.001"))
   end
 
+  it "retries once when position update hits a serialization conflict" do
+    order
+    create(:fill, order: order, quantity: 1, price: 49_000, exchange_fill_id: "F1")
+
+    attempts = 0
+    allow_any_instance_of(Position).to receive(:update!).and_wrap_original do |original, *args, **kwargs|
+      attempts += 1
+      raise ActiveRecord::SerializationFailure, "concurrent update" if attempts == 1
+
+      original.call(*args, **kwargs)
+    end
+
+    described_class.call(position.id)
+
+    expect(attempts).to eq(2)
+    expect(position.reload.size.to_d).to eq(1.to_d)
+  end
+
   it "recomputes quantity and average entry from persisted fills" do
     order
     create(:fill, order: order, quantity: 1, price: 49_000, exchange_fill_id: "F1")

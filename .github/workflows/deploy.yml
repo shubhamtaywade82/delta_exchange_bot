@@ -1,0 +1,93 @@
+# Deploy the Rails backend with Kamal (`backend/config/deploy.yml`).
+#
+# Flip repository variable ENABLE_KAMAL_DEPLOY to "true" after configuring:
+#   — GitHub Environments: staging, production (protection rules + secrets)
+#   — Secrets (per environment as needed): RAILS_MASTER_KEY, KAMAL_REGISTRY_PASSWORD
+#   — SSH access from the runner to deploy targets (add a deploy key on the runner,
+#     use webfactory/ssh-agent, or run this workflow on a self-hosted runner)
+#
+# Repository variables (optional):
+#   DELTA_EXCHANGE_REPOSITORY — e.g. org/delta_exchange (private gem checkout)
+
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub Environment
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      git_ref:
+        description: Branch, tag, or SHA (empty = current ref)
+        required: false
+        type: string
+        default: ""
+
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Kamal deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: vars.ENABLE_KAMAL_DEPLOY == 'true'
+    environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'production' }}
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Resolve ref
+        id: ref
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            REF="${{ github.event.inputs.git_ref }}"
+            if [ -z "$REF" ]; then REF="${{ github.sha }}"; fi
+            echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.ref }}
+
+      - name: Checkout delta_exchange (path gem)
+        if: vars.DELTA_EXCHANGE_REPOSITORY != ''
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.DELTA_EXCHANGE_REPOSITORY }}
+          path: delta_exchange
+          fetch-depth: 1
+
+      - name: Link delta_exchange for Gemfile path ../../delta_exchange
+        run: |
+          if [ -d "${GITHUB_WORKSPACE}/delta_exchange" ]; then
+            ln -sfn "${GITHUB_WORKSPACE}/delta_exchange" "${GITHUB_WORKSPACE}/../delta_exchange"
+          fi
+          if [ ! -d "${GITHUB_WORKSPACE}/../delta_exchange" ]; then
+            echo "::error::Missing path gem at ../../delta_exchange. Set DELTA_EXCHANGE_REPOSITORY."
+            exit 1
+          fi
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version-file: backend/.ruby-version
+          bundler-cache: true
+          working-directory: backend
+
+      - name: Kamal deploy
+        env:
+          RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
+          KAMAL_REGISTRY_PASSWORD: ${{ secrets.KAMAL_REGISTRY_PASSWORD }}
+        run: bundle exec kamal deploy

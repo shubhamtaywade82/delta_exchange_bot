@@ -31,6 +31,15 @@ RSpec.describe Bot::Notifications::TelegramNotifier do
       )
       notifier.notify_signal_generated(symbol: "BTCUSD", side: :long, price: 42_000.0, strategy: "multi_timeframe")
     end
+
+    it "logs a single-line error to Rails-style loggers when the API fails" do
+      rails_logger = instance_double(ActiveSupport::Logger)
+      notifier = described_class.new(enabled: true, token: "token", chat_id: "123", logger: rails_logger)
+      allow(notifier).to receive(:client).and_raise(StandardError, "telegram down")
+
+      expect(rails_logger).to receive(:error).with("[TelegramNotifier] telegram_send_failed: telegram down")
+      notifier.send_message("hello")
+    end
   end
 
   context "when event is disabled" do

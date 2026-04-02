@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "yaml"
+
 module Bot
   class Config
     class ValidationError < StandardError; end
@@ -108,6 +110,7 @@ module Bot
 
     def self.runtime_raw
       raw = Marshal.load(Marshal.dump(DEFAULTS))
+      deep_merge_runtime_overlay!(raw, bot_yml_hash)
 
       settings_by_key = Setting.where(key: RUNTIME_SETTING_KEYS).index_by(&:key)
 
@@ -151,7 +154,55 @@ module Bot
         { "symbol" => symbol.symbol, "leverage" => symbol.leverage }
       end
 
+      apply_telegram_environment_overrides!(raw)
+
       raw
+    end
+
+    # Deep-merge only keys that already exist on `base` (typically DEFAULTS-shaped).
+    # Ignores YAML-only keys such as `symbols`; watchlist always comes from `SymbolConfig` above.
+    def self.deep_merge_runtime_overlay!(base, overlay)
+      return base if overlay.blank? || !overlay.is_a?(Hash)
+
+      overlay.each do |key, value|
+        next unless base.key?(key)
+
+        if value.is_a?(Hash) && base[key].is_a?(Hash)
+          deep_merge_runtime_overlay!(base[key], value)
+        else
+          base[key] = value
+        end
+      end
+      base
+    end
+
+    def self.bot_yml_hash
+      path = Rails.root.join("config/bot.yml")
+      return nil unless File.file?(path)
+
+      YAML.safe_load(File.read(path), permitted_classes: [], aliases: true)
+    rescue StandardError
+      nil
+    end
+
+    def self.apply_telegram_environment_overrides!(raw)
+      telegram = raw.dig("notifications", "telegram")
+      return unless telegram.is_a?(Hash)
+
+      token = ENV.fetch("TELEGRAM_BOT_TOKEN", "").to_s.strip
+      telegram["bot_token"] = token if token.present? && telegram["bot_token"].to_s.strip.empty?
+
+      chat = ENV.fetch("TELEGRAM_CHAT_ID", "").to_s.strip
+      telegram["chat_id"] = chat if chat.present? && telegram["chat_id"].to_s.strip.empty?
+
+      apply_telegram_enabled_from_env!(telegram)
+    end
+
+    def self.apply_telegram_enabled_from_env!(telegram)
+      return unless ENV.key?("TELEGRAM_ENABLED")
+
+      flag = ENV["TELEGRAM_ENABLED"].to_s.strip.downcase
+      telegram["enabled"] = %w[1 true yes on].include?(flag)
     end
 
     def self.apply_setting!(raw, *path, key:, settings_by_key:)
