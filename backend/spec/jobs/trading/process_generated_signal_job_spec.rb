@@ -25,7 +25,7 @@ RSpec.describe Trading::ProcessGeneratedSignalJob, type: :job do
   before do
     create(:symbol_config, symbol: "BTCUSD", enabled: true, metadata: { "contract_lot_multiplier" => "1" })
     allow(Trading::RunnerClient).to receive(:build).and_return(double("client"))
-    allow(Trading::ExecutionEngine).to receive(:execute)
+    allow(Trading::ExecutionEngine).to receive(:execute).and_return(double("order"))
     allow(Trading::IdempotencyGuard).to receive(:acquire).and_return(true)
     allow(Trading::IdempotencyGuard).to receive(:release)
     allow(Trading::Paper::SignalPreflight).to receive(:call).and_return(valid_allocation)
@@ -46,5 +46,14 @@ RSpec.describe Trading::ProcessGeneratedSignalJob, type: :job do
 
     expect(Trading::ExecutionEngine).not_to have_received(:execute)
     expect(signal.reload.status).to eq("rejected")
+  end
+
+  it "marks skipped_duplicate when engine returns nil (idempotency skip)" do
+    allow(Trading::ExecutionEngine).to receive(:execute).and_return(nil)
+
+    described_class.perform_now(signal.id)
+
+    expect(signal.reload.status).to eq("skipped_duplicate")
+    expect(signal.error_message).to include("idempotency")
   end
 end

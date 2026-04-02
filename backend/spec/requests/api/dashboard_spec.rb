@@ -65,6 +65,25 @@ RSpec.describe "Api::Dashboard", type: :request do
       expect(op["recent_signals"].first["status"]).to eq("executed")
     end
 
+    it "includes recent_signals from prior sessions when a new running session exists" do
+      prior = create(:trading_session, status: "stopped", started_at: 2.hours.ago)
+      current = create(:trading_session, status: "running", started_at: 1.hour.ago)
+      create(
+        :generated_signal,
+        trading_session: prior,
+        symbol: "BTCUSD",
+        side: "short",
+        status: "executed",
+        created_at: 90.minutes.ago
+      )
+
+      get "/api/dashboard"
+
+      op = JSON.parse(response.body)["operational_state"]
+      expect(op["trading_session"]["id"]).to eq(current.id)
+      expect(op["recent_signals"].map { |s| s["trading_session_id"] }).to include(prior.id)
+    end
+
     it "returns signal_activity with last signal and last rejection" do
       session = create(:trading_session)
       create(

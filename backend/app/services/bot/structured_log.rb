@@ -6,7 +6,8 @@ module Bot
     module_function
 
     def log(logger, level, event, **payload)
-      if logger.is_a?(Bot::Notifications::Logger)
+      if logger.is_a?(Bot::Notifications::Logger) ||
+          logger.is_a?(Bot::Notifications::StrategySessionLogger)
         logger.public_send(level, event, **payload)
       else
         line = payload.empty? ? event.to_s : "#{event} #{payload.map { |k, v| "#{k}=#{v.inspect}" }.join(" ")}"

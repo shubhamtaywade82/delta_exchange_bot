@@ -40,8 +40,15 @@ module Trading
       )
 
       client = RunnerClient.build
-      ExecutionEngine.execute(ev, session: session, client: client)
-      signal.update!(status: "executed")
+      order = ExecutionEngine.execute(ev, session: session, client: client)
+      if order
+        signal.update!(status: "executed")
+      else
+        signal.update!(
+          status: "skipped_duplicate",
+          error_message: "idempotency: same symbol/side/candle_timestamp already executed"
+        )
+      end
     rescue Trading::RiskManager::RiskError => e
       signal&.update!(status: "rejected", error_message: e.message.to_s.truncate(500))
       IdempotencyGuard.release(guard_key)

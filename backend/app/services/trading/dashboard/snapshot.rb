@@ -39,7 +39,7 @@ module Trading
         signal_activity = build_signal_activity
         running_session = resolve_running_session
         operational_state = Trading::Risk::EntryGatesSummary.call(session: running_session, portfolio: portfolio).merge(
-          recent_signals: build_recent_signals(trading_session: running_session, limit: 30)
+          recent_signals: build_recent_signals(limit: 30)
         )
 
         {
@@ -200,7 +200,7 @@ module Trading
       def position_payload(position)
         entry_price = round_price_for_json(position.entry_price)
         mark = round_price_for_json(Rails.cache.read("ltp:#{position.symbol}")) || entry_price
-        unrealized_usd = unrealized_pnl_usd(position: position, mark: mark, entry: entry_price).round(2)
+        unrealized_usd = unrealized_pnl_usd(position: position, mark: mark).round(2)
         opened_at = position.entry_time || position.created_at
 
         {
@@ -246,12 +246,10 @@ module Trading
         d.round(8).to_f
       end
 
-      def unrealized_pnl_usd(position:, mark:, entry:)
-        direction = position.side.in?(%w[sell short]) ? -1.0 : 1.0
-        lots = position.size.to_f.abs
-        lot = Trading::Risk::PositionLotSize.multiplier_for(position).to_f
-        qty = lots * lot
-        (mark.to_f - entry.to_f) * qty * direction
+      def unrealized_pnl_usd(position:, mark:)
+        m = mark
+        m = position.entry_price if m.nil? || m.to_f.zero?
+        Trading::Risk::PositionRisk.call(position: position, mark_price: m).unrealized_pnl.to_f
       end
 
       def build_market_rows
@@ -279,10 +277,10 @@ module Trading
                       .first
       end
 
-      def build_recent_signals(trading_session:, limit:)
-        scope = GeneratedSignal.order(created_at: :desc)
-        scope = scope.where(trading_session_id: trading_session.id) if trading_session
-        scope.limit(limit).map { |r| signal_activity_payload(r) }
+      # Cross-session: restarting the runner creates a new TradingSession; filtering only the
+      # current session made the operational timeline look empty while the bot was still trading.
+      def build_recent_signals(limit:)
+        GeneratedSignal.order(created_at: :desc).limit(limit).map { |r| signal_activity_payload(r) }
       end
 
       def signal_activity_payload(record)

@@ -22,14 +22,14 @@ module Trading
       begin
         ActiveRecord::Base.transaction(isolation: :repeatable_read) do
           position = Position.lock.find(@position_id)
+          lot_d = Trading::Risk::PositionLotSize.multiplier_for(position).to_d
 
           fills = Fill.joins(:order)
                       .where(orders: { portfolio_id: position.portfolio_id, symbol: position.symbol })
                       .to_a
 
-          calc = Trading::Ledger::NetPositionCalculator.from_fills(fills)
+          calc = Trading::Ledger::NetPositionCalculator.from_fills(fills, lot_multiplier: lot_d)
           q = calc.signed_qty
-          lot_d = Trading::Risk::PositionLotSize.multiplier_for(position).to_d
 
           next_state = derive_status(position, q, fills)
           mark = Trading::MarkPrice.for_symbol(position.symbol) || calc.avg_entry

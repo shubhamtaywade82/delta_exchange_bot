@@ -2,7 +2,7 @@
 
 class GeneratedSignal < ApplicationRecord
   SOURCES = %w[mtf adaptive].freeze
-  STATUSES = %w[generated executed rejected failed].freeze
+  STATUSES = %w[generated executed rejected failed skipped_duplicate].freeze
   SIDES = %w[buy sell long short].freeze
 
   belongs_to :trading_session

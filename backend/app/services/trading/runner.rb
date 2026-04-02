@@ -10,6 +10,7 @@ module Trading
       @running = true
       @last_strategy_run = 0
       @last_adaptive_observed_at = {}
+      @strategy_logger = nil
     end
 
     def start
@@ -30,6 +31,23 @@ module Trading
     end
 
     private
+
+    def strategy_session_logger
+      @strategy_logger ||= build_strategy_session_logger
+    end
+
+    def build_strategy_session_logger
+      cfg  = Bot::Config.load
+      path = Rails.root.join(cfg.log_file)
+      Bot::Notifications::StrategySessionLogger.new(
+        file: path.to_s,
+        level: cfg.log_level,
+        rails_logger: Rails.logger
+      )
+    rescue StandardError => e
+      Rails.logger.warn("[Runner] StrategySessionLogger unavailable (#{e.class}: #{e.message}); using Rails.logger only")
+      Rails.logger
+    end
 
     def bootstrap!
       if PaperTrading.enabled?
@@ -99,11 +117,12 @@ module Trading
       symbols = SymbolConfig.where(enabled: true).pluck(:symbol)
       config  = Bot::Config.load
 
+      # MTF entries only — independent of Trading::Analysis::DigestBuilder / Ollama (analysis dashboard job).
       # Reuse the migrated strategy logic which fetches OHLCV from API
       strategy = Bot::Strategy::MultiTimeframe.new(
         config:      config,
         market_data: @client.market_data,
-        logger:      Rails.logger
+        logger:      strategy_session_logger
       )
 
       symbols.each_with_index do |symbol, index|
@@ -161,8 +180,15 @@ module Trading
 
       EventBus.publish(:signal_generated, converted)
       order = ExecutionEngine.execute(converted, session: @session, client: @client)
-      notify_signal_and_entry(order, converted) if order
-      signal_record&.update!(status: "executed")
+      if order
+        notify_signal_and_entry(order, converted)
+        signal_record&.update!(status: "executed")
+      else
+        signal_record&.update!(
+          status: "skipped_duplicate",
+          error_message: "idempotency: same symbol/side/candle_timestamp already executed"
+        )
+      end
     rescue Trading::RiskManager::RiskError => e
       signal_record&.update!(status: "rejected", error_message: e.message)
       Rails.logger.warn("[Runner] Signal rejected for #{symbol}: #{e.message}")

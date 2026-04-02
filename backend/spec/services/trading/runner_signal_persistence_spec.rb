@@ -45,5 +45,25 @@ RSpec.describe Trading::Runner do
       expect(signal.status).to eq("rejected")
       expect(signal.error_message).to include("risk rejected")
     end
+
+    it "marks signal as skipped_duplicate when execution engine returns nil (idempotency)" do
+      allow(Trading::ExecutionEngine).to receive(:execute).and_return(nil)
+      allow(Trading::EventBus).to receive(:publish)
+
+      runner.send(
+        :execute_signal,
+        symbol: "BTCUSD",
+        side: :buy,
+        entry_price: 50_000.0,
+        candle_timestamp: Time.now.to_i,
+        strategy_name: "mtf",
+        source: "mtf",
+        context: {}
+      )
+
+      signal = GeneratedSignal.order(:created_at).last
+      expect(signal.status).to eq("skipped_duplicate")
+      expect(signal.error_message).to include("idempotency")
+    end
   end
 end

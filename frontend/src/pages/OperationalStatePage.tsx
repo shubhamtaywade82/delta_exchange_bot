@@ -275,7 +275,11 @@ const OperationalStatePage: React.FC = () => {
                           </td>
                           <td className={s.error_message ? 'signal-err-cell' : 'text-muted'}>
                             {s.error_message ||
-                              (s.status === 'executed' ? 'EXECUTED (risk + engine)' : '—')}
+                              (s.status === 'executed'
+                                ? 'EXECUTED (risk + engine)'
+                                : s.status === 'skipped_duplicate'
+                                  ? 'SKIPPED (duplicate candle key)'
+                                  : '—')}
                           </td>
                         </tr>
                       ))

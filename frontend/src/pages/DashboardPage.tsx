@@ -455,10 +455,18 @@ const DashboardPage: React.FC = () => {
                     <th>ENTRY</th>
                     <th>OPENED</th>
                     <th>LTP</th>
-                    <th>SIZE</th>
+                    <th
+                      title="Order size in exchange contracts (not base coins). Notional ≈ contracts × contract_value × price."
+                    >
+                      CONTRACTS
+                    </th>
                     <th>LEVERAGE</th>
                     <th>PNL_UNREALIZED (INR)</th>
-                    <th>PNL_%</th>
+                    <th
+                      title="Return on initial margin (ROE), not underlying price change %. ≈ (unrealized PnL USD) ÷ (initial margin USD) × 100."
+                    >
+                      ROE%
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -482,10 +490,20 @@ const DashboardPage: React.FC = () => {
                       <td className="font-mono">{formatQuotePrice(p.mark_price)}</td>
                       <td className="font-mono">{formatDisplayDecimal(p.size)}</td>
                       <td className="font-mono text-zinc-400">{p.leverage}x</td>
-                      <td className={(p.unrealized_pnl_inr || 0) >= 0 ? 'pos' : 'neg'}>
+                      <td
+                        className={(p.unrealized_pnl_inr || 0) >= 0 ? 'pos' : 'neg'}
+                        title={
+                          p.unrealized_pnl != null
+                            ? `Unrealized ≈ ${formatUsd(p.unrealized_pnl)} USD (display INR uses a fixed USD/INR for the dashboard).`
+                            : undefined
+                        }
+                      >
                         {formatInr(p.unrealized_pnl_inr || 0)}
                       </td>
-                      <td className={(p.unrealized_pnl_pct || 0) >= 0 ? 'pos' : 'neg'}>
+                      <td
+                        className={(p.unrealized_pnl_pct || 0) >= 0 ? 'pos' : 'neg'}
+                        title="Return on equity vs posted initial margin (leverage magnifies this vs spot %)."
+                      >
                         {formatDisplayDecimal(p.unrealized_pnl_pct || 0)}%
                       </td>
                     </tr>

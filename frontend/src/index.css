@@ -466,6 +466,11 @@ body::after {
   border-color: rgba(0, 255, 136, 0.2);
 }
 
+.signal-status-pill.status-skipped_duplicate {
+  background: rgba(148, 163, 184, 0.25);
+  color: #cbd5e1;
+}
+
 .signal-status-pill.status-rejected,
 .signal-status-pill.status-failed {
   color: var(--danger);
@@ -1344,11 +1349,20 @@ td {
   cursor: pointer;
 }
 
-/* Analysis dashboard */
+/* Analysis dashboard — full horizontal space; inner grids use responsive columns */
+.terminal-main {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
 .analysis-page {
-  padding: 1.25rem 1.5rem 2rem;
-  max-width: min(100%, 92rem);
-  margin: 0 auto;
+  padding: 1.25rem clamp(1rem, 2.5vw, 2.75rem) 2rem;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  box-sizing: border-box;
 }
 
 .analysis-page-header {
@@ -1369,7 +1383,7 @@ td {
   margin: 0;
   font-size: 0.72rem;
   color: var(--text-muted);
-  max-width: 52rem;
+  max-width: min(56rem, 100%);
   line-height: 1.45;
 }
 
@@ -1437,7 +1451,7 @@ td {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 6px;
-  max-width: 52rem;
+  max-width: min(64rem, 100%);
 }
 
 .analysis-once-hint-top {
@@ -1511,7 +1525,7 @@ td {
   margin-top: 0.45rem;
   font-size: 0.68rem;
   color: var(--text-muted);
-  max-width: 48rem;
+  max-width: min(56rem, 100%);
 }
 
 .analysis-help-details summary {
@@ -1533,9 +1547,16 @@ td {
 
 .analysis-symbol-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+  grid-template-columns: 1fr;
   gap: 1.35rem;
   align-items: start;
+}
+
+/* Wider viewports: multiple symbols side-by-side when there is room (auto-fit keeps one symbol full-width). */
+@media (min-width: 900px) {
+  .analysis-symbol-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr));
+  }
 }
 
 .analysis-card .analysis-card-head h2 {
@@ -2002,12 +2023,24 @@ td {
   border-radius: 3px;
 }
 
-/* Stack timeframes vertically so each panel uses full card width (avoids 3 squeezed columns). */
+/* Narrow: stack TFs. Wide: three columns so 5m / 15m / 1h are visible at once. */
 .smc-tf-grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 0.75rem;
   margin-top: 0.25rem;
+}
+
+@media (min-width: 1200px) {
+  .smc-tf-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+    align-items: start;
+  }
+
+  .smc-tf-panel .smc-scroll-list {
+    max-height: 11rem;
+  }
 }
 
 .smc-tf-panel {
