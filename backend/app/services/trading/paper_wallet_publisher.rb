@@ -40,17 +40,17 @@ module Trading
     end
 
     def self.persist_portfolio_payload(cfg, portfolio)
-      manager = Bot::Account::CapitalManager.new(
-        usd_to_inr_rate: cfg.usd_to_inr_rate,
-        dry_run: true,
-        simulated_capital_inr: cfg.simulated_capital_inr
-      )
       blocked = portfolio.used_margin.to_f
       unrealized = portfolio.unrealized_pnl_total.to_f
-      equity_usd = portfolio.balance.to_f + unrealized
+      balance_usd = portfolio.balance.to_f
+      equity_usd = balance_usd + unrealized
       spendable = portfolio.available_balance.to_f
 
       data = {
+        "cash_balance_usd" => balance_usd.round(2),
+        "cash_balance_inr" => (balance_usd * cfg.usd_to_inr_rate).round(0),
+        "unrealized_pnl_usd" => unrealized.round(2),
+        "unrealized_pnl_inr" => (unrealized * cfg.usd_to_inr_rate).round(0),
         "total_equity_usd" => equity_usd.round(2),
         "total_equity_inr" => (equity_usd * cfg.usd_to_inr_rate).round(0),
         "available_usd" => spendable.round(2),
@@ -78,7 +78,19 @@ module Trading
       rows = positions.nil? ? Position.active.to_a : positions.to_a
       blocked = rows.sum { |position| position.margin.to_f }
       unrealized = unrealized_pnl_usd_for(rows)
-      manager.persist_state(blocked_margin: blocked, unrealized_pnl: unrealized)
+      data = manager.persist_state(blocked_margin: blocked, unrealized_pnl: unrealized)
+      return data unless data
+
+      equity_usd = data["total_equity_usd"].to_f
+      cash_usd = (equity_usd - unrealized).round(2)
+      merged = data.merge(
+        "cash_balance_usd" => cash_usd,
+        "cash_balance_inr" => (cash_usd * cfg.usd_to_inr_rate).round(0),
+        "unrealized_pnl_usd" => unrealized.round(2),
+        "unrealized_pnl_inr" => (unrealized * cfg.usd_to_inr_rate).round(0)
+      )
+      Redis.current.set(Bot::Account::CapitalManager::REDIS_KEY, merged.to_json)
+      merged
     end
     private_class_method :legacy_snapshot!, :persist_portfolio_payload
   end

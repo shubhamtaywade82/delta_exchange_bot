@@ -105,6 +105,15 @@ function walletCashValueClassName(value: unknown): string {
   return 'wallet-value pos';
 }
 
+/** Signed PnL-style coloring (zero is neutral). */
+function walletSignedValueClassName(value: unknown): string {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return 'wallet-value';
+  if (n < 0) return 'wallet-value neg';
+  if (n > 0) return 'wallet-value pos';
+  return 'wallet-value';
+}
+
 function SignalQualityPanel({ sym }: { sym: SymbolState }) {
   const allFilters = sym.filters;
   const allPassed = allFilters &&
@@ -590,25 +599,63 @@ const DashboardPage: React.FC = () => {
             </div>
             <div className="wallet-grid">
               <div className="wallet-item">
-                <label title="Cash balance plus unrealized PnL on open positions (INR).">TOTAL EQUITY (INR)</label>
+                <label title="Ledger cash from realized fills; does not include mark-to-market on open positions.">
+                  CASH BALANCE (USD)
+                </label>
+                <div className="wallet-value">
+                  {wallet?.cash_balance_usd != null ? formatUsd(wallet.cash_balance_usd) : '--'}
+                </div>
+              </div>
+              <div className="wallet-item">
+                <label title="Ledger cash from realized fills; does not include mark-to-market on open positions.">
+                  CASH BALANCE (INR)
+                </label>
+                <div className="wallet-value">
+                  {wallet?.cash_balance_inr != null ? formatInr(wallet.cash_balance_inr) : '--'}
+                </div>
+              </div>
+              <div className="wallet-item">
+                <label title="Unrealized PnL on open positions (included in total equity, not in free cash).">
+                  UNREALIZED (USD)
+                </label>
+                <div className={walletSignedValueClassName(wallet?.unrealized_pnl_usd)}>
+                  {wallet?.unrealized_pnl_usd != null ? formatUsd(wallet.unrealized_pnl_usd) : '--'}
+                </div>
+              </div>
+              <div className="wallet-item">
+                <label title="Unrealized PnL on open positions (included in total equity, not in free cash).">
+                  UNREALIZED (INR)
+                </label>
+                <div className={walletSignedValueClassName(wallet?.unrealized_pnl_inr)}>
+                  {wallet?.unrealized_pnl_inr != null ? formatInr(wallet.unrealized_pnl_inr) : '--'}
+                </div>
+              </div>
+              <div className="wallet-item">
+                <label title="Cash balance plus unrealized PnL on open positions.">TOTAL EQUITY (USD)</label>
+                <div className="wallet-value">
+                  {wallet?.total_equity_usd != null ? formatUsd(wallet.total_equity_usd) : '--'}
+                </div>
+              </div>
+              <div className="wallet-item">
+                <label title="Cash balance plus unrealized PnL on open positions.">TOTAL EQUITY (INR)</label>
                 <div className="wallet-value">
                   {wallet?.total_equity_inr != null ? formatInr(wallet.total_equity_inr) : '--'}
                 </div>
               </div>
               <div className="wallet-item">
-                <label>BLOCKED MARGIN (USD)</label>
+                <label title="Initial margin reserved for open positions.">BLOCKED MARGIN (USD)</label>
                 <div className="wallet-value">
                   {wallet?.blocked_margin_usd != null ? formatUsd(wallet.blocked_margin_usd) : '--'}
                 </div>
               </div>
               <div className="wallet-item">
-                <label>BLOCKED MARGIN (INR)</label>
+                <label title="Initial margin reserved for open positions.">BLOCKED MARGIN (INR)</label>
                 <div className="wallet-value">
                   {wallet?.blocked_margin_inr != null ? formatInr(wallet.blocked_margin_inr) : '--'}
                 </div>
               </div>
               <div className="wallet-item">
-                <label title="Balance minus initial margin held for open positions; unrealized PnL is not added here.">
+                <label title="Cash balance minus blocked margin only. Unrealized PnL is not added — so equity minus blocked is not free cash unless unrealized is zero.">
                   FREE CASH (USD)
                 </label>
                 <div className={walletCashValueClassName(wallet?.available_usd)}>
@@ -616,12 +663,18 @@ const DashboardPage: React.FC = () => {
                 </div>
               </div>
               <div className="wallet-item">
-                <label title="Balance minus initial margin held for open positions; unrealized PnL is not added here.">
+                <label title="Cash balance minus blocked margin only. Unrealized PnL is not added — so equity minus blocked is not free cash unless unrealized is zero.">
                   FREE CASH (INR)
                 </label>
                 <div className={walletCashValueClassName(wallet?.available_inr)}>
                   {wallet?.available_inr != null ? formatInr(wallet.available_inr) : '--'}
                 </div>
+              </div>
+              <div className="wallet-item wallet-item-span">
+                <p className="wallet-reconcile-hint">
+                  Reconcile: total equity = cash + unrealized. Free cash = cash − blocked margin (not equity −
+                  blocked).
+                </p>
               </div>
               <div className="wallet-item">
                 <label>LAST_SYNC</label>

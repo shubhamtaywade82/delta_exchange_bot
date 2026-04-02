@@ -999,6 +999,19 @@ td {
   gap: 1.5rem;
 }
 
+.wallet-item.wallet-item-span {
+  grid-column: 1 / -1;
+}
+
+.wallet-reconcile-hint {
+  margin: 0;
+  font-size: 0.65rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 .wallet-item label {
   display: block;
   font-size: 0.6rem;

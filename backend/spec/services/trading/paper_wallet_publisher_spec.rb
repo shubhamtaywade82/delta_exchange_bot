@@ -32,6 +32,8 @@ RSpec.describe Trading::PaperWalletPublisher do
 
       expect(payload).to be_a(Hash)
       expect(payload["blocked_margin_usd"]).to eq(0.0)
+      expect(payload["cash_balance_usd"]).to eq(10_000.0)
+      expect(payload["unrealized_pnl_usd"]).to eq(0.0)
       expect(payload["available_usd"]).to eq(payload["total_equity_usd"])
       expect(payload["available_inr"]).to eq(payload["total_equity_inr"])
     end
