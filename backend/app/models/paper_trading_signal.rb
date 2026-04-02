@@ -6,7 +6,8 @@ class PaperTradingSignal < ApplicationRecord
 
   STATUSES = %w[pending accepted routed rejected filled closed].freeze
 
-  validates :product_id, :side, :entry_price, :stop_price, :risk_pct, :idempotency_key, presence: true
+  validates :product_id, :side, :entry_price, :stop_price, :max_loss_inr, :idempotency_key, presence: true
+  validates :max_loss_inr, numericality: { greater_than: 0 }
   validates :idempotency_key, uniqueness: true
   validates :status, inclusion: { in: STATUSES }
   validates :side, inclusion: { in: %w[buy sell long short] }

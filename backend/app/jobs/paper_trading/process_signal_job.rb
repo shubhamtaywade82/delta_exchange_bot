@@ -12,6 +12,9 @@ module PaperTrading
       wallet = PaperWallet.lock.find(signal.paper_wallet_id)
       product = PaperProductSnapshot.find_by!(product_id: signal.product_id)
 
+      wallet.reload
+      wallet.recompute_from_ledger!
+
       ltp = PaperTrading::RedisStore.get_ltp(product.product_id) || product.live_price
       unless ltp&.to_d&.positive?
         signal.update!(status: "rejected", rejection_reason: "no live price for product")
@@ -19,18 +22,17 @@ module PaperTrading
       end
       ltp = ltp.to_d
 
-      risk_basis_usd = wallet.risk_sizing_equity_usd.to_f
-      margin_wallet_usd = wallet.available_capital.to_d.to_f
+      usd_inr_rate = Finance::UsdInrRate.current
       leverage = [ product.default_leverage.to_i, 1 ].max
 
-      result = Finance::PositionSizer.compute!(
-        balance_usd: risk_basis_usd,
-        risk_percent: signal.risk_pct.to_f,
+      result = PaperTrading::RrPositionSizer.compute!(
+        max_loss_inr: signal.max_loss_inr,
+        available_margin_inr: wallet.available_inr.to_d,
+        usd_inr_rate: usd_inr_rate,
         entry_price: signal.entry_price.to_f,
         stop_price: signal.stop_price.to_f,
         contract_value: product.contract_value.to_f,
         leverage: leverage,
-        margin_wallet_usd: margin_wallet_usd,
         position_size_limit: product.position_size_limit
       )
 

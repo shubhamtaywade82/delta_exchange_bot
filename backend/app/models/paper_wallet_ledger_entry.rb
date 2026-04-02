@@ -5,6 +5,8 @@ class PaperWalletLedgerEntry < ApplicationRecord
   belongs_to :reference, polymorphic: true, optional: true
 
   ENTRY_TYPES = %w[
+    deposit
+    withdrawal
     margin_reserved
     margin_released
     realized_pnl
@@ -15,5 +17,5 @@ class PaperWalletLedgerEntry < ApplicationRecord
 
   validates :entry_type, inclusion: { in: ENTRY_TYPES }
   validates :direction, inclusion: { in: DIRECTIONS }
-  validates :amount, presence: true
+  validates :amount_inr, presence: true
 end

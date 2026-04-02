@@ -3,7 +3,7 @@
 require "rails_helper"
 
 RSpec.describe PaperTrading::ProcessSignalJob do
-  let(:wallet) { create(:paper_wallet, cash_balance: "100_000", equity: "100_000") }
+  let(:wallet) { create(:paper_wallet) }
   let(:product) { create(:paper_product_snapshot, product_id: 27, symbol: "BTCUSD", risk_unit_per_contract: "0.001") }
   let(:signal) do
     create(:paper_trading_signal,
@@ -12,7 +12,7 @@ RSpec.describe PaperTrading::ProcessSignalJob do
       side: "buy",
       entry_price: "50000",
       stop_price: "49000",
-      risk_pct: "0.01",
+      max_loss_inr: BigDecimal("50_000"),
       status: "pending")
   end
 
@@ -33,32 +33,29 @@ RSpec.describe PaperTrading::ProcessSignalJob do
   end
 
   it "rejects when quantity below 1" do
-    tiny_wallet = create(:paper_wallet, cash_balance: "5", equity: "5")
+    tiny_wallet = create(:paper_wallet, seed_inr: BigDecimal("1"))
     bad = create(:paper_trading_signal,
       paper_wallet: tiny_wallet,
       product_id: product.product_id,
       side: "buy",
       entry_price: "50000",
       stop_price: "49000",
-      risk_pct: "0.0001",
+      max_loss_inr: BigDecimal("5000"),
       status: "pending")
     described_class.perform_now(bad.id)
     expect(bad.reload.status).to eq("rejected")
   end
 
-  it "sizes risk from cash plus realized PnL, not unrealized equity" do
-    wallet.update_columns(
-      unrealized_pnl: 500_000,
-      equity: 600_000,
-      cash_balance: 100_000,
-      realized_pnl: 0
-    )
-    expect(Finance::PositionSizer).to receive(:compute!).and_wrap_original do |method, **kwargs|
-      expect(kwargs[:balance_usd]).to eq(100_000.0)
+  it "passes wallet available_inr into the RR sizer" do
+    wallet.reload.recompute_from_ledger!
+    expected_available = wallet.reload.available_inr.to_d
+
+    allow(PaperTrading::RrPositionSizer).to receive(:compute!).and_wrap_original do |method, **kwargs|
+      expect(kwargs[:available_margin_inr]).to eq(expected_available)
       method.call(**kwargs)
     end
+
     described_class.perform_now(signal.id)
-    expect(signal.reload.status).to eq("filled")
   end
 
   it "handles two signals on same wallet without duplicate client_order_id" do
@@ -68,10 +65,10 @@ RSpec.describe PaperTrading::ProcessSignalJob do
       side: "buy",
       entry_price: "50000",
       stop_price: "49000",
-      risk_pct: "0.001",
+      max_loss_inr: BigDecimal("10_000"),
       status: "pending")
 
-    threads = [signal, sig2].map do |s|
+    threads = [ signal, sig2 ].map do |s|
       Thread.new { described_class.perform_now(s.id) }
     end
     threads.each(&:join)

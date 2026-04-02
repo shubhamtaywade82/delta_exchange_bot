@@ -3,7 +3,9 @@
 require "rails_helper"
 
 RSpec.describe PaperTrading::PositionManager do
-  let(:wallet) { create(:paper_wallet, cash_balance: "100_000", equity: "100_000", reserved_margin: "0") }
+  before { allow(Finance::UsdInrRate).to receive(:current).and_return(85) }
+
+  let(:wallet) { create(:paper_wallet) }
   let(:product) do
     create(:paper_product_snapshot, contract_value: "0.001", risk_unit_per_contract: "0.001", default_leverage: 1)
   end
@@ -34,6 +36,7 @@ RSpec.describe PaperTrading::PositionManager do
       expect(pos.net_quantity).to eq(10)
       expect(pos.side).to eq("buy")
       expect(PaperWalletLedgerEntry.where(entry_type: "margin_reserved").count).to eq(1)
+      expect(PaperWalletLedgerEntry.where(entry_type: "commission").count).to eq(1)
     end
   end
 
@@ -72,7 +75,7 @@ RSpec.describe PaperTrading::PositionManager do
         fill: fill, fill_side: "sell", quantity: 10, price: BigDecimal("55000")
       )
       expect(PaperPosition.find_by(paper_wallet: wallet, paper_product_snapshot: product)).to be_nil
-      expect(wallet.reload.realized_pnl).to eq(BigDecimal("50"))
+      expect(wallet.reload.realized_pnl_inr).to eq(BigDecimal("4250"))
     end
   end
 

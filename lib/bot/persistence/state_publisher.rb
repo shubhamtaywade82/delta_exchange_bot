@@ -12,7 +12,7 @@ module Bot
       WALLET_KEY   = "delta:wallet:state"
       WALLET_TTL   = 120  # seconds
 
-      def initialize(url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0"))
+      def initialize(url: ENV.fetch("REDIS_URL", "redis://localhost:6379/1"))
         @redis = Redis.new(url: url)
       rescue Redis::CannotConnectError => e
         warn "[StatePublisher] Redis connect failed: #{e.message} — state publishing disabled"

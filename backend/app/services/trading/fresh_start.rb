@@ -6,9 +6,9 @@ module Trading
   class FreshStart
     class AbortError < StandardError; end
 
-    # Redis DB used by `Redis.current` (see config/initializers/redis.rb), typically /0.
-    # Does not touch Solid Queue (PostgreSQL) or Rails cache Redis DB if different.
-    REDIS_DB0_DOCUMENTED_KEYS = [
+    # Keys on the Redis logical DB used by `Redis.current` (REDIS_URL path, e.g. /1 — see config/initializers/redis.rb).
+    # Does not touch Solid Queue (PostgreSQL). If cache_store uses a different Redis URL/DB, flush that separately.
+    REDIS_TRADING_DOCUMENTED_KEYS = [
       "delta:positions:live",
       "delta:wallet:state",
       "delta:execution:incidents",
@@ -17,7 +17,7 @@ module Trading
       Trading::SessionResumer::BOOT_LOCK_KEY
     ].freeze
 
-    REDIS_DB0_SCAN_PATTERNS = [
+    REDIS_TRADING_SCAN_PATTERNS = [
       "delta_bot_lock:*",
       "delta:order:*",
       "delta_bot:prices:*"
@@ -48,7 +48,7 @@ module Trading
         counts[:strategy_params] = StrategyParam.delete_all
       end
 
-      flush_redis_db0!
+      flush_redis_trading_keys!
       flush_rails_cache!
 
       print_summary(counts)
@@ -60,14 +60,14 @@ module Trading
       @redis ||= Redis.current
     end
 
-    def flush_redis_db0!
-      REDIS_DB0_DOCUMENTED_KEYS.each do |key|
+    def flush_redis_trading_keys!
+      REDIS_TRADING_DOCUMENTED_KEYS.each do |key|
         redis.del(key)
       rescue StandardError => e
         @stdout.puts "[fresh_start] Redis DEL #{key}: #{e.message}"
       end
 
-      REDIS_DB0_SCAN_PATTERNS.each { |pattern| scan_delete!(pattern) }
+      REDIS_TRADING_SCAN_PATTERNS.each { |pattern| scan_delete!(pattern) }
     end
 
     def scan_delete!(pattern)
@@ -95,9 +95,9 @@ module Trading
           positions:                #{counts[:positions]}
           strategy_params:          #{counts[:strategy_params]}
 
-        Redis (Redis.current / DB from REDIS_URL): removed documented keys + SCAN patterns:
-          #{REDIS_DB0_DOCUMENTED_KEYS.join(", ")}
-          patterns: #{REDIS_DB0_SCAN_PATTERNS.join(", ")}
+        Redis (Redis.current / logical DB from REDIS_URL): removed documented keys + SCAN patterns:
+          #{REDIS_TRADING_DOCUMENTED_KEYS.join(", ")}
+          patterns: #{REDIS_TRADING_SCAN_PATTERNS.join(", ")}
 
         Rails.cache: clear (LTP/mark, adaptive:*, runtime_config:*, idempotency not on cache store — see Redis delta:order:*).
       MSG

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_02_180000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_02_200000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -152,10 +152,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_180000) do
     t.datetime "created_at", null: false
     t.decimal "entry_price", precision: 36, scale: 18, null: false
     t.string "idempotency_key", null: false
+    t.decimal "max_loss_inr", precision: 20, scale: 2, default: "5000.0", null: false
     t.bigint "paper_wallet_id", null: false
     t.integer "product_id", null: false
     t.string "rejection_reason"
-    t.decimal "risk_pct", precision: 16, scale: 10, null: false
+    t.decimal "risk_pct", precision: 16, scale: 10
     t.string "side", null: false
     t.string "status", default: "pending", null: false
     t.decimal "stop_price", precision: 36, scale: 18, null: false
@@ -166,10 +167,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_180000) do
   end
 
   create_table "paper_wallet_ledger_entries", force: :cascade do |t|
-    t.decimal "amount", precision: 36, scale: 18, null: false
+    t.decimal "amount_inr", precision: 20, scale: 2, null: false
     t.datetime "created_at", null: false
     t.string "direction", null: false
     t.string "entry_type", null: false
+    t.jsonb "meta", default: {}, null: false
     t.string "notes"
     t.bigint "paper_wallet_id", null: false
     t.bigint "reference_id"
@@ -182,14 +184,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_180000) do
   end
 
   create_table "paper_wallets", force: :cascade do |t|
-    t.decimal "cash_balance", precision: 36, scale: 18, default: "0.0", null: false
+    t.decimal "available_inr", precision: 20, scale: 2, default: "0.0", null: false
+    t.decimal "balance_inr", precision: 20, scale: 2, default: "0.0", null: false
     t.datetime "created_at", null: false
-    t.decimal "equity", precision: 36, scale: 18, default: "0.0", null: false
+    t.decimal "equity_inr", precision: 20, scale: 2, default: "0.0", null: false
     t.string "name", default: "default", null: false
-    t.decimal "realized_pnl", precision: 36, scale: 18, default: "0.0", null: false
-    t.decimal "reserved_margin", precision: 36, scale: 18, default: "0.0", null: false
-    t.decimal "unrealized_pnl", precision: 36, scale: 18, default: "0.0", null: false
+    t.decimal "realized_pnl_inr", precision: 20, scale: 2, default: "0.0", null: false
+    t.decimal "unrealized_pnl_inr", precision: 20, scale: 2, default: "0.0", null: false
     t.datetime "updated_at", null: false
+    t.decimal "used_margin_inr", precision: 20, scale: 2, default: "0.0", null: false
   end
 
   create_table "portfolio_ledger_entries", force: :cascade do |t|
@@ -241,7 +244,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_180000) do
     t.decimal "unrealized_pnl_usd", precision: 20, scale: 8
     t.datetime "updated_at", null: false
     t.index ["needs_reconciliation"], name: "index_positions_on_needs_reconciliation"
-    t.index ["portfolio_id", "symbol"], name: "idx_positions_one_open_net_per_portfolio_symbol", unique: true, where: "((status)::text = ANY ((ARRAY['init'::character varying, 'entry_pending'::character varying, 'partially_filled'::character varying, 'filled'::character varying, 'exit_pending'::character varying, 'open'::character varying])::text[]))"
+    t.index ["portfolio_id", "symbol"], name: "idx_positions_one_open_net_per_portfolio_symbol", unique: true, where: "((status)::text = ANY (ARRAY[('init'::character varying)::text, ('entry_pending'::character varying)::text, ('partially_filled'::character varying)::text, ('filled'::character varying)::text, ('exit_pending'::character varying)::text, ('open'::character varying)::text]))"
     t.index ["portfolio_id"], name: "index_positions_on_portfolio_id"
   end
 

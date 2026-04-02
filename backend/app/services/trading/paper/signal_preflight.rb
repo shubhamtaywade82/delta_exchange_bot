@@ -5,7 +5,9 @@ require "bigdecimal/util"
 
 module Trading
   module Paper
-    # Read-only risk-budget check before async ExecutionEngine (aligns with OrderBuilder stop distance).
+    # Read-only risk-budget check before async ExecutionEngine for **live** +generated_signal+ paths
+    # (+Trading::Paper::CapitalAllocator+ uses % of equity). Async +PaperTradingSignal+ jobs use
+    # +PaperTrading::RrPositionSizer+ (+max_loss_inr+, no % capital risk).
     class SignalPreflight
       def self.call(generated_signal)
         portfolio = generated_signal.trading_session.portfolio

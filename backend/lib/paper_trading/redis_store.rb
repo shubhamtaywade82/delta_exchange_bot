@@ -62,7 +62,14 @@ module PaperTrading
 
     def set_wallet_snapshot(wallet_id, attrs)
       payload = attrs.stringify_keys.slice(
-        "cash_balance", "realized_pnl", "unrealized_pnl", "equity", "reserved_margin"
+        "id",
+        "name",
+        "balance_inr",
+        "available_inr",
+        "used_margin_inr",
+        "equity_inr",
+        "unrealized_pnl_inr",
+        "realized_pnl_inr"
       ).transform_values(&:to_s)
       redis.setex(
         format(KEYS[:wallet_snapshot], wallet_id: wallet_id),
