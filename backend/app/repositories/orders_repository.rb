@@ -28,6 +28,7 @@ module OrdersRepository
   def self.close_position(position_id:, reason:, mark_price:)
     position = Position.find(position_id)
     target_status = liquidation_reason?(reason) ? "liquidated" : "closed"
+    trade = nil
 
     Position.transaction do
       position.update!(
@@ -51,8 +52,25 @@ module OrdersRepository
       Rails.logger.warn("[OrdersRepository] Forced close position=#{position.id} reason=#{reason} mark=#{mark_price}")
     end
 
+    notify_trade_closed_telegram(trade, reason)
     position
   end
+
+  def self.notify_trade_closed_telegram(trade, reason)
+    return unless trade
+
+    Trading::TelegramNotifications.deliver do |n|
+      n.notify_trade_closed(
+        symbol: trade.symbol,
+        exit_price: trade.exit_price.to_f,
+        pnl_usd: trade.pnl_usd.to_f,
+        pnl_inr: trade.pnl_inr.to_f,
+        duration_seconds: trade.duration_seconds.to_i,
+        reason: reason.to_s
+      )
+    end
+  end
+  private_class_method :notify_trade_closed_telegram
 
   def self.liquidation_reason?(reason)
     reason.to_s == "LIQUIDATION_EXIT"

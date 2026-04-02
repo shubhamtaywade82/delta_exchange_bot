@@ -14,11 +14,13 @@ module Trading
 
     def start
       Rails.logger.info("[Runner] Starting session #{@session.id} strategy=#{@session.strategy}")
+      notify_startup_status
       bootstrap!
       register_event_handlers!
       start_ws!
       run_loop
     ensure
+      notify_shutdown_status
       EventBus.reset!
       Rails.logger.info("[Runner] Session #{@session.id} exited cleanly")
     end
@@ -158,7 +160,8 @@ module Trading
       )
 
       EventBus.publish(:signal_generated, converted)
-      ExecutionEngine.execute(converted, session: @session, client: @client)
+      order = ExecutionEngine.execute(converted, session: @session, client: @client)
+      notify_signal_and_entry(order, converted) if order
       signal_record&.update!(status: "executed")
     rescue Trading::RiskManager::RiskError => e
       signal_record&.update!(status: "rejected", error_message: e.message)
@@ -226,6 +229,54 @@ module Trading
       @running && @session.reload.running?
     rescue ActiveRecord::RecordNotFound
       false
+    end
+
+    def notify_startup_status
+      symbols = SymbolConfig.where(enabled: true).pluck(:symbol).join(", ")
+      paper = PaperTrading.enabled? ? "paper" : "live"
+      TelegramNotifications.deliver do |n|
+        n.notify_status(
+          "Trading::Runner session #{@session.id} (#{@session.strategy}) — #{paper}. Symbols: #{symbols.presence || '(none)'}",
+          status: "starting"
+        )
+      end
+    end
+
+    def notify_shutdown_status
+      TelegramNotifications.deliver do |n|
+        n.notify_status("Trading::Runner session #{@session.id} stopped.", status: "stopping")
+      end
+    end
+
+    def notify_signal_and_entry(order, signal_event)
+      TelegramNotifications.deliver do |n|
+        n.notify_signal_generated(
+          symbol: signal_event.symbol,
+          side: signal_event.side,
+          price: signal_event.entry_price.to_f,
+          strategy: signal_event.strategy.to_s
+        )
+        notify_position_opened_if_applicable(n, order)
+      end
+    end
+
+    def notify_position_opened_if_applicable(notifier, order)
+      order.reload
+      pos = order.position
+      return unless pos && order.status == "filled"
+      return unless Position::NET_OPEN_STATUSES.include?(pos.status)
+
+      side_sym = pos.side.to_s.downcase.in?(%w[long buy]) ? :long : :short
+      mode = PaperTrading.enabled? ? "paper" : "live"
+      notifier.notify_trade_opened(
+        symbol: pos.symbol,
+        side: side_sym,
+        price: pos.entry_price.to_f,
+        lots: pos.size.to_f,
+        leverage: pos.leverage.to_i,
+        trailing_stop: pos.stop_price.to_f,
+        mode: mode
+      )
     end
 
     def build_client

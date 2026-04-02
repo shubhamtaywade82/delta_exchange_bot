@@ -44,6 +44,19 @@ Edit `config/bot.yml` (or `backend/config/bot.yml` — keep them aligned if you 
 - Set `mode: testnet` to trade on Delta Exchange testnet
 - Set `mode: live` for live trading
 
+### Telegram (default `Trading::Runner`)
+
+`LEGACY_BOT_RUNNER=1` (`Bot::Runner`) has always supported Telegram. **`Trading::Runner`** (default `backend/bin/bot` and `./bin/dev`) now uses the same notifier: it reads **`notifications.telegram.*`** from **Settings** (merged via `Bot::Config.load` — same keys as `db/seeds.rb`).
+
+1. In **Admin → Settings** (or SQL), set:
+   - `notifications.telegram.enabled` = `true` (boolean)
+   - `notifications.telegram.bot_token` = token from [@BotFather](https://t.me/BotFather)
+   - `notifications.telegram.chat_id` = your chat or group id (numeric string)
+2. Optionally toggle event keys: `notifications.telegram.events.signals`, `.positions`, `.trailing`, `.status`, `.errors` (booleans).
+3. Restart **`bin/bot`** (or the process running `Trading::Runner`) so config is picked up.
+
+Seeds default **`notifications.telegram.enabled` to `false`**, so nothing is sent until you enable it. `.env` `TELEGRAM_*` variables are **not** read by `Bot::Config`; use Settings or extend `Bot::Config` if you want env-based tokens.
+
 ## Usage
 
 ### Development (all services)

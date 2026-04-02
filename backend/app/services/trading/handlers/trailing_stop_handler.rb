@@ -18,6 +18,7 @@ module Trading
         # 2. Trigger Exit if stop hit
         if action == :exit
           Rails.logger.warn("[TrailingStopHandler] STOP HIT for #{position.symbol} at #{@tick.price}")
+          notify_trailing_stop_telegram(position)
           EmergencyShutdown.force_exit_position(position, @client, reason: "TRAILING_STOP_EXIT")
         end
       end
@@ -49,6 +50,18 @@ module Trading
 
         pos.save! if updated
         nil
+      end
+
+      def notify_trailing_stop_telegram(position)
+        side_sym = position.side.to_s.downcase.in?(%w[long buy]) ? :long : :short
+        Trading::TelegramNotifications.deliver do |n|
+          n.notify_trailing_stop_triggered(
+            symbol: position.symbol,
+            side: side_sym,
+            ltp: @tick.price.to_f,
+            stop_price: position.stop_price.to_f
+          )
+        end
       end
     end
   end
