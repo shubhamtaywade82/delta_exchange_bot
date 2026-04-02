@@ -66,3 +66,19 @@ flowchart TD
   end
   D --> Y --> S --> SC --> TE --> BM
 ```
+
+## Live prices and product metadata
+
+- **LTP / mark for a symbol** — prefer **`Rails.cache`** keys `ltp:{symbol}` and `mark:{symbol}` (written by the WebSocket / runner path). Do not introduce a second price namespace unless you add an adapter that maps `product_id` → `symbol` via `SymbolConfig`.
+- **Per-product specs** — `SymbolConfig` rows are extended with Delta-backed fields: `tick_size`, `contract_type`, `metadata` (JSON, including `contract_lot_multiplier`), `last_mark_price`, `last_close_price`, `fetched_at`. Refresh via [`Trading::Delta::ProductCatalogSync`](../app/services/trading/delta/product_catalog_sync.rb) or **`Trading::PersistProductSnapshotsJob`** (scheduled in `config/recurring.yml`, **Solid Queue** — this app does not use Sidekiq).
+- **Contract multiplier for PnL / sizing** — [`Trading::Risk::PositionLotSize`](../app/services/trading/risk/position_lot_size.rb) and [`Trading::Paper::RiskUnitValue`](../app/services/trading/paper/risk_unit_value.rb) prefer cached `metadata["contract_lot_multiplier"]` after sync, then fall back to the Delta gem.
+
+## Wallet snapshot job and async signal execution
+
+- **`Trading::RefreshWalletSnapshotJob`** — calls [`PaperWalletPublisher.publish!`](../app/services/trading/paper_wallet_publisher.rb) to refresh **`delta:wallet:state`** in Redis; enqueue after material ledger changes if you need decoupled dashboard updates.
+- **`Trading::ProcessGeneratedSignalJob`** — runs [`Trading::Paper::SignalPreflight`](../app/services/trading/paper/signal_preflight.rb) then [`ExecutionEngine.execute`](../app/services/trading/execution_engine.rb). Uses Redis idempotency key **`process_generated_signal:{id}`** (via [`IdempotencyGuard`](../app/services/trading/idempotency_guard.rb)) for at-most-once side effects per signal.
+- **Delta REST client** — build with [`Trading::RunnerClient.build`](../app/services/trading/runner_client.rb) (same rules as `Trading::Runner`).
+
+## Trailing stop bootstrap
+
+When a net position first opens, [`Trading::PositionRecalculator`](../app/services/trading/position_recalculator.rb) sets **`trail_pct`**, **`peak_price`**, and **`stop_price`** from `Bot::Config.trailing_stop_pct` (or **0.2** if config validation fails, e.g. empty watchlist in tests) so [`TrailingStopHandler`](../app/services/trading/handlers/trailing_stop_handler.rb) can run on ticks.

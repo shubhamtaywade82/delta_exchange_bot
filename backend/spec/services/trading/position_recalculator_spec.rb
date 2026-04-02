@@ -40,6 +40,21 @@ RSpec.describe Trading::PositionRecalculator do
     expect(position.reload.size.to_d).to eq(1.to_d)
   end
 
+  it "sets trail_pct peak_price and stop_price when net position opens without trail" do
+    config = instance_double(Bot::Config, trailing_stop_pct: 1.0)
+    allow(Bot::Config).to receive(:load).and_return(config)
+
+    order.update!(size: 1)
+    create(:fill, order: order, quantity: 1, price: 50_000, exchange_fill_id: "Ftrail")
+
+    described_class.call(position.id)
+
+    position.reload
+    expect(position.trail_pct).to eq(BigDecimal("1"))
+    expect(position.peak_price).to eq(position.entry_price)
+    expect(position.stop_price).to eq(position.entry_price.to_d * BigDecimal("0.99"))
+  end
+
   it "recomputes quantity and average entry from persisted fills" do
     order
     create(:fill, order: order, quantity: 1, price: 49_000, exchange_fill_id: "F1")

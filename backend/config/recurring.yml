@@ -23,6 +23,11 @@ production:
     queue: low
     schedule: every 5 seconds
 
+  product_catalog_sync:
+    class: "Trading::PersistProductSnapshotsJob"
+    queue: low
+    schedule: every 15 minutes
+
 development:
   trading_reconciliation:
     class: "Trading::ReconciliationJob"
@@ -43,3 +48,8 @@ development:
     class: "Trading::MarkPricesPnlJob"
     queue: low
     schedule: every 5 seconds
+
+  product_catalog_sync:
+    class: "Trading::PersistProductSnapshotsJob"
+    queue: low
+    schedule: every 15 minutes

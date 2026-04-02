@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_02_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_02_140001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -38,9 +38,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_120000) do
     t.datetime "created_at", null: false
     t.decimal "entry_price", precision: 20, scale: 8, null: false
     t.string "error_message"
+    t.decimal "risk_pct", precision: 8, scale: 6
     t.string "side", null: false
     t.string "source", null: false
     t.string "status", default: "generated", null: false
+    t.decimal "stop_price", precision: 24, scale: 8
     t.string "strategy", null: false
     t.string "symbol", null: false
     t.bigint "trading_session_id", null: false
@@ -292,11 +294,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_120000) do
   end
 
   create_table "symbol_configs", force: :cascade do |t|
+    t.string "contract_type"
     t.datetime "created_at", null: false
     t.boolean "enabled"
+    t.datetime "fetched_at"
+    t.decimal "last_close_price", precision: 24, scale: 8
+    t.decimal "last_mark_price", precision: 24, scale: 8
     t.integer "leverage"
+    t.jsonb "metadata", default: {}, null: false
     t.integer "product_id"
     t.string "symbol"
+    t.decimal "tick_size", precision: 24, scale: 12
     t.datetime "updated_at", null: false
   end
 

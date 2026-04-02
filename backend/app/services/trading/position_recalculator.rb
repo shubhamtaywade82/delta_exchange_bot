@@ -33,6 +33,8 @@ module Trading
           mark = Trading::MarkPrice.for_symbol(position.symbol) || calc.avg_entry
 
           attrs = base_attrs(q, calc, lot_d, next_state, position, mark)
+          merge_trailing_stop!(attrs, position, calc.avg_entry) if q.nonzero?
+
           position.update!(attrs)
 
           position
@@ -111,6 +113,35 @@ module Trading
       return lev if lev.positive?
 
       1.to_d
+    end
+
+    def merge_trailing_stop!(attrs, position, avg_entry)
+      status = attrs[:status].to_s
+      return unless %w[filled open partially_filled].include?(status)
+      return if position.trail_pct.present?
+
+      avg = avg_entry&.to_d
+      return unless avg&.positive?
+
+      trail = trailing_stop_pct_decimal
+      trail_frac = trail / BigDecimal("100")
+      side = attrs[:side].to_s
+      peak = avg
+      stop = if side.in?(%w[long buy])
+               avg * (BigDecimal("1") - trail_frac)
+             else
+               avg * (BigDecimal("1") + trail_frac)
+             end
+
+      attrs[:trail_pct] = trail
+      attrs[:peak_price] = peak
+      attrs[:stop_price] = stop
+    end
+
+    def trailing_stop_pct_decimal
+      BigDecimal(Bot::Config.load.trailing_stop_pct.to_s)
+    rescue Bot::Config::ValidationError
+      BigDecimal("0.2")
     end
   end
 end
