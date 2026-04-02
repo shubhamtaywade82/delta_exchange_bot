@@ -29,7 +29,7 @@ class TradingSession < ApplicationRecord
   def ensure_portfolio
     return if portfolio_id.present?
 
-    initial = capital&.to_d&.positive? ? capital.to_d : BigDecimal("10000")
+    initial = capital&.to_d&.positive? ? capital.to_d : BigDecimal("20000")
     self.portfolio = Portfolio.create!(
       balance: initial,
       available_balance: initial,

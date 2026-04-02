@@ -76,7 +76,7 @@ module Bot
         "max_concurrent_positions" => 5,
         "max_margin_per_position_pct" => 40.0,
         "usd_to_inr_rate" => 85.0,
-        "simulated_capital_inr" => 10_000.0
+        "simulated_capital_inr" => 20_000.0
       },
       "notifications" => {
         "telegram" => {
@@ -365,7 +365,7 @@ module Bot
     end
 
     def simulated_capital_inr
-      @raw.dig("risk", "simulated_capital_inr")&.to_f || 10_000.0
+      @raw.dig("risk", "simulated_capital_inr")&.to_f || 20_000.0
     end
 
     def telegram_enabled?  = @raw.dig("notifications", "telegram", "enabled") == true

@@ -9,7 +9,7 @@ module Bot
 
       REDIS_KEY = "delta:wallet:state"
 
-      def initialize(usd_to_inr_rate:, dry_run: false, simulated_capital_inr: 10_000.0)
+      def initialize(usd_to_inr_rate:, dry_run: false, simulated_capital_inr: 20_000.0)
         @usd_to_inr_rate        = usd_to_inr_rate
         @dry_run                = dry_run
         @simulated_capital_inr  = simulated_capital_inr
