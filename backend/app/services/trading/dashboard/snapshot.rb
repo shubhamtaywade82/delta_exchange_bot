@@ -93,9 +93,10 @@ module Trading
 
       def equity_curve_from_trades
         curve_dates = (0..6).to_a.reverse.map { |days_ago| days_ago.days.ago.in_time_zone.to_date }
-        rows = Trade.where.not(closed_at: nil).where("closed_at::date IN (?)", curve_dates).pluck(:closed_at, :pnl_usd)
         by_date = Hash.new(0.0)
-        rows.each { |closed_at, pnl| by_date[closed_at.in_time_zone.to_date] += pnl.to_f }
+        Trade.where.not(closed_at: nil).where("closed_at::date IN (?)", curve_dates).find_each do |t|
+          by_date[t.closed_at.in_time_zone.to_date] += t.effective_pnl_usd.to_f
+        end
         curve_dates.map { |date| by_date[date].round(2) }
       end
 
@@ -162,20 +163,21 @@ module Trading
       end
 
       def trade_payload(trade)
+        pnl_usd = trade.effective_pnl_usd.to_f
         {
           symbol: trade.symbol,
           side: trade.side,
           entry_price: trade.entry_price,
           exit_price: trade.exit_price,
-          pnl_usd: trade.pnl_usd,
-          pnl_inr: (trade.pnl_usd.to_f * USD_INR_FOR_DISPLAY).round(0),
+          pnl_usd: pnl_usd,
+          pnl_inr: (pnl_usd * USD_INR_FOR_DISPLAY).round(0),
           timestamp: trade.closed_at
         }
       end
 
       def position_payload(position)
-        entry_price = position.entry_price.to_f
-        mark = Rails.cache.read("ltp:#{position.symbol}")&.to_f || entry_price
+        entry_price = round_price_for_json(position.entry_price)
+        mark = round_price_for_json(Rails.cache.read("ltp:#{position.symbol}")) || entry_price
         unrealized_usd = unrealized_pnl_usd(position: position, mark: mark, entry: entry_price).round(2)
         opened_at = position.entry_time || position.created_at
 
@@ -213,6 +215,13 @@ module Trading
 
         lot = Trading::Risk::PositionLotSize.multiplier_for(position).to_f
         (lots * lot * entry) / lev
+      end
+
+      def round_price_for_json(value)
+        d = value&.to_d
+        return nil if d.nil?
+
+        d.round(8).to_f
       end
 
       def unrealized_pnl_usd(position:, mark:, entry:)

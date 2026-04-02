@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 module OrdersRepository
+  TERMINAL_POSITION_STATUSES = %w[closed liquidated].freeze
+
   def self.create!(attrs)
     Order.create!(attrs)
   end
@@ -26,30 +28,40 @@ module OrdersRepository
   end
 
   def self.close_position(position_id:, reason:, mark_price:)
-    position = Position.find(position_id)
     target_status = liquidation_reason?(reason) ? "liquidated" : "closed"
     trade = nil
 
-    Position.transaction do
-      position.update!(
+    position = Position.transaction do
+      pos = Position.lock.find(position_id)
+      if TERMINAL_POSITION_STATUSES.include?(pos.status)
+        Rails.logger.info(
+          "[OrdersRepository] close_position skipped: position=#{position_id} already #{pos.status}"
+        )
+        next pos
+      end
+
+      realized_usd = realized_pnl_usd_at_mark(pos, mark_price)
+      rate = Finance::UsdInrRate.current.to_d
+      pos.update!(
         status: target_status,
         exit_price: mark_price,
         exit_time: Time.current,
-        pnl_usd: position.pnl_usd.to_d,
-        pnl_inr: position.pnl_inr.to_d
+        pnl_usd: realized_usd,
+        pnl_inr: realized_usd * rate
       )
 
       trade = Trading::Learning::CreditAssigner.finalize_trade!(
-        position,
-        entry_features: position.entry_features || {},
-        strategy: position.strategy.presence || "scalping",
-        regime: position.regime.presence || "mean_reversion"
+        pos,
+        entry_features: pos.entry_features || {},
+        strategy: pos.strategy.presence || "scalping",
+        regime: pos.regime.presence || "mean_reversion"
       )
       Trading::Learning::OnlineUpdater.update!(trade)
       Trading::Learning::Metrics.update(trade)
-      Trading::Learning::AiRefinementTrigger.call(reason: "trade_closed:#{position.id}")
+      Trading::Learning::AiRefinementTrigger.call(reason: "trade_closed:#{pos.id}")
 
-      Rails.logger.warn("[OrdersRepository] Forced close position=#{position.id} reason=#{reason} mark=#{mark_price}")
+      Rails.logger.warn("[OrdersRepository] Forced close position=#{pos.id} reason=#{reason} mark=#{mark_price}")
+      pos
     end
 
     notify_trade_closed_telegram(trade, reason)
@@ -75,4 +87,13 @@ module OrdersRepository
   def self.liquidation_reason?(reason)
     reason.to_s == "LIQUIDATION_EXIT"
   end
+
+  # Mark-to-exit matches +Trading::Risk::PositionRisk+ (contract lot multiplier, long/short sign).
+  def self.realized_pnl_usd_at_mark(position, mark_price)
+    mark = mark_price.to_d
+    return 0.to_d unless mark.positive?
+
+    Trading::Risk::PositionRisk.call(position: position, mark_price: mark).unrealized_pnl.to_d
+  end
+  private_class_method :realized_pnl_usd_at_mark
 end

@@ -41,7 +41,7 @@ module Trading
 
     def check_daily_loss_cap!
       # +pnl_usd+ and +session.capital+ are both treated as USD (see TradingSession).
-      today_pnl = Trade.where("closed_at >= ?", Time.current.beginning_of_day).sum(:pnl_usd).to_f
+      today_pnl = Trade.sum_effective_pnl_usd(Trade.where("closed_at >= ?", Time.current.beginning_of_day))
       daily_loss_pct = Trading::RuntimeConfig.fetch_float("risk.daily_loss_cap_pct", default: 0.05, env_key: "RISK_DAILY_LOSS_CAP_PCT")
       cap = @session.capital.to_f * daily_loss_pct
       raise RiskError, "daily loss cap exceeded (#{today_pnl.round(2)} USD vs cap -#{cap.round(2)} USD)" if

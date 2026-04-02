@@ -64,11 +64,11 @@ RSpec.describe Trading::PositionRecalculator do
 
     position.reload
     expect(position.size.to_d).to eq(3.to_d)
-    expect(position.entry_price.to_d).to eq((151_000.to_d / 3))
+    avg = (151_000.to_d / 3).round(Trading::PositionRecalculator::AVG_ENTRY_DECIMALS)
+    expect(position.entry_price.to_d).to eq(avg)
     expect(position.status).to eq("partially_filled")
     expect(position.needs_reconciliation).to eq(false)
 
-    avg = 151_000.to_d / 3
     expected_margin = (3 * BigDecimal("0.001") * avg) / 10
     expect(position.margin.to_d).to eq(expected_margin)
   end

@@ -94,6 +94,29 @@ RSpec.describe Trading::ExecutionEngine do
     expect(key_long).to eq(key_buy)
   end
 
+  context "when paper trading rejects orders that exceed available margin" do
+    before do
+      allow(Trading::PaperRiskOverride).to receive(:active?).and_return(false)
+      allow(Trading::PaperTrading).to receive(:enabled?).and_return(true)
+      allow(Trading::FillProcessor).to receive(:process)
+      allow(Rails.cache).to receive(:read).and_wrap_original do |method, key, *rest|
+        key.to_s == "ltp:BTCUSD" ? 50_000.0 : method.call(key, *rest)
+      end
+      session.portfolio.update!(balance: 100, available_balance: 100, used_margin: 0)
+      allow(Trading::OrderBuilder).to receive(:build).and_wrap_original do |original, signal, session:, position:|
+        original.call(signal, session: session, position: position).merge(size: 10_000)
+      end
+    end
+
+    it "raises RiskError and does not persist an order" do
+      expect do
+        described_class.execute(signal, session: session, client: client)
+      end.to raise_error(Trading::RiskManager::RiskError, /insufficient cash for margin/)
+      expect(Order.count).to eq(0)
+      expect(Trading::FillProcessor).not_to have_received(:process)
+    end
+  end
+
   context "when a closed position row already exists for the symbol" do
     let(:signal) do
       Trading::Events::SignalGenerated.new(

@@ -242,6 +242,29 @@ RSpec.describe "Api::Dashboard", type: :request do
       end
     end
 
+    it "infers trade history PnL from entry and exit when stored pnl_usd is zero" do
+      allow(Redis).to receive(:new).and_return(instance_double(Redis, get: nil))
+      day = Date.new(2026, 3, 31)
+      travel_to day.in_time_zone.change(hour: 12) do
+        create(:trade,
+               symbol: "BTCUSD",
+               side: "short",
+               closed_at: day.in_time_zone.change(hour: 10),
+               strategy: "multi_timeframe",
+               regime: "trending",
+               pnl_usd: 0,
+               entry_price: 100.0,
+               exit_price: 105.0,
+               size: 2.0)
+
+        get "/api/dashboard", params: { trades_day: "2026-03-31" }
+
+        row = JSON.parse(response.body)["trades"].first
+        expect(row["pnl_usd"]).to eq(-10.0)
+        expect(row["pnl_inr"]).to eq(-850)
+      end
+    end
+
     it "shows stored entry_price from the position row (no OHLCV override)" do
       create(:position,
              symbol: "BTCUSD",

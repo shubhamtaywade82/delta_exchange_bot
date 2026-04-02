@@ -4,6 +4,8 @@ module Trading
   # Recomputes net position from all fills for (portfolio, symbol); updates wallet-related fields.
   class PositionRecalculator
     MAX_RETRIES = 3
+    # Weighted-average entry from fills can carry huge fractional tails; cap for storage and UI.
+    AVG_ENTRY_DECIMALS = 8
 
     def self.call(position_id)
       new(position_id).call
@@ -33,7 +35,7 @@ module Trading
           mark = Trading::MarkPrice.for_symbol(position.symbol) || calc.avg_entry
 
           attrs = base_attrs(q, calc, lot_d, next_state, position, mark)
-          merge_trailing_stop!(attrs, position, calc.avg_entry) if q.nonzero?
+          merge_trailing_stop!(attrs, position, attrs[:entry_price]) if q.nonzero?
 
           position.update!(attrs)
 
@@ -63,7 +65,7 @@ module Trading
         }
       end
 
-      avg = calc.avg_entry
+      avg = calc.avg_entry&.round(AVG_ENTRY_DECIMALS)
       lev = effective_leverage(position)
       margin = if lev.positive? && lot_d.positive? && avg.present?
                  (q.abs * lot_d * avg.abs) / lev

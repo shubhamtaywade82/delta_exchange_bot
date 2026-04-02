@@ -3,7 +3,12 @@ import { NavLink } from 'react-router-dom';
 import axios from 'axios';
 import { ShieldAlert, Terminal as TerminalIcon } from 'lucide-react';
 import type { OperationalState } from '../types/operationalState';
-import { formatSignalActivityTimestamp, sideBadgeMeta } from '../utils/tradingDisplay';
+import {
+  formatDisplayDecimal,
+  formatSignalActivityTimestamp,
+  formatUsd,
+  sideBadgeMeta,
+} from '../utils/tradingDisplay';
 
 function localCalendarDateISO(d = new Date()) {
   const y = d.getFullYear();
@@ -136,16 +141,18 @@ const OperationalStatePage: React.FC = () => {
               <div className="operational-session-line font-mono text-muted">
                 SESSION #{operationalState.trading_session.id} ·{' '}
                 {operationalState.trading_session.strategy?.toUpperCase()} · capital{' '}
-                ${operationalState.trading_session.capital_usd?.toLocaleString()} · lev{' '}
-                {operationalState.trading_session.leverage ?? '—'}
+                {formatUsd(operationalState.trading_session.capital_usd)} · lev{' '}
+                {operationalState.trading_session.leverage != null
+                  ? formatDisplayDecimal(operationalState.trading_session.leverage)
+                  : '—'}
               </div>
             )}
 
             {operationalState?.kill_switch && (
               <div className="operational-kill-line font-mono text-muted">
                 KILL_SWITCH: {operationalState.kill_switch.state?.toUpperCase()} · portfolio PnL{' '}
-                ${operationalState.kill_switch.total_pnl_usd?.toFixed(2)} · exposure{' '}
-                ${operationalState.kill_switch.total_exposure_usd?.toFixed(2)}
+                {formatUsd(operationalState.kill_switch.total_pnl_usd)} · exposure{' '}
+                {formatUsd(operationalState.kill_switch.total_exposure_usd)}
               </div>
             )}
 
@@ -176,11 +183,13 @@ const OperationalStatePage: React.FC = () => {
                     <tr>
                       <td>DAILY_REALIZED_PNL</td>
                       <td className="font-mono">
-                        ${operationalState.risk_gates.daily_loss_cap.today_realized_pnl_usd}
+                        {formatUsd(operationalState.risk_gates.daily_loss_cap.today_realized_pnl_usd)}
                       </td>
                       <td className="font-mono">
-                        floor -${operationalState.risk_gates.daily_loss_cap.loss_cap_usd} (
-                        {(operationalState.risk_gates.daily_loss_cap.loss_cap_pct_of_session_capital * 100).toFixed(1)}
+                        floor -{formatUsd(operationalState.risk_gates.daily_loss_cap.loss_cap_usd)} (
+                        {formatDisplayDecimal(
+                          operationalState.risk_gates.daily_loss_cap.loss_cap_pct_of_session_capital * 100
+                        )}
                         %)
                       </td>
                       <td>
@@ -194,13 +203,13 @@ const OperationalStatePage: React.FC = () => {
                     <tr>
                       <td>MARGIN_UTIL</td>
                       <td className="font-mono">
-                        {operationalState.risk_gates.margin_utilization.utilization_pct}%
+                        {formatDisplayDecimal(operationalState.risk_gates.margin_utilization.utilization_pct)}%
                         {operationalState.risk_gates.margin_utilization.note
                           ? ` (${operationalState.risk_gates.margin_utilization.note})`
                           : ''}
                       </td>
                       <td className="font-mono">
-                        max {operationalState.risk_gates.margin_utilization.max_utilization_pct}%
+                        max {formatDisplayDecimal(operationalState.risk_gates.margin_utilization.max_utilization_pct)}%
                       </td>
                       <td>
                         {operationalState.risk_gates.margin_utilization.blocks_new_entries ? (

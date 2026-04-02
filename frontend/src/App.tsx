@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 import Navbar from './components/Navbar';
+import { formatDisplayDecimal, formatUsd } from './utils/tradingDisplay';
 import DashboardPage from './pages/DashboardPage';
 import OperationalStatePage from './pages/OperationalStatePage';
 import CatalogPage from './pages/CatalogPage';
@@ -31,11 +32,11 @@ function TickerBar({ tickers }: { tickers: TickerData[] }) {
         return (
           <div key={data.symbol} className="ticker-item">
             <span className="symbol">{data.symbol.replace('USDT', '').replace('USD', '')}</span>
-            <span className={`price ${data.price ? 'pop' : ''}`}>
-              ${data.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-            </span>
+            <span className={`price ${data.price ? 'pop' : ''}`}>{formatUsd(data.price)}</span>
             <span className={`change ${(data.change ?? 0) >= 0 ? 'pos' : 'neg'}`}>
-              {data.change ? `${data.change > 0 ? '+' : ''}${data.change.toFixed(2)}%` : '--'}
+              {data.change != null && Number.isFinite(data.change)
+                ? `${data.change > 0 ? '+' : ''}${formatDisplayDecimal(data.change)}%`
+                : '--'}
             </span>
           </div>
         );
@@ -53,11 +54,11 @@ function DerivativesStrip({ symbols }: { symbols: SymbolState[] }) {
             <span className="symbol-tag">{s.symbol.replace('USDT', '').replace('USD', '')}</span>
             <div className="metrics">
               <span className={s.oi_trend === 'rising' ? 'pos' : 'neg'}>
-                OI {s.oi_usd ? `$${(s.oi_usd / 1_000_000).toFixed(1)}M` : '--'} {trendArrow(s.oi_trend)}
+                OI {s.oi_usd ? `$${formatDisplayDecimal(s.oi_usd / 1_000_000)}M` : '--'} {trendArrow(s.oi_trend)}
               </span>
               <span className="sep"></span>
               <span className={(s.funding_rate ?? 0) > 0.0005 ? 'neg' : 'pos'}>
-                FUND {((s.funding_rate ?? 0) * 100).toFixed(4)}%
+                FUND {formatDisplayDecimal((s.funding_rate ?? 0) * 100)}%
               </span>
             </div>
           </div>
