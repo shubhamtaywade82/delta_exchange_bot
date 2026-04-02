@@ -78,6 +78,7 @@ module Bot
           side: signal.side,
           price: fill_price,
           lots: lots,
+          added_lots: lots,
           leverage: leverage,
           trailing_stop: trail_stop_price(signal.side, fill_price),
           mode: current_mode

@@ -43,6 +43,11 @@ module Bot
         @event_settings[event.to_sym] == true
       end
 
+      def format_lots(n)
+        x = n.to_f
+        (x % 1.0).abs < 1e-9 ? x.to_i.to_s : format("%.4f", x).sub(/\.?0+\z/, "")
+      end
+
       def client
         @client ||= Telegram::Bot::Client.new(@token)
       end
@@ -62,17 +67,33 @@ module Bot
         send_message("📡 <b>SIGNAL</b>\n#{symbol} #{side.to_s.upcase} via #{strategy}\nPrice: $#{format('%.2f', price)}")
       end
 
-      def notify_trade_opened(symbol:, side:, price:, lots:, leverage:, trailing_stop:, mode:)
+      # @param added_lots [Float, nil] contracts filled on this order; when prior net > 0, message is "scaled"
+      def notify_trade_opened(symbol:, side:, price:, lots:, leverage:, trailing_stop:, mode:, added_lots: nil)
         return unless enabled_for?(:positions)
 
         emoji = side == :long ? "🟢" : "🔴"
-        send_message(
-          "#{emoji} <b>POSITION OPENED</b>\n" \
-          "#{symbol} #{side.to_s.upcase} (#{mode})\n" \
-          "Entry: $#{format('%.2f', price)}\n" \
-          "Lots: #{lots} | Leverage: #{leverage}x\n" \
-          "Trail Stop: $#{format('%.2f', trailing_stop)}"
-        )
+        total = lots.to_f
+        add = added_lots&.to_f
+        prior = add.present? && add.positive? ? (total - add) : 0.0
+        scaled = prior > 1e-6
+
+        if scaled
+          send_message(
+            "#{emoji} <b>POSITION SCALED</b>\n" \
+            "#{symbol} #{side.to_s.upcase} (#{mode})\n" \
+            "Avg entry: $#{format('%.2f', price)}\n" \
+            "+Lots this fill: #{format_lots(add)} | Total lots: #{format_lots(total)} | Leverage: #{leverage}x\n" \
+            "Trail Stop: $#{format('%.2f', trailing_stop)}"
+          )
+        else
+          send_message(
+            "#{emoji} <b>POSITION OPENED</b>\n" \
+            "#{symbol} #{side.to_s.upcase} (#{mode})\n" \
+            "Entry: $#{format('%.2f', price)}\n" \
+            "Lots: #{format_lots(total)} | Leverage: #{leverage}x\n" \
+            "Trail Stop: $#{format('%.2f', trailing_stop)}"
+          )
+        end
       end
 
       def notify_trailing_stop_triggered(symbol:, side:, ltp:, stop_price:)

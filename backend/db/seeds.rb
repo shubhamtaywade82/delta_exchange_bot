@@ -34,6 +34,7 @@ defaults = {
   "logging.file" => ["logs/bot.log", "string"],
   "risk.max_margin_utilization" => ["0.40", "float"],
   "risk.daily_loss_cap_pct" => ["0.05", "float"],
+  "risk.allow_pyramiding" => ["true", "boolean"],
   "learning.epsilon" => ["0.05", "float"],
   "regime.volatility_threshold" => ["50.0", "float"],
   "regime.spread_threshold" => ["1.0", "float"],

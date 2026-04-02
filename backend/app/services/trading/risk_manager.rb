@@ -17,6 +17,7 @@ module Trading
       return if PaperRiskOverride.active?
 
       check_max_concurrent_positions!
+      check_pyramiding!
       check_margin_utilization!
       check_daily_loss_cap!
     end
@@ -27,6 +28,21 @@ module Trading
       count = Position.active.count
       max_positions = Trading::RuntimeConfig.fetch_integer("risk.max_concurrent_positions", default: 5, env_key: "RISK_MAX_CONCURRENT_POSITIONS")
       raise RiskError, "max concurrent positions reached (#{count}/#{max_positions})" if count >= max_positions
+    end
+
+    def check_pyramiding!
+      return if Trading::RuntimeConfig.fetch_boolean(
+        "risk.allow_pyramiding",
+        default: true,
+        env_key: "RISK_ALLOW_PYRAMIDING"
+      )
+
+      sym = @signal.symbol.to_s
+      side_keys = Trading::ExecutionEngine.active_position_side_keys(@signal.side)
+      exists = Position.active.where(portfolio_id: @session.portfolio_id, symbol: sym, side: side_keys).exists?
+      return unless exists
+
+      raise RiskError, "pyramiding disabled: active #{sym} position already open for this side"
     end
 
     def check_margin_utilization!

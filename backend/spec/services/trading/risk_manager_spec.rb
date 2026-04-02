@@ -50,4 +50,26 @@ RSpec.describe Trading::RiskManager do
                   pnl_usd: -60.0, closed_at: Time.current)
     expect { described_class.validate!(signal, session: session) }.not_to raise_error
   end
+
+  context "when risk.allow_pyramiding is false" do
+    before do
+      allow(Trading::RuntimeConfig).to receive(:fetch_boolean).and_wrap_original do |m, key, **kwargs|
+        key == "risk.allow_pyramiding" ? false : m.call(key, **kwargs)
+      end
+    end
+
+    it "raises when an active same-side position already exists for the symbol" do
+      Position.create!(portfolio: session.portfolio, symbol: "BTCUSD", side: "long", status: "filled",
+                       size: 1.0, entry_price: 50_000.0, leverage: 10)
+      expect {
+        described_class.validate!(signal, session: session)
+      }.to raise_error(Trading::RiskManager::RiskError, /pyramiding disabled/)
+    end
+
+    it "does not raise when the open position is opposite side" do
+      Position.create!(portfolio: session.portfolio, symbol: "BTCUSD", side: "short", status: "filled",
+                       size: 1.0, entry_price: 50_000.0, leverage: 10)
+      expect { described_class.validate!(signal, session: session) }.not_to raise_error
+    end
+  end
 end

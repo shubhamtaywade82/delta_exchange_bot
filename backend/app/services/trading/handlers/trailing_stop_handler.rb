@@ -53,6 +53,10 @@ module Trading
       end
 
       def notify_trailing_stop_telegram(position)
+        cache_key = "telegram:trailing_stop_hit:#{position.id}"
+        written = Rails.cache.write(cache_key, 1, expires_in: 12.seconds, unless_exist: true)
+        return unless written
+
         side_sym = position.side.to_s.downcase.in?(%w[long buy]) ? :long : :short
         Trading::TelegramNotifications.deliver do |n|
           n.notify_trailing_stop_triggered(

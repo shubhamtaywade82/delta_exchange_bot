@@ -273,6 +273,7 @@ module Trading
         side: side_sym,
         price: pos.entry_price.to_f,
         lots: pos.size.to_f,
+        added_lots: order.size.to_f,
         leverage: pos.leverage.to_i,
         trailing_stop: pos.stop_price.to_f,
         mode: mode
