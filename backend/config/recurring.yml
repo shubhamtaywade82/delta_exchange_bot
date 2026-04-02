@@ -28,6 +28,11 @@ production:
     queue: low
     schedule: every 15 minutes
 
+  analysis_dashboard_refresh:
+    class: "Trading::AnalysisDashboardRefreshJob"
+    queue: low
+    schedule: every 15 minutes
+
   paper_broker_products:
     class: "Delta::PaperProductsSyncJob"
     queue: market_data
@@ -61,6 +66,11 @@ development:
 
   product_catalog_sync:
     class: "Trading::PersistProductSnapshotsJob"
+    queue: low
+    schedule: every 15 minutes
+
+  analysis_dashboard_refresh:
+    class: "Trading::AnalysisDashboardRefreshJob"
     queue: low
     schedule: every 15 minutes
 

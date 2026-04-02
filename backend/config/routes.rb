@@ -10,6 +10,7 @@ Rails.application.routes.draw do
     resources :trading_sessions, only: [:index, :create, :destroy]
     get "strategy_status" => "strategy_status#index"
     get "wallet"          => "wallet#index"
+    get "analysis_dashboard" => "analysis_dashboard#index"
     get "symbols/:symbol/order_blocks" => "order_blocks#show"
     
     # New catalog and watchlist

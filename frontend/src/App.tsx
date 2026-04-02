@@ -7,6 +7,7 @@ import DashboardPage from './pages/DashboardPage';
 import OperationalStatePage from './pages/OperationalStatePage';
 import CatalogPage from './pages/CatalogPage';
 import AdminSettingsPage from './pages/AdminSettingsPage';
+import AnalysisDashboardPage from './pages/AnalysisDashboardPage';
 
 interface TickerData {
   symbol: string;
@@ -110,6 +111,7 @@ const App: React.FC = () => {
           <Route path="/signals" element={<Navigate to="/operational" replace />} />
           <Route path="/operational" element={<OperationalStatePage />} />
           <Route path="/catalog" element={<CatalogPage />} />
+          <Route path="/analysis" element={<AnalysisDashboardPage />} />
           <Route path="/admin/settings" element={<AdminSettingsPage />} />
         </Routes>
       </div>
