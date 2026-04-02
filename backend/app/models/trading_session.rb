@@ -1,7 +1,7 @@
 # app/models/trading_session.rb
-# +capital+ is interpreted as USD equity for risk sizing: OrderBuilder multiplies by Finance::UsdInrRate
-# then Finance::PositionSizer divides back to USD. +RiskManager+ daily loss compares +Trade.pnl_usd+ to
-# a cap derived from the same field — keep capital and pnl in USD for consistent gates.
+# +capital+ (USD) seeds the portfolio and remains session metadata. Live risk sizing and +RiskManager+
+# gates use +portfolio.balance+ (initial deposit plus realized PnL from fills) when positive; otherwise
+# +capital+ is a fallback. All trading math stays in USD; INR is for display only (+Finance::UsdInrRate+).
 class TradingSession < ApplicationRecord
   belongs_to :portfolio
   has_many :generated_signals, dependent: :delete_all

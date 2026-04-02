@@ -46,6 +46,21 @@ RSpec.describe PaperTrading::ProcessSignalJob do
     expect(bad.reload.status).to eq("rejected")
   end
 
+  it "sizes risk from cash plus realized PnL, not unrealized equity" do
+    wallet.update_columns(
+      unrealized_pnl: 500_000,
+      equity: 600_000,
+      cash_balance: 100_000,
+      realized_pnl: 0
+    )
+    expect(Finance::PositionSizer).to receive(:compute!).and_wrap_original do |method, **kwargs|
+      expect(kwargs[:balance_usd]).to eq(100_000.0)
+      method.call(**kwargs)
+    end
+    described_class.perform_now(signal.id)
+    expect(signal.reload.status).to eq("filled")
+  end
+
   it "handles two signals on same wallet without duplicate client_order_id" do
     sig2 = create(:paper_trading_signal,
       paper_wallet: wallet,

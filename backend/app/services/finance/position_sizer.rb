@@ -3,6 +3,7 @@
 module Finance
   # Risk-to-contracts sizing for Delta-style linear perps: contracts are integers;
   # risk per contract at stop = stop_distance × contract_value (quote impact per contract).
+  # +risk_percent+ is a fraction (0.015 = 1.5%). All money amounts are USD.
   # Optional margin cap: floor((margin_wallet_usd × fee_buffer × leverage) / (contract_value × entry_price)).
   class PositionSizer
     DEFAULT_FEE_BUFFER = 0.98
@@ -18,20 +19,18 @@ module Finance
       :stop_distance,
       :notional_usd,
       :required_margin_usd,
-      :required_margin_inr,
       keyword_init: true
     )
 
     class << self
-      def compute!(balance_inr:, risk_percent:, entry_price:, stop_price:, contract_value:, usd_inr: nil,
+      def compute!(balance_usd:, risk_percent:, entry_price:, stop_price:, contract_value:,
                    leverage: nil, fee_buffer: nil, position_size_limit: nil, margin_wallet_usd: nil)
-        usd_inr = default_usd_inr if usd_inr.nil?
         buffer = normalize_fee_buffer(fee_buffer)
 
-        validate_prices!(entry_price, stop_price, contract_value, usd_inr)
+        validate_prices!(entry_price, stop_price, contract_value)
 
-        balance_usd = balance_inr.to_f / usd_inr.to_f
-        risk_usd = balance_usd * risk_percent.to_f
+        balance = balance_usd.to_f
+        risk_usd = balance * risk_percent.to_f
 
         stop_distance = (entry_price.to_f - stop_price.to_f).abs
         raise ArgumentError, "stop distance cannot be zero" if stop_distance.zero?
@@ -44,7 +43,7 @@ module Finance
 
         qty_margin = compute_qty_margin(
           margin_wallet_usd: margin_wallet_usd,
-          balance_usd: balance_usd,
+          balance_usd: balance,
           leverage: leverage,
           fee_buffer: buffer,
           contract_value: cv,
@@ -60,7 +59,6 @@ module Finance
         lev = leverage_for_margin(leverage)
         notional_usd = final_contracts * cv * entry
         required_margin_usd = lev.positive? ? (notional_usd / lev) : notional_usd
-        required_margin_inr = required_margin_usd * usd_inr.to_f
 
         Result.new(
           contracts: final_contracts,
@@ -71,22 +69,16 @@ module Finance
           risk_per_contract: risk_per_contract,
           stop_distance: stop_distance,
           notional_usd: notional_usd,
-          required_margin_usd: required_margin_usd,
-          required_margin_inr: required_margin_inr
+          required_margin_usd: required_margin_usd
         )
-      end
-
-      def default_usd_inr
-        Finance::UsdInrRate.current
       end
 
       private
 
-      def validate_prices!(entry_price, stop_price, contract_value, usd_inr)
+      def validate_prices!(entry_price, stop_price, contract_value)
         raise ArgumentError, "invalid entry price" if entry_price.to_f <= 0
         raise ArgumentError, "invalid stop price" if stop_price.to_f <= 0
         raise ArgumentError, "contract_value must be > 0" if contract_value.to_f <= 0
-        raise ArgumentError, "usd_inr must be > 0" if usd_inr.to_f <= 0
       end
 
       def normalize_fee_buffer(fee_buffer)

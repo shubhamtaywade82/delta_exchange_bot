@@ -15,6 +15,11 @@ class PaperWallet < ApplicationRecord
     equity.to_d - reserved_margin.to_d
   end
 
+  # Initial cash + closed-trade PnL only (excludes unrealized). Used for risk % sizing.
+  def risk_sizing_equity_usd
+    cash_balance.to_d + realized_pnl.to_d
+  end
+
   # ltp_map: { product_id(Integer) => BigDecimal }
   def refresh_snapshot!(ltp_map: {})
     with_lock do

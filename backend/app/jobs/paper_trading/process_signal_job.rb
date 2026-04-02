@@ -19,19 +19,16 @@ module PaperTrading
       end
       ltp = ltp.to_d
 
-      rate = Finance::UsdInrRate.current
-      # Wallet amounts are USD (Delta settlement); convert via rate for PositionSizer INR↔USD bridge.
-      balance_inr = (wallet.equity.to_d * rate).to_f
+      risk_basis_usd = wallet.risk_sizing_equity_usd.to_f
       margin_wallet_usd = wallet.available_capital.to_d.to_f
       leverage = [ product.default_leverage.to_i, 1 ].max
 
       result = Finance::PositionSizer.compute!(
-        balance_inr: balance_inr,
+        balance_usd: risk_basis_usd,
         risk_percent: signal.risk_pct.to_f,
         entry_price: signal.entry_price.to_f,
         stop_price: signal.stop_price.to_f,
         contract_value: product.contract_value.to_f,
-        usd_inr: rate,
         leverage: leverage,
         margin_wallet_usd: margin_wallet_usd,
         position_size_limit: product.position_size_limit

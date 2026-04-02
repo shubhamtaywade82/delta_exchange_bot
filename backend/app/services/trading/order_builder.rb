@@ -44,17 +44,14 @@ module Trading
       contract_value = Trading::Risk::PositionLotSize.multiplier_for(@position).to_f
       stop_price = effective_stop_price(entry)
 
-      balance_inr = @session.capital.to_d * Finance::UsdInrRate.current
       risk_pct = bounded_risk_pct(base_risk_pct * adaptive_risk_multiplier * bias_adjustment_factor)
 
-      rate = Finance::UsdInrRate.current
       result = Finance::PositionSizer.compute!(
-        balance_inr: balance_inr.to_f,
+        balance_usd: risk_basis_usd,
         risk_percent: risk_pct,
         entry_price: entry,
         stop_price: stop_price,
         contract_value: contract_value,
-        usd_inr: rate,
         leverage: effective_leverage,
         margin_wallet_usd: margin_wallet_usd,
         position_size_limit: product_position_size_limit
@@ -69,6 +66,13 @@ module Trading
       lev = @position.leverage.to_i
       lev = @session.leverage.to_i if lev <= 0
       lev.positive? ? lev : 1
+    end
+
+    def risk_basis_usd
+      b = @session.portfolio.reload.balance.to_f
+      return b if b.positive?
+
+      @session.capital.to_f
     end
 
     def margin_wallet_usd
@@ -94,12 +98,13 @@ module Trading
       explicit = @signal.respond_to?(:stop_price) ? @signal.stop_price : nil
       return explicit.to_f if explicit.present?
 
-      trail_pct = Trading::RuntimeConfig.fetch_float(
+      trail_raw = Trading::RuntimeConfig.fetch_float(
         "risk.trail_pct_for_sizing",
         default: 1.5,
         env_key: "RISK_TRAIL_PCT_FOR_SIZING"
       )
-      trail_distance = entry * (trail_pct / 100.0)
+      trail_fraction = Trading::Percent.as_fraction(trail_raw)
+      trail_distance = entry * trail_fraction
 
       case @signal.side.to_s.downcase
       when "long", "buy"

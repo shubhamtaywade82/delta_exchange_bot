@@ -47,21 +47,27 @@ module Trading
 
     def check_margin_utilization!
       total_margin = Position.active.sum(:margin).to_f
-      capital      = @session.capital.to_f
-      return if capital.zero?
+      denominator = utilization_denominator_usd
+      return if denominator.zero?
 
-      utilization = total_margin / capital
+      utilization = total_margin / denominator
       max_utilization = Trading::RuntimeConfig.fetch_float("risk.max_margin_utilization", default: 0.40, env_key: "RISK_MAX_MARGIN_UTILIZATION")
       raise RiskError, "margin utilization #{(utilization * 100).round(1)}% exceeds #{(max_utilization * 100).to_i}% cap" if utilization >= max_utilization
     end
 
     def check_daily_loss_cap!
-      # +pnl_usd+ and +session.capital+ are both treated as USD (see TradingSession).
       today_pnl = Trade.sum_effective_pnl_usd(Trade.where("closed_at >= ?", Time.current.beginning_of_day))
       daily_loss_pct = Trading::RuntimeConfig.fetch_float("risk.daily_loss_cap_pct", default: 0.05, env_key: "RISK_DAILY_LOSS_CAP_PCT")
-      cap = @session.capital.to_f * daily_loss_pct
+      cap = utilization_denominator_usd * daily_loss_pct
       raise RiskError, "daily loss cap exceeded (#{today_pnl.round(2)} USD vs cap -#{cap.round(2)} USD)" if
         today_pnl < -cap
+    end
+
+    def utilization_denominator_usd
+      b = @session.portfolio.reload.balance.to_f
+      return b if b.positive?
+
+      @session.capital.to_f
     end
   end
 end
