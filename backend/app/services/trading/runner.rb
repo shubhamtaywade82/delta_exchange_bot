@@ -2,7 +2,7 @@
 
 module Trading
   class Runner
-    DEFAULT_STRATEGY_INTERVAL = 60
+    DEFAULT_STRATEGY_INTERVAL = 30
 
     def initialize(session_id:, client: nil)
       @session = TradingSession.find(session_id)
@@ -14,11 +14,13 @@ module Trading
 
     def start
       Rails.logger.info("[Runner] Starting session #{@session.id} strategy=#{@session.strategy}")
+      notify_startup_status
       bootstrap!
       register_event_handlers!
       start_ws!
       run_loop
     ensure
+      notify_shutdown_status
       EventBus.reset!
       Rails.logger.info("[Runner] Session #{@session.id} exited cleanly")
     end
@@ -77,25 +79,26 @@ module Trading
       end
     end
 
+    # How often to start a new full pass over the watchlist (not aligned to chart candle closes).
     def strategy_interval_seconds
       Trading::RuntimeConfig.fetch_integer("runner.strategy_interval_seconds", default: DEFAULT_STRATEGY_INTERVAL)
     end
 
-    # History/candles is unauthenticated and heavily rate-limited. Each symbol triggers 3 sequential
-    # fetches (trend / confirm / entry). Without a gap, the 2nd+ symbols often get empty/error payloads,
-    # insufficient_candles runs, and Redis never gets persist — only the first symbol stays fresh.
+    # Within a single pass, pause between symbols (seconds) so public /history/candles is not burst.
+    # This is rate-limit spacing only — the next symbol runs a few seconds later, not on the next 5m bar.
     def strategy_symbol_stagger_seconds
       Trading::RuntimeConfig.fetch_float(
         "runner.strategy_symbol_stagger_seconds",
-        default: 2.5,
+        default: 1.0,
         env_key: "RUNNER_STRATEGY_SYMBOL_STAGGER_S"
       )
     end
 
     def run_strategy
+      pass_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       symbols = SymbolConfig.where(enabled: true).pluck(:symbol)
       config  = Bot::Config.load
-      
+
       # Reuse the migrated strategy logic which fetches OHLCV from API
       strategy = Bot::Strategy::MultiTimeframe.new(
         config:      config,
@@ -128,6 +131,12 @@ module Trading
       rescue => e
         Rails.logger.error("[Runner] Strategy error for #{symbol}: #{e.message}")
       end
+
+      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - pass_started
+      Rails.logger.info(
+        "[Runner] Strategy pass complete symbols=#{symbols.size} elapsed_s=#{elapsed.round(2)} " \
+        "(stagger=#{strategy_symbol_stagger_seconds}s between symbols; interval=#{strategy_interval_seconds}s between passes)"
+      )
     end
 
     def execute_signal(symbol:, side:, entry_price:, candle_timestamp:, strategy_name:, source:, context:)
@@ -151,7 +160,8 @@ module Trading
       )
 
       EventBus.publish(:signal_generated, converted)
-      ExecutionEngine.execute(converted, session: @session, client: @client)
+      order = ExecutionEngine.execute(converted, session: @session, client: @client)
+      notify_signal_and_entry(order, converted) if order
       signal_record&.update!(status: "executed")
     rescue Trading::RiskManager::RiskError => e
       signal_record&.update!(status: "rejected", error_message: e.message)
@@ -219,6 +229,54 @@ module Trading
       @running && @session.reload.running?
     rescue ActiveRecord::RecordNotFound
       false
+    end
+
+    def notify_startup_status
+      symbols = SymbolConfig.where(enabled: true).pluck(:symbol).join(", ")
+      paper = PaperTrading.enabled? ? "paper" : "live"
+      TelegramNotifications.deliver do |n|
+        n.notify_status(
+          "Trading::Runner session #{@session.id} (#{@session.strategy}) — #{paper}. Symbols: #{symbols.presence || '(none)'}",
+          status: "starting"
+        )
+      end
+    end
+
+    def notify_shutdown_status
+      TelegramNotifications.deliver do |n|
+        n.notify_status("Trading::Runner session #{@session.id} stopped.", status: "stopping")
+      end
+    end
+
+    def notify_signal_and_entry(order, signal_event)
+      TelegramNotifications.deliver do |n|
+        n.notify_signal_generated(
+          symbol: signal_event.symbol,
+          side: signal_event.side,
+          price: signal_event.entry_price.to_f,
+          strategy: signal_event.strategy.to_s
+        )
+        notify_position_opened_if_applicable(n, order)
+      end
+    end
+
+    def notify_position_opened_if_applicable(notifier, order)
+      order.reload
+      pos = order.position
+      return unless pos && order.status == "filled"
+      return unless Position::NET_OPEN_STATUSES.include?(pos.status)
+
+      side_sym = pos.side.to_s.downcase.in?(%w[long buy]) ? :long : :short
+      mode = PaperTrading.enabled? ? "paper" : "live"
+      notifier.notify_trade_opened(
+        symbol: pos.symbol,
+        side: side_sym,
+        price: pos.entry_price.to_f,
+        lots: pos.size.to_f,
+        leverage: pos.leverage.to_i,
+        trailing_stop: pos.stop_price.to_f,
+        mode: mode
+      )
     end
 
     def build_client

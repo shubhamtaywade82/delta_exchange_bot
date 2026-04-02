@@ -37,7 +37,7 @@ RSpec.describe "Api::TradingSessions", type: :request do
     end
 
     before do
-      allow_any_instance_of(Trading::KillSwitch).to receive(:trigger!)
+      allow_any_instance_of(Trading::EmergencyShutdown).to receive(:trigger!)
       stub_const("ENV", ENV.to_hash.merge("DELTA_API_KEY" => "test", "DELTA_API_SECRET" => "test"))
       allow(DeltaExchange::Client).to receive(:new).and_return(double("client"))
     end

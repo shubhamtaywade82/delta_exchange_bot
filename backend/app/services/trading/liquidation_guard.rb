@@ -26,7 +26,7 @@ module Trading
           "[LiquidationGuard] Emergency exit: #{@position.symbol} price=#{current_price} " \
           "liq=#{@position.liquidation_price} distance=#{(distance_to_liquidation(current_price) * 100).round(2)}%"
         )
-        KillSwitch.force_exit_position(@position, @client)
+        EmergencyShutdown.force_exit_position(@position, @client)
       end
     end
 

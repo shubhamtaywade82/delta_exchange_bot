@@ -31,7 +31,7 @@ module Api
         api_key:    ENV.fetch("DELTA_API_KEY"),
         api_secret: ENV.fetch("DELTA_API_SECRET")
       )
-      Trading::KillSwitch.call(session.id, client: client)
+      Trading::EmergencyShutdown.call(session.id, client: client)
 
       head :ok
     rescue ActiveRecord::RecordNotFound

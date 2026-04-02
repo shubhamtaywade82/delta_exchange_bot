@@ -1,5 +1,6 @@
 FactoryBot.define do
   factory :position do
+    association :portfolio, factory: :portfolio
     symbol { "BTCUSD" }
     side { "buy" }
     status { "init" }

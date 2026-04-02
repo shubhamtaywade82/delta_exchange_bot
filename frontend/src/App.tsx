@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 import Navbar from './components/Navbar';
 import DashboardPage from './pages/DashboardPage';
@@ -106,6 +106,7 @@ const App: React.FC = () => {
         <Navbar />
         <Routes>
           <Route path="/" element={<DashboardPage />} />
+          <Route path="/signals" element={<Navigate to="/operational" replace />} />
           <Route path="/operational" element={<OperationalStatePage />} />
           <Route path="/catalog" element={<CatalogPage />} />
           <Route path="/admin/settings" element={<AdminSettingsPage />} />

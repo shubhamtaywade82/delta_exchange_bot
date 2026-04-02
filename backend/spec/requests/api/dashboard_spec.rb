@@ -260,6 +260,31 @@ RSpec.describe "Api::Dashboard", type: :request do
       expect(row["entry_price"]).to eq(67_010.5)
       expect(row["unrealized_pnl"]).to eq(315.0)
     end
+
+    context "when API_ACCESS_TOKEN is configured" do
+      around do |example|
+        previous = ENV["API_ACCESS_TOKEN"]
+        ENV["API_ACCESS_TOKEN"] = "test-dashboard-secret"
+        example.run
+      ensure
+        ENV["API_ACCESS_TOKEN"] = previous
+      end
+
+      it "returns unauthorized without a token" do
+        get "/api/dashboard"
+        expect(response).to have_http_status(:unauthorized)
+      end
+
+      it "returns ok with Authorization Bearer token" do
+        get "/api/dashboard", headers: { "Authorization" => "Bearer test-dashboard-secret" }
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "returns ok with X-Api-Token header" do
+        get "/api/dashboard", headers: { "X-Api-Token" => "test-dashboard-secret" }
+        expect(response).to have_http_status(:ok)
+      end
+    end
   end
 
   describe "POST /api/dashboard/paper_risk_override" do

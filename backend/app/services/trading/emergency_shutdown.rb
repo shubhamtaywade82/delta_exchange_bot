@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 module Trading
-  class KillSwitch
+  # Cancels session orders and closes positions on the exchange — operational emergency stop,
+  # not portfolio PnL/exposure guardrails (see Trading::Risk::PortfolioGuard).
+  class EmergencyShutdown
     def self.call(session_id, client:)
       new(session_id, client).trigger!
     end
@@ -23,7 +25,7 @@ module Trading
         mark_price: latest_mark_price_for(position)
       )
     rescue => e
-      Rails.logger.error("[KillSwitch] force_exit_position failed for #{position.symbol}: #{e.message}")
+      Rails.logger.error("[EmergencyShutdown] force_exit_position failed for #{position.symbol}: #{e.message}")
     end
 
     def initialize(session_id, client)
@@ -32,7 +34,7 @@ module Trading
     end
 
     def trigger!
-      Rails.logger.warn("[KillSwitch] TRIGGERED for session #{@session_id}")
+      Rails.logger.warn("[EmergencyShutdown] TRIGGERED for session #{@session_id}")
       cancel_open_orders!
       close_open_positions!
       mark_session_stopped!
@@ -49,13 +51,13 @@ module Trading
         end
         order.update!(status: "cancelled")
       rescue => e
-        Rails.logger.error("[KillSwitch] cancel_order failed for order #{order.id}: #{e.message}")
+        Rails.logger.error("[EmergencyShutdown] cancel_order failed for order #{order.id}: #{e.message}")
       end
     end
 
     def close_open_positions!
       Position.active.each do |position|
-        self.class.force_exit_position(position, @client, reason: "KILL_SWITCH_EXIT")
+        self.class.force_exit_position(position, @client, reason: "EMERGENCY_SHUTDOWN")
       end
     end
 

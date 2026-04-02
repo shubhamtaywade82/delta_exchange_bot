@@ -30,38 +30,19 @@ module Trading
     end
 
     def execute
-      idem_key = IdempotencyGuard.key(
-        symbol: @signal.symbol,
-        side: @signal.side,
-        timestamp: @signal.candle_timestamp.to_i
-      )
+      idem_key = IdempotencyGuard.key_for_signal(@signal)
+      return nil unless acquire_idempotency!(idem_key)
 
-      unless IdempotencyGuard.acquire(idem_key)
-        Rails.logger.warn("[ExecutionEngine] Duplicate signal skipped: #{idem_key}")
-        return nil
-      end
+      ensure_session_has_portfolio!
 
-      RiskManager.validate!(@signal, session: @session)
-
-      unless PaperRiskOverride.active?
-        kill_signal = Trading::Risk::KillSwitch.call(portfolio: Trading::Risk::PortfolioSnapshot.current)
-        if kill_signal == :halt_trading
-          raise Trading::RiskManager::RiskError, "kill switch: trading halted"
-        elsif kill_signal == :block_new_trades
-          raise Trading::RiskManager::RiskError, "kill switch: exposure cap reached"
-        end
-      end
+      validate_risk_and_portfolio_guard!
 
       position = find_or_create_position!
       order_attrs = OrderBuilder.build(@signal, session: @session, position: position)
       order = OrdersRepository.create!(order_attrs)
 
       result = place_order(order)
-
-      order.update!(
-        exchange_order_id: result[:id]&.to_s,
-        status: normalize_exchange_status(result[:status])
-      )
+      persist_order_result!(order, result)
       position.recalculate_from_orders!
 
       Rails.logger.info("[ExecutionEngine] Order placed: #{order.exchange_order_id} for #{@signal.symbol} #{@signal.side}")
@@ -78,6 +59,40 @@ module Trading
     end
 
     private
+
+    def acquire_idempotency!(idem_key)
+      return true if IdempotencyGuard.acquire(idem_key)
+
+      Rails.logger.warn("[ExecutionEngine] Duplicate signal skipped: #{idem_key}")
+      false
+    end
+
+    def ensure_session_has_portfolio!
+      return if @session.portfolio_id.present?
+
+      @session.save!
+      @session.reload
+    end
+
+    def validate_risk_and_portfolio_guard!
+      RiskManager.validate!(@signal, session: @session)
+
+      return if PaperRiskOverride.active?
+
+      guard_state = Trading::Risk::PortfolioGuard.call(portfolio: Trading::Risk::PortfolioSnapshot.current)
+      if guard_state == :halt_trading
+        raise Trading::RiskManager::RiskError, "portfolio guard: trading halted"
+      elsif guard_state == :block_new_trades
+        raise Trading::RiskManager::RiskError, "portfolio guard: exposure cap reached"
+      end
+    end
+
+    def persist_order_result!(order, result)
+      order.update!(
+        exchange_order_id: result[:id]&.to_s,
+        status: normalize_exchange_status(result[:status])
+      )
+    end
 
     def place_order(order)
       return simulate_fill_at_market(order) if PaperTrading.enabled?
@@ -133,7 +148,9 @@ module Trading
       leverage = @session.leverage.to_i
       leverage = 10 if leverage.zero?
 
-      position = Position.active.find_by(symbol: symbol, side: self.class.active_position_side_keys(@signal.side))
+      position = Position.where(portfolio_id: @session.portfolio_id, symbol: symbol)
+                         .where(status: Position::NET_OPEN_STATUSES)
+                         .first
 
       if position
         updates = {}
@@ -146,7 +163,11 @@ module Trading
         return position
       end
 
-      position = Position.new(symbol: symbol, side: side)
+      position = Position.new(
+        portfolio: @session.portfolio,
+        symbol: symbol,
+        side: side
+      )
       position.status = "init"
       position.leverage = leverage
       position.contract_value = contract_scalar if contract_scalar.to_f.positive?

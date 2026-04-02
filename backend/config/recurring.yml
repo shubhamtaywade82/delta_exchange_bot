@@ -18,6 +18,11 @@ production:
     queue: low
     schedule: every 10 minutes
 
+  mark_prices_pnl:
+    class: "Trading::MarkPricesPnlJob"
+    queue: low
+    schedule: every 5 seconds
+
 development:
   trading_reconciliation:
     class: "Trading::ReconciliationJob"
@@ -33,3 +38,8 @@ development:
     class: "Trading::Learning::AiRefinementJob"
     queue: low
     schedule: every 10 minutes
+
+  mark_prices_pnl:
+    class: "Trading::MarkPricesPnlJob"
+    queue: low
+    schedule: every 5 seconds

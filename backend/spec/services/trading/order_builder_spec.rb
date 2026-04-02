@@ -8,8 +8,17 @@ RSpec.describe Trading::OrderBuilder do
     keyword_init: true
   )
 
-  let(:session) { TradingSession.create!(strategy: "mtf", status: "running", capital: 10_000, leverage: 10) }
-  let(:position) { Position.create!(symbol: "BTCUSD", side: "long", status: "init", leverage: 10, contract_value: 0.001) }
+  let(:session) { create(:trading_session, strategy: "mtf", capital: 10_000) }
+  let(:position) do
+    Position.create!(
+      portfolio: session.portfolio,
+      symbol: "BTCUSD",
+      side: "long",
+      status: "init",
+      leverage: 10,
+      contract_value: 0.001
+    )
+  end
 
   before do
     allow(Trading::Risk::PositionLotSize).to receive(:multiplier_for).and_return(0.001)

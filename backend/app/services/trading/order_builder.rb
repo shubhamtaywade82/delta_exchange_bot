@@ -18,6 +18,7 @@ module Trading
       side = map_side(@signal.side)
       {
         trading_session_id: @session.id,
+        portfolio_id: @session.portfolio_id,
         position_id: @position.id,
         symbol: @signal.symbol,
         side: side,
@@ -26,22 +27,14 @@ module Trading
         order_type: "limit_order",
         status: "created",
         client_order_id: SecureRandom.uuid,
-        idempotency_key: IdempotencyGuard.key(
-          symbol: @signal.symbol,
-          side: side,
-          timestamp: @signal.candle_timestamp.to_i
-        )
+        idempotency_key: IdempotencyGuard.key_for_signal(@signal)
       }
     end
 
     private
 
     def map_side(strategy_side)
-      case strategy_side.to_sym
-      when :long, :buy then "buy"
-      when :short, :sell then "sell"
-      else strategy_side.to_s
-      end
+      IdempotencyGuard.exchange_side(strategy_side)
     end
 
     def calculate_size
@@ -51,7 +44,7 @@ module Trading
       contract_value = Trading::Risk::PositionLotSize.multiplier_for(@position).to_f
       stop_price = effective_stop_price(entry)
 
-      balance_inr = @session.capital.to_d * usd_to_inr_rate
+      balance_inr = @session.capital.to_d * Finance::UsdInrRate.current
       risk_pct = bounded_risk_pct(base_risk_pct * adaptive_risk_multiplier * bias_adjustment_factor)
 
       result = Finance::PositionSizer.compute!(
@@ -60,7 +53,7 @@ module Trading
         entry_price: entry,
         stop_price: stop_price,
         contract_value: contract_value,
-        usd_inr: usd_to_inr_rate
+        usd_inr: Finance::UsdInrRate.current
       )
 
       if result.contracts.zero?
@@ -91,10 +84,6 @@ module Trading
       else
         entry - trail_distance
       end
-    end
-
-    def usd_to_inr_rate
-      Setting.find_by(key: "usd_to_inr_rate")&.value&.to_f&.nonzero? || 85.0
     end
 
     def base_risk_pct

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_01_120003) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_01_190000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -60,6 +60,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_01_120003) do
     t.string "idempotency_key"
     t.string "last_fill_digest"
     t.string "order_type"
+    t.bigint "portfolio_id", null: false
     t.bigint "position_id"
     t.decimal "price"
     t.jsonb "raw_payload"
@@ -72,9 +73,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_01_120003) do
     t.index ["client_order_id"], name: "index_orders_on_client_order_id", unique: true
     t.index ["exchange_order_id"], name: "index_orders_on_exchange_order_id"
     t.index ["idempotency_key"], name: "index_orders_on_idempotency_key", unique: true
+    t.index ["portfolio_id"], name: "index_orders_on_portfolio_id"
     t.index ["position_id"], name: "index_orders_on_position_id"
     t.index ["trading_session_id"], name: "index_orders_on_trading_session_id"
     t.check_constraint "filled_qty IS NULL OR size IS NULL OR filled_qty <= size", name: "orders_no_overfill"
+  end
+
+  create_table "portfolio_ledger_entries", force: :cascade do |t|
+    t.decimal "balance_delta", precision: 20, scale: 8, default: "0.0", null: false
+    t.datetime "created_at", null: false
+    t.bigint "fill_id", null: false
+    t.bigint "portfolio_id", null: false
+    t.decimal "realized_pnl_delta", precision: 20, scale: 8, default: "0.0", null: false
+    t.datetime "updated_at", null: false
+    t.index ["fill_id"], name: "index_portfolio_ledger_entries_on_fill_id", unique: true
+    t.index ["portfolio_id"], name: "index_portfolio_ledger_entries_on_portfolio_id"
+  end
+
+  create_table "portfolios", force: :cascade do |t|
+    t.decimal "available_balance", precision: 20, scale: 8, default: "0.0", null: false
+    t.decimal "balance", precision: 20, scale: 8, default: "0.0", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.decimal "used_margin", precision: 20, scale: 8, default: "0.0", null: false
   end
 
   create_table "positions", force: :cascade do |t|
@@ -94,6 +115,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_01_120003) do
     t.decimal "peak_price"
     t.decimal "pnl_inr"
     t.decimal "pnl_usd"
+    t.bigint "portfolio_id", null: false
     t.integer "product_id"
     t.string "regime"
     t.string "side"
@@ -103,9 +125,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_01_120003) do
     t.string "strategy"
     t.string "symbol"
     t.decimal "trail_pct"
+    t.decimal "unrealized_pnl_usd", precision: 20, scale: 8
     t.datetime "updated_at", null: false
     t.index ["needs_reconciliation"], name: "index_positions_on_needs_reconciliation"
-    t.index ["symbol"], name: "index_positions_on_symbol_when_open", unique: true, where: "((status)::text = 'open'::text)"
+    t.index ["portfolio_id", "symbol"], name: "idx_positions_one_open_net_per_portfolio_symbol", unique: true, where: "((status)::text = ANY ((ARRAY['init'::character varying, 'entry_pending'::character varying, 'partially_filled'::character varying, 'filled'::character varying, 'exit_pending'::character varying, 'open'::character varying])::text[]))"
+    t.index ["portfolio_id"], name: "index_positions_on_portfolio_id"
   end
 
   create_table "setting_changes", force: :cascade do |t|
@@ -306,17 +330,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_01_120003) do
     t.decimal "capital"
     t.datetime "created_at", null: false
     t.integer "leverage"
+    t.bigint "portfolio_id", null: false
     t.datetime "started_at"
     t.string "status"
     t.datetime "stopped_at"
     t.string "strategy"
     t.datetime "updated_at", null: false
+    t.index ["portfolio_id"], name: "index_trading_sessions_on_portfolio_id"
   end
 
   add_foreign_key "fills", "orders"
   add_foreign_key "generated_signals", "trading_sessions"
+  add_foreign_key "orders", "portfolios"
   add_foreign_key "orders", "positions"
   add_foreign_key "orders", "trading_sessions"
+  add_foreign_key "portfolio_ledger_entries", "fills"
+  add_foreign_key "portfolio_ledger_entries", "portfolios"
+  add_foreign_key "positions", "portfolios"
   add_foreign_key "setting_changes", "settings"
   add_foreign_key "solid_queue_blocked_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_claimed_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
@@ -324,4 +354,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_01_120003) do
   add_foreign_key "solid_queue_ready_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_recurring_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_scheduled_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
+  add_foreign_key "trading_sessions", "portfolios"
 end

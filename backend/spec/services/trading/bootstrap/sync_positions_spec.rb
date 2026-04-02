@@ -3,6 +3,7 @@ require "rails_helper"
 
 RSpec.describe Trading::Bootstrap::SyncPositions do
   let(:client) { double("DeltaExchange::Client") }
+  let(:portfolio) { create(:portfolio) }
 
   before do
     allow(client).to receive(:get_positions).and_return([
@@ -20,14 +21,14 @@ RSpec.describe Trading::Bootstrap::SyncPositions do
   end
 
   it "updates existing open position instead of creating duplicate" do
-    Position.create!(symbol: "BTCUSD", side: "long", status: "filled",
+    Position.create!(portfolio: portfolio, symbol: "BTCUSD", side: "long", status: "filled",
                      size: 0.5, entry_price: 48000.0, leverage: 10)
     expect { described_class.call(client: client) }.not_to change(Position, :count)
     expect(Position.find_by(symbol: "BTCUSD").entry_price).to eq(50000.0)
   end
 
   it "marks local open positions as closed when absent from exchange" do
-    stale = Position.create!(symbol: "ETHUSD", side: "long", status: "filled",
+    stale = Position.create!(portfolio: portfolio, symbol: "ETHUSD", side: "long", status: "filled",
                               size: 1.0, entry_price: 3000.0, leverage: 15)
     described_class.call(client: client)
     expect(stale.reload.status).to eq("closed")
@@ -35,7 +36,7 @@ RSpec.describe Trading::Bootstrap::SyncPositions do
 
   it "does nothing when exchange returns empty positions" do
     allow(client).to receive(:get_positions).and_return([])
-    Position.create!(symbol: "BTCUSD", side: "long", status: "filled",
+    Position.create!(portfolio: portfolio, symbol: "BTCUSD", side: "long", status: "filled",
                      size: 1.0, entry_price: 50000.0, leverage: 10)
     described_class.call(client: client)
     expect(Position.find_by(symbol: "BTCUSD").status).to eq("closed")

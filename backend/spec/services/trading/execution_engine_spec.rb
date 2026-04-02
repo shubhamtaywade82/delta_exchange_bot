@@ -29,16 +29,12 @@ RSpec.describe Trading::ExecutionEngine do
       .with("risk.trail_pct_for_sizing", default: 1.5, env_key: "RISK_TRAIL_PCT_FOR_SIZING")
       .and_return(1.5)
     # Clean up idempotency keys after each test
-    key = Trading::IdempotencyGuard.key(
-      symbol: "BTCUSD", side: "buy", timestamp: signal.candle_timestamp.to_i
-    )
+    key = Trading::IdempotencyGuard.key_for_signal(signal)
     Trading::IdempotencyGuard.release(key)
   end
 
   after do
-    key = Trading::IdempotencyGuard.key(
-      symbol: "BTCUSD", side: "buy", timestamp: signal.candle_timestamp.to_i
-    )
+    key = Trading::IdempotencyGuard.key_for_signal(signal)
     Trading::IdempotencyGuard.release(key)
   end
 
@@ -59,9 +55,7 @@ RSpec.describe Trading::ExecutionEngine do
   end
 
   it "returns nil (skips) when idempotency key already acquired" do
-    key = Trading::IdempotencyGuard.key(
-      symbol: signal.symbol, side: signal.side, timestamp: signal.candle_timestamp.to_i
-    )
+    key = Trading::IdempotencyGuard.key_for_signal(signal)
     Trading::IdempotencyGuard.acquire(key)
 
     result = described_class.execute(signal, session: session, client: client)
@@ -79,11 +73,25 @@ RSpec.describe Trading::ExecutionEngine do
     expect(Order.count).to eq(0)
   end
 
-  it "does not evaluate kill switch when paper risk override is active" do
+  it "does not evaluate portfolio guard when paper risk override is active" do
     allow(Trading::RiskManager).to receive(:validate!).and_return(true)
     allow(Trading::PaperRiskOverride).to receive(:active?).and_return(true)
-    expect(Trading::Risk::KillSwitch).not_to receive(:call)
+    expect(Trading::Risk::PortfolioGuard).not_to receive(:call)
     described_class.execute(signal, session: session, client: client)
+  end
+
+  it "dedupes long and buy to the same idempotency key" do
+    long_signal = Trading::Events::SignalGenerated.new(
+      symbol: "BTCUSD",
+      side: "long",
+      entry_price: 50_000.0,
+      candle_timestamp: signal.candle_timestamp,
+      strategy: "multi_timeframe",
+      session_id: session.id
+    )
+    key_long = Trading::IdempotencyGuard.key_for_signal(long_signal)
+    key_buy = Trading::IdempotencyGuard.key_for_signal(signal)
+    expect(key_long).to eq(key_buy)
   end
 
   context "when a closed position row already exists for the symbol" do
@@ -100,6 +108,7 @@ RSpec.describe Trading::ExecutionEngine do
 
     before do
       Position.create!(
+        portfolio: session.portfolio,
         symbol: "BTCUSD",
         side: "short",
         status: "closed",
@@ -107,16 +116,12 @@ RSpec.describe Trading::ExecutionEngine do
         entry_price: 51_000.0,
         leverage: 10
       )
-      key = Trading::IdempotencyGuard.key(
-        symbol: "BTCUSD", side: "short", timestamp: signal.candle_timestamp.to_i
-      )
+      key = Trading::IdempotencyGuard.key_for_signal(signal)
       Trading::IdempotencyGuard.release(key)
     end
 
     after do
-      key = Trading::IdempotencyGuard.key(
-        symbol: "BTCUSD", side: "short", timestamp: signal.candle_timestamp.to_i
-      )
+      key = Trading::IdempotencyGuard.key_for_signal(signal)
       Trading::IdempotencyGuard.release(key)
     end
 

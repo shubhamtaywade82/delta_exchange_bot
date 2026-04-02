@@ -3,6 +3,8 @@
 module Trading
   # FillProcessor persists exchange fills idempotently and derives order/position state deterministically.
   class FillProcessor
+    class OverfillError < StandardError; end
+
     def self.process(fill_event)
       new(fill_event).process
     end
@@ -30,6 +32,7 @@ module Trading
         apply_order_aggregation!(order)
         position = PositionRecalculator.call(order.position_id) if order.position_id.present?
         apply_entry_context!(position) if position
+        apply_portfolio_after_fill!(order, fill) if fill
         evaluate_risk!(position) if position
         applied_fill = true
       end
@@ -82,22 +85,33 @@ module Trading
       incoming_qty = BigDecimal(@fill_event.quantity.to_s)
       return unless existing_qty + incoming_qty > order.size.to_d
 
-      raise StandardError, "Overfill detected for order #{order.id}"
+      raise OverfillError, "Overfill detected for order #{order.id}"
     end
 
 
 
     def apply_entry_context!(position)
-      context = Rails.cache.read("adaptive:entry_context:#{position.symbol}") || {}
+      raw = Rails.cache.read("adaptive:entry_context:#{position.symbol}") || {}
+      context = raw.respond_to?(:deep_stringify_keys) ? raw.deep_stringify_keys : raw
       position.update!(
-        strategy: context[:strategy] || position.strategy,
-        regime: context[:regime]&.to_s || position.regime,
-        entry_features: context[:features] || position.entry_features
+        strategy: context["strategy"].presence || position.strategy,
+        regime: context["regime"]&.to_s.presence || position.regime,
+        entry_features: context["features"].presence || position.entry_features
       )
     end
 
+    def apply_portfolio_after_fill!(order, fill)
+      portfolio = order.portfolio
+      prior_fills = Fill.joins(:order)
+                        .where(orders: { portfolio_id: portfolio.id, symbol: order.symbol })
+                        .where.not(fills: { id: fill.id })
+                        .to_a
+      delta = Trading::Ledger::NetPositionCalculator.realized_delta_for_append(prior_fills, fill)
+      portfolio.apply_fill_and_sync!(fill, delta_realized: delta)
+    end
+
     def evaluate_risk!(position)
-      mark_price = Rails.cache.read("ltp:#{position.symbol}")&.to_d || position.entry_price.to_d
+      mark_price = Trading::MarkPrice.for_symbol(position.symbol) || position.entry_price.to_d
       portfolio = Trading::Risk::PortfolioSnapshot.current
       result = Trading::Risk::Engine.evaluate(position: position, mark_price: mark_price, portfolio: portfolio)
       Trading::Risk::Executor.handle!(position: position, signal: result[:liquidation], mark_price: mark_price)

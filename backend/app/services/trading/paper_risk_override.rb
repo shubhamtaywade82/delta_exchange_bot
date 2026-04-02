@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Trading
-  # Paper-only: when enabled, RiskManager + KillSwitch gates are skipped so you can test the full pipeline.
+  # Paper-only: when enabled, RiskManager + PortfolioGuard gates are skipped so you can test the full pipeline.
   # Stored as Setting `paper.ignore_entry_risk_gates` (boolean). Never applies when `PaperTrading.enabled?` is false.
   module PaperRiskOverride
     KEY = "paper.ignore_entry_risk_gates"

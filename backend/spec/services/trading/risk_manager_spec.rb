@@ -1,7 +1,7 @@
 require "rails_helper"
 
 RSpec.describe Trading::RiskManager do
-  let(:session) { TradingSession.create!(strategy: "multi_timeframe", status: "running", capital: 1000.0) }
+  let(:session) { create(:trading_session, strategy: "multi_timeframe", capital: 1000.0) }
   let(:signal) do
     Trading::Events::SignalGenerated.new(
       symbol: "BTCUSD", side: "buy", entry_price: 50000.0,
@@ -15,7 +15,7 @@ RSpec.describe Trading::RiskManager do
 
   it "raises RiskError when max concurrent positions reached" do
     5.times do |i|
-      Position.create!(symbol: "SYM#{i}", side: "long", status: "filled",
+      Position.create!(portfolio: session.portfolio, symbol: "SYM#{i}", side: "long", status: "filled",
                        size: 1.0, entry_price: 100.0, leverage: 10)
     end
     expect {
@@ -24,7 +24,7 @@ RSpec.describe Trading::RiskManager do
   end
 
   it "raises RiskError when margin utilization exceeds 40%" do
-    Position.create!(symbol: "ETHUSD", side: "long", status: "filled",
+    Position.create!(portfolio: session.portfolio, symbol: "ETHUSD", side: "long", status: "filled",
                      size: 1.0, entry_price: 100.0, leverage: 10, margin: 420.0)
     expect {
       described_class.validate!(signal, session: session)

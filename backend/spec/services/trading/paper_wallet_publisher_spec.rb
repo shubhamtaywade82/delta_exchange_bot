@@ -16,10 +16,17 @@ RSpec.describe Trading::PaperWalletPublisher do
         double("Config", usd_to_inr_rate: 85.0, simulated_capital_inr: 850_000.0)
       )
 
+      session = create(:trading_session, status: "running")
+      session.portfolio.update!(
+        balance: BigDecimal("10000"),
+        available_balance: BigDecimal("10000"),
+        used_margin: 0
+      )
+
       redis_store = {}
       redis = instance_double(Redis)
       allow(redis).to receive(:set) { |k, v, **| redis_store[k] = v }
-      allow(Redis).to receive(:new).and_return(redis)
+      allow(Redis).to receive(:current).and_return(redis)
 
       payload = described_class.wallet_snapshot!
 

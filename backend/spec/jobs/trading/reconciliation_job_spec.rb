@@ -2,8 +2,9 @@ require "rails_helper"
 
 RSpec.describe Trading::ReconciliationJob, type: :job do
   it "recalculates only dirty positions" do
-    dirty = Position.create!(symbol: "BTCUSD", side: "buy", status: "init", size: 1, needs_reconciliation: true)
-    clean = Position.create!(symbol: "ETHUSD", side: "buy", status: "init", size: 1, needs_reconciliation: false)
+    pf = create(:portfolio)
+    dirty = Position.create!(portfolio: pf, symbol: "BTCUSD", side: "buy", status: "init", size: 1, needs_reconciliation: true)
+    clean = Position.create!(portfolio: pf, symbol: "ETHUSD", side: "buy", status: "init", size: 1, needs_reconciliation: false)
 
     allow(Trading::PositionRecalculator).to receive(:call)
 

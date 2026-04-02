@@ -2,6 +2,16 @@
 
 namespace :trading do
   desc <<~DESC.squish
+    Full trading fresh start: deletes trades, fills, orders, ledger entries, positions,
+    generated_signals, strategy_params (online-learning rows). Clears documented Redis keys
+    on Redis.current and Rails.cache. Requires CONFIRM=YES.
+    Stop the bot and job workers before running. See README "Fresh start".
+  DESC
+  task fresh_start: :environment do
+    Trading::FreshStart.call!(confirm: ENV["CONFIRM"])
+  end
+
+  desc <<~DESC.squish
     Delete all positions and generated_signals (DB).
     Nullifies order.position_id first so FK constraints stay valid.
     Clears Redis key delta:positions:live if present.

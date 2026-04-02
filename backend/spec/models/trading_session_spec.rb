@@ -25,4 +25,13 @@ RSpec.describe TradingSession, type: :model do
     session = TradingSession.new(status: "stopped")
     expect(session.running?).to be false
   end
+
+  it "still has a portfolio after capital update (regression: ensure_portfolio must run on update, not only create)" do
+    session = TradingSession.create!(strategy: "dev_paper_unified", status: "running", capital: 1000.0)
+    portfolio_id = session.portfolio_id
+    expect(portfolio_id).to be_present
+
+    session.update!(capital: 2000.0, leverage: 8)
+    expect(session.reload.portfolio_id).to eq(portfolio_id)
+  end
 end
