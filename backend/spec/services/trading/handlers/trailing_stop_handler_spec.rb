@@ -16,7 +16,8 @@ RSpec.describe Trading::Handlers::TrailingStopHandler do
       leverage: 10,
       peak_price: 99_000.0,
       stop_price: 100_000.0,
-      trail_pct: 1.0
+      trail_pct: 1.0,
+      entry_time: 10.minutes.ago
     )
   end
   let(:tick) { Trading::Events::TickReceived.new(symbol: "BTCUSD", price: 100_100.0) }
@@ -26,6 +27,23 @@ RSpec.describe Trading::Handlers::TrailingStopHandler do
     allow(PositionsRepository).to receive(:open_for).with("BTCUSD").and_return(position)
     allow(Trading::EmergencyShutdown).to receive(:force_exit_position)
     Rails.cache.clear
+  end
+
+  it "does not exit during the post-fill grace window even if price breaches the stop" do
+    previous = ENV.fetch("TRAILING_STOP_GRACE_SECONDS", nil)
+    ENV["TRAILING_STOP_GRACE_SECONDS"] = "60"
+    position.update_columns(entry_time: Time.current, created_at: Time.current)
+
+    begin
+      described_class.new(tick, client: client).call
+      expect(Trading::EmergencyShutdown).not_to have_received(:force_exit_position)
+    ensure
+      if previous
+        ENV["TRAILING_STOP_GRACE_SECONDS"] = previous
+      else
+        ENV.delete("TRAILING_STOP_GRACE_SECONDS")
+      end
+    end
   end
 
   it "notifies trailing stop at most once per position within the dedupe window" do

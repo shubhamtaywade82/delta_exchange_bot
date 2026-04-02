@@ -130,6 +130,7 @@ module Trading
       BigDecimal("1")
     end
 
+    # +strategy.trailing_stop_pct+ is percent points (e.g. 1.5 => 1.5% distance to initial stop).
     def merge_trailing_stop!(attrs, position, avg_entry)
       status = attrs[:status].to_s
       return unless %w[filled open partially_filled].include?(status)
@@ -156,7 +157,7 @@ module Trading
     def trailing_stop_pct_decimal
       BigDecimal(Bot::Config.load.trailing_stop_pct.to_s)
     rescue Bot::Config::ValidationError
-      BigDecimal("0.2")
+      BigDecimal("1.5")
     end
   end
 end

@@ -66,7 +66,7 @@ module Bot
         },
         "adx" => { "period" => 14, "threshold" => 20 },
         "filters" => { "relax_in_dry_run" => true },
-        "trailing_stop_pct" => 0.2,
+        "trailing_stop_pct" => 1.5,
         "timeframes" => { "trend" => "1h", "confirm" => "15m", "entry" => "5m" },
         "candles_lookback" => 100,
         "min_candles_required" => 30
