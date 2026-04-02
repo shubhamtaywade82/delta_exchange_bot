@@ -28,6 +28,16 @@ production:
     queue: low
     schedule: every 15 minutes
 
+  paper_broker_products:
+    class: "Delta::PaperProductsSyncJob"
+    queue: market_data
+    schedule: every 30 minutes
+
+  paper_broker_tickers:
+    class: "Delta::PaperTickersSyncJob"
+    queue: market_data
+    schedule: every minute
+
 development:
   trading_reconciliation:
     class: "Trading::ReconciliationJob"
@@ -53,3 +63,13 @@ development:
     class: "Trading::PersistProductSnapshotsJob"
     queue: low
     schedule: every 15 minutes
+
+  paper_broker_products:
+    class: "Delta::PaperProductsSyncJob"
+    queue: market_data
+    schedule: every 30 minutes
+
+  paper_broker_tickers:
+    class: "Delta::PaperTickersSyncJob"
+    queue: market_data
+    schedule: every minute
