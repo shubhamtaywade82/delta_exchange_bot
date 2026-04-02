@@ -12,6 +12,7 @@ Primary goal: ship readable, maintainable Ruby code that is safe to change.
 
 ## Architecture facts to respect
 
+- Configuration vs DB vs cache precedence (bot config merge, Redis, Postgres): see [backend/docs/configuration_precedence.md](backend/docs/configuration_precedence.md).
 - Canonical runtime: `backend/` Rails app (`Trading::Runner`, API, DB, jobs).
 - `./bin/run` delegates to `backend/bin/bot`.
 - Do not run multiple long-lived trading loops for the same session.

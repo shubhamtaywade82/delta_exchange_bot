@@ -1,12 +1,15 @@
 # frozen_string_literal: true
 
 module Finance
-  # Single source for the app Setting used by sizing and display (see also bot.yml risk.usd_to_inr_rate).
+  # USD/INR for sizing, trade pnl_inr, and INR display — same value as +Bot::Config.load.usd_to_inr_rate+
+  # (defaults → config/bot.yml → +Setting+ +risk.usd_to_inr_rate+, etc.).
   module UsdInrRate
-    SETTING_KEY = "usd_to_inr_rate"
+    FALLBACK = 85.0
 
     def self.current
-      Setting.find_by(key: SETTING_KEY)&.value&.to_f&.nonzero? || 85.0
+      Bot::Config.load.usd_to_inr_rate
+    rescue Bot::Config::ValidationError, StandardError
+      FALLBACK
     end
   end
 end
