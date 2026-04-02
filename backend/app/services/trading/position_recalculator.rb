@@ -82,6 +82,7 @@ module Trading
         entry_price: avg,
         margin: margin,
         unrealized_pnl_usd: unrealized,
+        pnl_usd: nil,
         status: next_state,
         needs_reconciliation: false
       }

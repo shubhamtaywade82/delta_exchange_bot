@@ -55,6 +55,16 @@ RSpec.describe Trading::PositionRecalculator do
     expect(position.stop_price).to eq(position.entry_price.to_d * BigDecimal("0.99"))
   end
 
+  it "clears terminal pnl_usd while the net position remains open" do
+    order.update!(size: 1)
+    position.update_columns(pnl_usd: -999.0)
+    create(:fill, order: order, quantity: 1, price: 50_000, exchange_fill_id: "Fpnl")
+
+    described_class.call(position.id)
+
+    expect(position.reload.pnl_usd).to be_nil
+  end
+
   it "recomputes quantity and average entry from persisted fills" do
     order
     create(:fill, order: order, quantity: 1, price: 49_000, exchange_fill_id: "F1")
