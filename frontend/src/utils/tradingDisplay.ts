@@ -46,6 +46,21 @@ export function formatQuotePrice(value: unknown): string {
   return formatDisplayDecimal(value);
 }
 
+/**
+ * Shorter numbers for dense SMC bands (large handles get fewer decimals).
+ */
+export function formatSmcPrice(value: unknown): string {
+  if (value == null || value === '') return '—';
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return '—';
+  const abs = Math.abs(n);
+  const decimals = abs >= 10_000 ? 1 : abs >= 1_000 ? 2 : abs >= 1 ? 3 : 4;
+  return n.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimals,
+  });
+}
+
 export function sideBadgeMeta(side: unknown) {
   const normalized = String(side ?? '').trim().toLowerCase();
   if (normalized === 'buy' || normalized === 'long') {

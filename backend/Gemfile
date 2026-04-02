@@ -63,4 +63,5 @@ group :development, :test do
   gem "rubocop-rails-omakase", require: false
 end
 
-gem 'ollama-client'
+# Local gem: Ollama::Client + Ollama Cloud (Bearer + https://ollama.com). Path from backend/ → project → ai-workspace.
+gem 'ollama-client', path: '../../../ai-workspace/ollama-client'

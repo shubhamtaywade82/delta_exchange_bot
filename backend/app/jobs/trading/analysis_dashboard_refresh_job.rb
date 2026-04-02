@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 module Trading
-  # Refreshes Redis-backed SMC / structure digests for all enabled symbols (REST candles).
+  # Refreshes Redis-backed SMC digests for enabled symbols (REST). Each digest calls Ollama when
+  # `AiSmcSynthesizer` is configured — requires a reachable model and adequate `OLLAMA_TIMEOUT_SECONDS`.
+  # Schedule: `analysis_dashboard_refresh` in `config/recurring.yml` (requires `bin/jobs start` or Procfile `jobs`).
   class AnalysisDashboardRefreshJob < ApplicationJob
     queue_as :low
 

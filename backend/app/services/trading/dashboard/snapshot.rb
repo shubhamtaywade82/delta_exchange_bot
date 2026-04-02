@@ -110,10 +110,32 @@ module Trading
       end
 
       def default_wallet_hash(portfolio, positions: nil)
-        {
+        equity_usd = 1000.0 + portfolio.total_pnl.to_f
+        base = {
           "balance" => 1000.0,
-          "equity" => 1000.0 + portfolio.total_pnl.to_f
+          "equity" => equity_usd
         }
+        return base unless Trading::PaperTrading.enabled?
+
+        cfg = Bot::Config.load
+        unreal = portfolio.total_pnl.to_f
+        cash = (equity_usd - unreal).round(2)
+        base.merge(
+          "cash_balance_usd" => cash,
+          "cash_balance_inr" => (cash * cfg.usd_to_inr_rate).round(0),
+          "unrealized_pnl_usd" => unreal.round(2),
+          "unrealized_pnl_inr" => (unreal * cfg.usd_to_inr_rate).round(0),
+          "total_equity_usd" => equity_usd.round(2),
+          "total_equity_inr" => (equity_usd * cfg.usd_to_inr_rate).round(0),
+          "available_usd" => cash,
+          "available_inr" => (cash * cfg.usd_to_inr_rate).round(0),
+          "blocked_margin_usd" => 0.0,
+          "blocked_margin_inr" => 0,
+          "capital_inr" => cfg.simulated_capital_inr.round(0),
+          "paper_mode" => true,
+          "updated_at" => Time.current.iso8601,
+          "stale" => true
+        )
       end
 
       def stats_total_equity_usd(wallet, portfolio)

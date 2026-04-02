@@ -6,6 +6,8 @@ if command -v foreman &> /dev/null; then
   foreman start -f Procfile
 else
   echo "⚠️ foreman not found. Falling back to sequential startup..."
+  echo "   Tip: gem install foreman — Procfile also runs Solid Queue (bin/jobs) for analysis_dashboard_refresh + Ollama."
+  echo "   Or in another terminal: cd backend && bin/jobs start"
   (cd backend && bin/rails s) &
   (cd backend && bin/bot) &
   (cd frontend && npm run dev) &
