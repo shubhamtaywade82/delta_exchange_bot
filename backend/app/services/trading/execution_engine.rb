@@ -33,6 +33,7 @@ module Trading
       idem_key = IdempotencyGuard.key_for_signal(@signal)
       return nil unless acquire_idempotency!(idem_key)
 
+      order_persisted = false
       ensure_session_has_portfolio!
 
       validate_risk_and_portfolio_guard!
@@ -41,6 +42,7 @@ module Trading
       order_attrs = OrderBuilder.build(@signal, session: @session, position: position)
       validate_margin_affordability!(order_attrs, position)
       order = OrdersRepository.create!(order_attrs)
+      order_persisted = true
 
       result = place_order(order)
       persist_order_result!(order, result)
@@ -49,12 +51,15 @@ module Trading
       Rails.logger.info("[ExecutionEngine] Order placed: #{order.exchange_order_id} for #{@signal.symbol} #{@signal.side}")
       order
     rescue OrderBuilder::SizingError => e
+      release_idempotency_after_failed_acquire!(idem_key)
       Rails.logger.warn("[ExecutionEngine] Sizing rejected signal for #{@signal.symbol}: #{e.message}")
       raise RiskManager::RiskError, e.message
     rescue RiskManager::RiskError => e
+      release_idempotency_after_failed_acquire!(idem_key)
       Rails.logger.warn("[ExecutionEngine] Risk rejected signal for #{@signal.symbol}: #{e.message}")
       raise
     rescue => e
+      release_idempotency_after_failed_acquire!(idem_key) unless order_persisted
       Rails.logger.error("[ExecutionEngine] Failed to execute signal for #{@signal.symbol}: #{e.message}")
       raise
     end
@@ -66,6 +71,12 @@ module Trading
 
       Rails.logger.warn("[ExecutionEngine] Duplicate signal skipped: #{idem_key}")
       false
+    end
+
+    # Risk / sizing / margin run after acquire; without release, Redis blocks the same bar for 1h and the
+    # runner mis-labels the next attempt as SKIPPED_DUPLICATE though nothing executed.
+    def release_idempotency_after_failed_acquire!(idem_key)
+      IdempotencyGuard.release(idem_key)
     end
 
     def ensure_session_has_portfolio!

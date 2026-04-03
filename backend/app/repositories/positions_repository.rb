@@ -1,14 +1,56 @@
 # frozen_string_literal: true
 
 module PositionsRepository
-  def self.open_for(symbol)
-    Position.active.find_by(symbol: symbol)
+  # @param portfolio_id [Integer, nil] when nil, first active row for +symbol+ (legacy / tick handlers without portfolio context).
+  def self.open_for(symbol, portfolio_id: nil)
+    scope = Position.active.where(symbol: symbol)
+    scope = scope.where(portfolio_id: portfolio_id) unless portfolio_id.nil?
+
+    scope.first
+  end
+
+  def self.normalize_net_side(side)
+    s = side.to_s
+    return "long" if %w[buy long].include?(s)
+    return "short" if %w[sell short].include?(s)
+
+    s
+  end
+
+  # A fill closes exposure when it is opposite to the open position (buy closes short, sell closes long).
+  def self.closing_fill?(order)
+    existing = open_for(order.symbol, portfolio_id: order.portfolio_id)
+    return false unless existing
+
+    case normalize_net_side(existing.side)
+    when "long"
+      order.side.to_s == "sell"
+    when "short"
+      order.side.to_s == "buy"
+    else
+      false
+    end
+  end
+
+  def self.snapshot_for_closing_trade(order)
+    return nil unless closing_fill?(order)
+
+    open_for(order.symbol, portfolio_id: order.portfolio_id)
+  end
+
+  def self.apply_fill_from_order!(order)
+    if closing_fill?(order)
+      close!(order.symbol, order.portfolio_id)
+    else
+      upsert_from_order(order)
+    end
   end
 
   def self.upsert_from_order(order)
-    position = Position.active.find_or_initialize_by(symbol: order.symbol)
+    position = Position.active.where(portfolio_id: order.portfolio_id).find_or_initialize_by(symbol: order.symbol)
+    position.portfolio_id = order.portfolio_id
     position.assign_attributes(
-      side:        order.side == "buy" ? "long" : "short",
+      side:        order.side.to_s == "buy" ? "long" : "short",
       size:        order.filled_qty,
       entry_price: order.avg_fill_price,
       status:      "filled"
@@ -18,8 +60,8 @@ module PositionsRepository
     position
   end
 
-  def self.close!(symbol)
-    Position.active.where(symbol: symbol).update_all(
+  def self.close!(symbol, portfolio_id)
+    Position.active.where(symbol: symbol, portfolio_id: portfolio_id).update_all(
       status: "closed", exit_time: Time.current
     )
   end

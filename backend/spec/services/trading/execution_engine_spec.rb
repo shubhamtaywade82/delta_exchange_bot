@@ -73,6 +73,18 @@ RSpec.describe Trading::ExecutionEngine do
     expect(Order.count).to eq(0)
   end
 
+  it "releases idempotency after risk rejection so the same candle is not stuck as duplicate" do
+    allow(Trading::RiskManager).to receive(:validate!).and_raise(
+      Trading::RiskManager::RiskError, "daily loss cap exceeded"
+    )
+    key = Trading::IdempotencyGuard.key_for_signal(signal)
+    expect {
+      described_class.execute(signal, session: session, client: client)
+    }.to raise_error(Trading::RiskManager::RiskError)
+
+    expect(Trading::IdempotencyGuard.acquire(key)).to eq(true)
+  end
+
   it "does not evaluate portfolio guard when paper risk override is active" do
     allow(Trading::RiskManager).to receive(:validate!).and_return(true)
     allow(Trading::PaperRiskOverride).to receive(:active?).and_return(true)

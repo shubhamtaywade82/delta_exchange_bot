@@ -19,6 +19,7 @@ Work through items **in priority order**, one PR-sized slice at a time.
 
 - [x] **P0 — Emergency shutdown:** `close_open_positions!` scoped to the target session’s `portfolio_id` (was `Position.active` globally). Specs: multi-session positions and orders isolation (`emergency_shutdown_spec`).
 - [x] **P0 — Risk manager:** max concurrent positions, margin utilization, pyramiding existence check, and daily loss cap all use the **session’s portfolio** (`active_positions_for_session_portfolio` + `Trade` scoped by `portfolio_id`). **Semantic change:** rows with `trades.portfolio_id` nil no longer count toward any session’s daily loss cap (fills from `OrderHandler` / `CreditAssigner` set `portfolio_id`). Specs: `risk_manager_spec` (+ cross-portfolio isolation examples).
+- [x] **P0 — Order fill / position intent:** `PositionsRepository` now infers **open vs close** from order side + existing net side (sell closes long, buy closes short; opposite opens). Fills are **portfolio-scoped** (`open_for`, `close!`, `upsert_from_order`). `OrderHandler` snapshots the open position **before** close so `Trade` rows are created correctly. **Note:** the live WS path still runs through `FillProcessor` / `PositionRecalculator`; `OrderHandler` remains the contract for `:order_filled` if published. Specs: `spec/repositories/positions_repository_spec.rb`, `spec/services/trading/handlers/order_handler_spec.rb`.
 
 ---
 
@@ -68,9 +69,9 @@ Turn the 2026-04-03 repo audits into one prioritized, checkable backlog for the 
   - Files: `backend/app/services/trading/risk_manager.rb`  
   - Tests: `backend/spec/services/trading/risk_manager_spec.rb`
 
-- [ ] **Order fill / position side:** stop assuming raw `buy` = open and `sell` = close; normalize position intent at one boundary.  
-  - Files: `backend/app/services/trading/handlers/order_handler.rb`  
-  - Tests: long/short open and close; trade creation uses normalized side.
+- [x] **Order fill / position side:** open vs close derived in `PositionsRepository` from existing position net side + order side; `OrderHandler` uses `snapshot_for_closing_trade` + `apply_fill_from_order!`.  
+  - Files: `backend/app/repositories/positions_repository.rb`, `backend/app/services/trading/handlers/order_handler.rb`  
+  - Tests: `positions_repository_spec`, `order_handler_spec`.
 
 - [ ] **Single canonical bot runtime (safety + drift):** choose root `lib/bot/**` vs `backend/app/services/bot/**` as the only implementation surface; deprecate or wrap the other.  
   - Supported entrypoint is the Rails backend (`backend/bin/bot`); root `lib/bot/runner.rb` uses different timings/wiring and is a drift/misuse risk.  
@@ -120,8 +121,8 @@ Turn the 2026-04-03 repo audits into one prioritized, checkable backlog for the 
 
 - [ ] **Service spec gap closure (todo audit):** many `backend/app/services/**` objects lack matching `backend/spec/services/**` coverage — prioritize high-risk runtime pieces first: WebSocket ingestion, routing, risk executor, kill-switch paths, funding and liquidation guards.
 
-- [ ] **`Trading::Handlers::OrderHandler`:** unit/integration tests for fills, events, trade on close, error/reconciliation behavior.  
-  - Files: `backend/app/services/trading/handlers/order_handler.rb`
+- [ ] **`Trading::Handlers::OrderHandler`:** extend coverage for error/reconciliation paths and any future `:order_filled` wiring.  
+  - Files: `backend/app/services/trading/handlers/order_handler.rb` (baseline: `order_handler_spec` — close long/short, portfolio isolation, not-filled no-op)
 
 - [ ] **Integration specs (todo):** market tick → signal → order → fill → position → risk reaction (fixtures, idempotency, lock contention).
 
