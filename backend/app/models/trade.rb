@@ -64,4 +64,33 @@ class Trade < ApplicationRecord
       weekly_pnl: weekly_pnl.to_f
     }
   end
+
+  # Same KPI shape as +dashboard_pnl_totals+ but restricted to a relation (e.g. current paper session).
+  def self.dashboard_pnl_totals_for_scope(relation, as_of: Time.zone.now)
+    day_cutoff = as_of - 24.hours
+    week_cutoff = as_of - 7.days
+
+    total_realized = 0.to_d
+    daily_pnl = 0.to_d
+    weekly_pnl = 0.to_d
+    trade_count = 0
+    win_count = 0
+
+    relation.find_each do |t|
+      pnl = t.effective_pnl_usd
+      total_realized += pnl
+      trade_count += 1
+      win_count += 1 if pnl.positive?
+      daily_pnl += pnl if t.closed_at.present? && t.closed_at >= day_cutoff
+      weekly_pnl += pnl if t.closed_at.present? && t.closed_at >= week_cutoff
+    end
+
+    {
+      total_realized: total_realized.to_f,
+      trade_count: trade_count,
+      win_count: win_count,
+      daily_pnl: daily_pnl.to_f,
+      weekly_pnl: weekly_pnl.to_f
+    }
+  end
 end

@@ -49,6 +49,36 @@ RSpec.describe Trading::Dashboard::Snapshot do
         expect(session.portfolio_id).to be_present
       end
 
+      it "keeps WIN_RATE on the same broker-settled session scope as TOTAL_PNL" do
+        session = create(:trading_session, status: "running")
+        create(:trade, pnl_usd: -100.0, closed_at: 1.day.ago)
+        create(
+          :trade,
+          portfolio: session.portfolio,
+          symbol: "BTCUSD",
+          side: "short",
+          pnl_usd: 10.0,
+          closed_at: Time.current,
+          strategy: "multi_timeframe",
+          regime: "trending"
+        )
+        create(
+          :trade,
+          portfolio: session.portfolio,
+          symbol: "ETHUSD",
+          side: "short",
+          pnl_usd: 5.0,
+          closed_at: Time.current,
+          strategy: "multi_timeframe",
+          regime: "trending"
+        )
+
+        payload = described_class.call(calendar_day: nil, trades_day: nil, trades_limit: nil)
+
+        expect(payload[:stats][:total_pnl_usd]).to eq(15.0)
+        expect(payload[:stats][:win_rate]).to eq(100.0)
+      end
+
       it "scopes open positions to the running session portfolio" do
         session = create(:trading_session, status: "running")
         other = create(:portfolio)

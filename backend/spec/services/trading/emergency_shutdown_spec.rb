@@ -8,7 +8,17 @@ RSpec.describe Trading::EmergencyShutdown do
     allow(Trading::PaperTrading).to receive(:enabled?).and_return(false)
     allow(client).to receive(:cancel_order).and_return(true)
     allow(client).to receive(:place_order).and_return({ id: "CLOSE-001" })
-    allow(Trading::Learning::CreditAssigner).to receive(:finalize_trade!).and_return(instance_double(Trade, id: 1))
+    allow(Trading::Learning::CreditAssigner).to receive(:finalize_trade!).and_return(
+      instance_double(
+        Trade,
+        id: 1,
+        symbol: "BTCUSD",
+        exit_price: 50_000.0,
+        pnl_usd: 0.0,
+        pnl_inr: 0.0,
+        duration_seconds: 0
+      )
+    )
     allow(Trading::Learning::OnlineUpdater).to receive(:update!)
     allow(Trading::Learning::Metrics).to receive(:update)
     allow(Trading::Learning::AiRefinementTrigger).to receive(:call)

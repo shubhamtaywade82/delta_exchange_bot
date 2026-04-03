@@ -31,11 +31,12 @@ module Trading
           running_session: running_session,
           realized_pnl_usd: realized_pnl_usd
         )
-        daily_pnl = trade_totals[:daily_pnl].round(2)
-        weekly_pnl = trade_totals[:weekly_pnl].round(2)
+        kpi_totals = dashboard_kpi_trade_totals(running_session, trade_totals)
+        daily_pnl = kpi_totals[:daily_pnl].round(2)
+        weekly_pnl = kpi_totals[:weekly_pnl].round(2)
         execution_health = build_execution_health
-        trade_count = trade_totals[:trade_count]
-        win_rate = trade_count.positive? ? (trade_totals[:win_count].to_f / trade_count * 100).round(1) : 0
+        trade_count = kpi_totals[:trade_count]
+        win_rate = trade_count.positive? ? (kpi_totals[:win_count].to_f / trade_count * 100).round(1) : 0
         equity_curve = equity_curve_from_trades
         trades_scope = broker_settled_trades_scope.where(closed_at: trades_day_range)
         trades_total = trades_scope.count
@@ -96,14 +97,22 @@ module Trading
         delta_balance = port.balance.to_d - seed
         return delta_balance.round(2).to_f if delta_balance.abs >= BigDecimal("0.005")
 
-        scoped_trades = broker_settled_trades_scope.where(portfolio_id: pid)
-        return Trade.sum_effective_pnl_usd(scoped_trades).round(2) if scoped_trades.exists?
+        Trade.sum_effective_pnl_usd(paper_session_broker_trades_scope(running_session)).round(2)
+      end
 
-        legacy_trades = broker_settled_trades_scope.where(portfolio_id: nil).where(
-          "closed_at >= ?",
+      def paper_session_broker_trades_scope(running_session)
+        pid = running_session.portfolio_id
+        broker_settled_trades_scope.where(
+          "portfolio_id = ? OR (portfolio_id IS NULL AND closed_at >= ?)",
+          pid,
           session_started_at(running_session)
         )
-        Trade.sum_effective_pnl_usd(legacy_trades).round(2)
+      end
+
+      def dashboard_kpi_trade_totals(running_session, global_totals)
+        return global_totals unless paper_session?(running_session)
+
+        Trade.dashboard_pnl_totals_for_scope(paper_session_broker_trades_scope(running_session))
       end
 
       def paper_session?(running_session)
@@ -170,10 +179,10 @@ module Trading
           return running_session.portfolio.balance.to_f.round(2)
         end
 
-        ledger_cash_stale = realized_pnl_usd.abs >= 0.005 &&
-          (running_session.portfolio.balance.to_d - seed).abs < BigDecimal("0.02")
-
-        return (seed + realized_pnl_usd.to_d).round(2).to_f if ledger_cash_stale
+        # Trade-derived realized moved the session book but wallet cash still shows seed (no ledger rows).
+        if realized_pnl_usd.abs >= BigDecimal("0.005")
+          return (seed + realized_pnl_usd.to_d).round(2).to_f
+        end
 
         if wallet["cash_balance_usd"].present?
           return wallet["cash_balance_usd"].to_f.round(2)

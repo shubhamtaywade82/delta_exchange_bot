@@ -244,7 +244,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_03_120000) do
     t.decimal "unrealized_pnl_usd", precision: 20, scale: 8
     t.datetime "updated_at", null: false
     t.index ["needs_reconciliation"], name: "index_positions_on_needs_reconciliation"
-    t.index ["portfolio_id", "symbol"], name: "idx_positions_one_open_net_per_portfolio_symbol", unique: true, where: "((status)::text = ANY ((ARRAY['init'::character varying, 'entry_pending'::character varying, 'partially_filled'::character varying, 'filled'::character varying, 'exit_pending'::character varying, 'open'::character varying])::text[]))"
+    t.index ["portfolio_id", "symbol"], name: "idx_positions_one_open_net_per_portfolio_symbol", unique: true, where: "((status)::text = ANY (ARRAY[('init'::character varying)::text, ('entry_pending'::character varying)::text, ('partially_filled'::character varying)::text, ('filled'::character varying)::text, ('exit_pending'::character varying)::text, ('open'::character varying)::text]))"
     t.index ["portfolio_id"], name: "index_positions_on_portfolio_id"
   end
 

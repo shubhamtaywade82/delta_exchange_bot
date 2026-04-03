@@ -56,6 +56,22 @@ RSpec.describe Trade, type: :model do
     end
   end
 
+  describe ".dashboard_pnl_totals_for_scope" do
+    it "aggregates only rows in the given relation" do
+      travel_to Time.zone.parse("2026-03-31 12:00:00 UTC") do
+        included = create(:trade, symbol: "BTCUSD", pnl_usd: 4.0, closed_at: 1.hour.ago)
+        create(:trade, symbol: "ETHUSD", pnl_usd: 100.0, closed_at: 1.hour.ago)
+
+        scope = described_class.where(id: included.id)
+        totals = described_class.dashboard_pnl_totals_for_scope(scope)
+
+        expect(totals[:total_realized]).to eq(4.0)
+        expect(totals[:trade_count]).to eq(1)
+        expect(totals[:win_count]).to eq(1)
+      end
+    end
+  end
+
   describe "#effective_pnl_usd" do
     it "returns stored pnl_usd when non-zero" do
       trade = build(:trade, pnl_usd: 3.5)
