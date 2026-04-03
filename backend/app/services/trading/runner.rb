@@ -45,7 +45,13 @@ module Trading
         rails_logger: Rails.logger
       )
     rescue StandardError => e
-      Rails.logger.warn("[Runner] StrategySessionLogger unavailable (#{e.class}: #{e.message}); using Rails.logger only")
+      HotPathErrorPolicy.log_swallowed_error(
+        component: "Runner",
+        operation: "build_strategy_session_logger",
+        error:     e,
+        log_level: :warn,
+        session_id: @session.id
+      )
       Rails.logger
     end
 
@@ -73,7 +79,13 @@ module Trading
       # Immediate sync so dashboard has data before first WS tick
       Trading::Delta::ProductCatalogSync.sync_all!
     rescue StandardError => e
-      Rails.logger.warn("[Runner] ensure_symbols_configured failed: #{e.message}")
+      HotPathErrorPolicy.log_swallowed_error(
+        component: "Runner",
+        operation: "ensure_symbols_configured!",
+        error:     e,
+        log_level: :warn,
+        session_id: @session.id
+      )
     end
 
     def register_event_handlers!
@@ -96,7 +108,13 @@ module Trading
         # WsClient still useful for real-time LTP/PnL in UI via PriceStore
         MarketData::WsClient.new(client: @client, symbols: symbols, testnet: testnet).start
       rescue StandardError => e
-        Rails.logger.error("[Runner] WS thread crashed: #{e.class}: #{e.message}")
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "Runner",
+          operation: "ws_thread",
+          error:     e,
+          log_level: :error,
+          session_id: @session.id
+        )
       end
     end
 
@@ -170,7 +188,14 @@ module Trading
 
         execute_signal(**adaptive_signal)
       rescue StandardError => e
-        Rails.logger.error("[Runner] Strategy error for #{symbol}: #{e.class}: #{e.message}")
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "Runner",
+          operation: "run_strategy",
+          error:     e,
+          log_level: :error,
+          session_id: @session.id,
+          symbol:    symbol
+        )
       end
 
       elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - pass_started
@@ -276,7 +301,14 @@ module Trading
       ticker = @client.market_data.ticker(symbol)
       extract_positive_ticker_price(ticker)
     rescue StandardError => e
-      Rails.logger.warn("[Runner] fetch_last_price failed symbol=#{symbol}: #{e.class}: #{e.message}")
+      HotPathErrorPolicy.log_swallowed_error(
+        component: "Runner",
+        operation: "fetch_last_price",
+        error:     e,
+        log_level: :warn,
+        session_id: @session.id,
+        symbol:    symbol
+      )
       nil
     end
 

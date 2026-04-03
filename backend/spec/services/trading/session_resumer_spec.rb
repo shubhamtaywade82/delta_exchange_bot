@@ -32,5 +32,18 @@ RSpec.describe Trading::SessionResumer do
 
       expect(DeltaTradingJob).to have_received(:perform_later).once
     end
+
+    it "returns 0 and reports when resuming raises" do
+      allow(DeltaTradingJob).to receive(:perform_later).and_raise(StandardError, "queue unavailable")
+      allow(Rails.error).to receive(:report)
+
+      expect(described_class.call).to eq(0)
+
+      expect(Rails.error).to have_received(:report).with(
+        an_object_having_attributes(message: "queue unavailable"),
+        handled: true,
+        context: hash_including("component" => "SessionResumer", "operation" => "call")
+      )
+    end
   end
 end

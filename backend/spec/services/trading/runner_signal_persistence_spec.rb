@@ -65,5 +65,49 @@ RSpec.describe Trading::Runner do
       expect(signal.status).to eq("skipped_duplicate")
       expect(signal.error_message).to include("idempotency")
     end
+
+    it "marks signal as failed and re-raises when execution raises before outer loop swallows" do
+      allow(Trading::EventBus).to receive(:publish)
+      allow(Trading::ExecutionEngine).to receive(:execute).and_raise(StandardError, "execution boom")
+
+      expect {
+        runner.send(
+          :execute_signal,
+          symbol: "SOLUSD",
+          side: :buy,
+          entry_price: 100.0,
+          candle_timestamp: Time.now.to_i,
+          strategy_name: "mtf",
+          source: "mtf",
+          context: {}
+        )
+      }.to raise_error(StandardError, "execution boom")
+
+      signal = GeneratedSignal.order(:created_at).last
+      expect(signal.status).to eq("failed")
+      expect(signal.error_message).to eq("execution boom")
+    end
+  end
+
+  describe "hot-path error reporting" do
+    it "reports swallowed errors from fetch_last_price" do
+      market_data = instance_double("DeltaExchange::MarketData")
+      allow(client).to receive(:market_data).and_return(market_data)
+      allow(market_data).to receive(:ticker).and_raise(StandardError, "api down")
+      allow(Rails.error).to receive(:report)
+
+      price = runner.send(:fetch_last_price, "BTCUSD")
+
+      expect(price).to be_nil
+      expect(Rails.error).to have_received(:report).with(
+        an_object_having_attributes(message: "api down"),
+        handled: true,
+        context: hash_including(
+          "component" => "Runner",
+          "operation" => "fetch_last_price",
+          "symbol" => "BTCUSD"
+        )
+      )
+    end
   end
 end

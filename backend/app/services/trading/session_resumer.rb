@@ -21,7 +21,12 @@ module Trading
       end
       resumed_count
     rescue StandardError => e
-      Rails.logger.warn("[SessionResumer] skipped: #{e.class} #{e.message}")
+      HotPathErrorPolicy.log_swallowed_error(
+        component: "SessionResumer",
+        operation: "call",
+        error:     e,
+        log_level: :warn
+      )
       0
     end
 
