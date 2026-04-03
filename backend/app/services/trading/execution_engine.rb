@@ -58,9 +58,17 @@ module Trading
       release_idempotency_after_failed_acquire!(idem_key)
       Rails.logger.warn("[ExecutionEngine] Risk rejected signal for #{@signal.symbol}: #{e.message}")
       raise
-    rescue => e
+    rescue StandardError => e
       release_idempotency_after_failed_acquire!(idem_key) unless order_persisted
-      Rails.logger.error("[ExecutionEngine] Failed to execute signal for #{@signal.symbol}: #{e.message}")
+      HotPathErrorPolicy.log_swallowed_error(
+        component: "ExecutionEngine",
+        operation: "execute",
+        error:     e,
+        report_handled: false,
+        symbol:    @signal&.symbol,
+        session_id: @session&.id,
+        order_persisted: order_persisted
+      )
       raise
     end
 

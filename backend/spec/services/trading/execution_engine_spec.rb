@@ -54,6 +54,27 @@ RSpec.describe Trading::ExecutionEngine do
     expect(Order.last.exchange_order_id).to eq("EX-001")
   end
 
+  it "reports unexpected failures to the error reporter then re-raises" do
+    allow(client).to receive(:place_order).and_raise(StandardError, "exchange unavailable")
+    allow(Rails.logger).to receive(:error)
+    allow(Rails.error).to receive(:report)
+
+    expect {
+      described_class.execute(signal, session: session, client: client)
+    }.to raise_error(StandardError, "exchange unavailable")
+
+    expect(Rails.error).to have_received(:report).with(
+      an_object_having_attributes(message: "exchange unavailable"),
+      handled: false,
+      context: hash_including(
+        "component" => "ExecutionEngine",
+        "operation" => "execute",
+        "symbol" => "BTCUSD",
+        "order_persisted" => "true"
+      )
+    )
+  end
+
   it "returns nil (skips) when idempotency key already acquired" do
     key = Trading::IdempotencyGuard.key_for_signal(signal)
     Trading::IdempotencyGuard.acquire(key)
