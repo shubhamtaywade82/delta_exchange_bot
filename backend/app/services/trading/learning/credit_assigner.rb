@@ -17,6 +17,7 @@ module Trading
         duration_sec = entry_t.present? ? (Time.current - entry_t.to_time).to_i : 0
 
         Trade.create!(
+          portfolio_id: position.portfolio_id,
           symbol: position.symbol,
           side: position.side,
           size: position.size,

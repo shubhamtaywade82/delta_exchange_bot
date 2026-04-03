@@ -28,12 +28,15 @@ RSpec.describe OrdersRepository do
       allow(Trading::Learning::Metrics).to receive(:update)
       allow(Trading::Learning::AiRefinementTrigger).to receive(:call)
       allow(Trading::TelegramNotifications).to receive(:deliver).and_yield(double.as_null_object)
+      allow(Trading::PaperTrading).to receive(:enabled?).and_return(true)
 
+      balance_before = portfolio.reload.balance.to_d
       mark = 66_671.18
       described_class.close_position(position_id: position.id, reason: "LIQUIDATION_EXIT", mark_price: mark)
 
       position.reload
       expect(position.pnl_usd.to_f).to be_within(0.02).of(-93.24)
+      expect(portfolio.reload.balance.to_d).to eq(balance_before + position.pnl_usd.to_d)
 
       trade = Trade.order(id: :desc).first
       expect(trade).to be_present

@@ -88,6 +88,35 @@ RSpec.describe Trading::Dashboard::Snapshot do
         expect(payload[:stats][:total_pnl_usd]).to eq(-2.5)
       end
 
+      it "uses portfolio cash vs session seed when the ledger is empty (synthetic paper exits)" do
+        session = create(:trading_session, status: "running", capital: "1000.0")
+        session.portfolio.update!(balance: 1042.75, available_balance: 1042.75, used_margin: 0)
+        create(:trade, pnl_usd: 50, closed_at: 1.day.ago)
+
+        payload = described_class.call(calendar_day: nil, trades_day: nil, trades_limit: nil)
+
+        expect(payload[:stats][:total_pnl_usd]).to eq(42.75)
+      end
+
+      it "sums broker-settled trades for the session portfolio when the ledger is empty and balance never moved" do
+        session = create(:trading_session, status: "running", capital: "1000.0")
+        create(
+          :trade,
+          portfolio: session.portfolio,
+          symbol: "BTCUSD",
+          side: "short",
+          pnl_usd: 34.38,
+          closed_at: Time.current,
+          strategy: "multi_timeframe",
+          regime: "trending"
+        )
+
+        payload = described_class.call(calendar_day: nil, trades_day: nil, trades_limit: nil)
+
+        expect(payload[:stats][:total_pnl_usd]).to eq(34.38)
+        expect(payload[:stats][:total_equity_usd]).to eq(1034.38)
+      end
+
       it "reports headline total_equity from ledger cash (excludes unrealized in stats)" do
         session = create(:trading_session, status: "running")
         allow(Trading::PaperWalletPublisher).to receive(:wallet_snapshot!).and_return(

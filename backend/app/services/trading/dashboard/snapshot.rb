@@ -80,21 +80,61 @@ module Trading
 
       private
 
-      # Settled / ledger realized only (no open-position mark-to-market). Matches portfolio ledger when paper
-      # session is active; otherwise all +Trade+ rows (+effective_pnl_usd+).
+      # Paper + running session: +PortfolioLedgerEntry+ when present; else balance delta vs session seed;
+      # else +Trade+ rows for this portfolio; else legacy +Trade+ rows since +session.started_at+ (nil
+      # +portfolio_id+) so the status bar matches TRADE_HISTORY when fills never hit the ledger.
       def dashboard_realized_pnl_usd(running_session, trade_totals)
-        if Trading::PaperTrading.enabled? && running_session&.portfolio_id.present?
-          PortfolioLedgerEntry.where(portfolio_id: running_session.portfolio_id).sum(:realized_pnl_delta).to_f.round(2)
-        else
-          trade_totals[:total_realized].round(2)
+        return trade_totals[:total_realized].round(2) unless paper_session?(running_session)
+
+        pid = running_session.portfolio_id
+        if PortfolioLedgerEntry.where(portfolio_id: pid).exists?
+          return PortfolioLedgerEntry.where(portfolio_id: pid).sum(:realized_pnl_delta).to_f.round(2)
         end
+
+        port = Portfolio.find(pid)
+        seed = portfolio_session_seed_usd(running_session).to_d
+        delta_balance = port.balance.to_d - seed
+        return delta_balance.round(2).to_f if delta_balance.abs >= BigDecimal("0.005")
+
+        scoped_trades = broker_settled_trades_scope.where(portfolio_id: pid)
+        return Trade.sum_effective_pnl_usd(scoped_trades).round(2) if scoped_trades.exists?
+
+        legacy_trades = broker_settled_trades_scope.where(portfolio_id: nil).where(
+          "closed_at >= ?",
+          session_started_at(running_session)
+        )
+        Trade.sum_effective_pnl_usd(legacy_trades).round(2)
       end
 
-      # Ledger headline: starting capital + realized only (excludes unrealized). Prefer wallet +cash_balance_usd+
-      # when present; else +total_equity_usd+ minus unrealized; else session +Portfolio#balance+; else config
-      # initial USD + realized.
+      def paper_session?(running_session)
+        Trading::PaperTrading.enabled? && running_session&.portfolio_id.present?
+      end
+
+      def session_started_at(session)
+        session.started_at || session.created_at || Time.zone.at(0)
+      end
+
+      def portfolio_session_seed_usd(session)
+        cap = session.capital.to_d
+        return cap if cap.positive?
+
+        BigDecimal("20000")
+      end
+
+      # Ledger headline (no unrealized): live / no session — wallet math as before. Paper + session —
+      # ledger-backed cash when entries exist; else synthetic +seed + realized+ when ledger cash never moved
+      # but +Trade+ rows did; else wallet cash / (total − unrealized).
       def dashboard_ledger_equity_usd(wallet:, portfolio:, running_session:, realized_pnl_usd:)
         w = wallet.stringify_keys
+
+        if paper_session?(running_session)
+          return paper_headline_equity_usd(
+            wallet: w,
+            portfolio: portfolio,
+            running_session: running_session,
+            realized_pnl_usd: realized_pnl_usd
+          )
+        end
 
         if w["cash_balance_usd"].present?
           return w["cash_balance_usd"].to_f.round(2)
@@ -117,6 +157,39 @@ module Trading
         cfg = Bot::Config.load
         initial_usd = (cfg.simulated_capital_inr.to_f / cfg.usd_to_inr_rate).round(2)
         (initial_usd + realized_pnl_usd).round(2)
+      end
+
+      def paper_headline_equity_usd(wallet:, portfolio:, running_session:, realized_pnl_usd:)
+        pid = running_session.portfolio_id
+        seed = portfolio_session_seed_usd(running_session).to_d
+        ledger_active = PortfolioLedgerEntry.where(portfolio_id: pid).exists?
+
+        if ledger_active
+          return wallet["cash_balance_usd"].to_f.round(2) if wallet["cash_balance_usd"].present?
+
+          return running_session.portfolio.balance.to_f.round(2)
+        end
+
+        ledger_cash_stale = realized_pnl_usd.abs >= 0.005 &&
+          (running_session.portfolio.balance.to_d - seed).abs < BigDecimal("0.02")
+
+        return (seed + realized_pnl_usd.to_d).round(2).to_f if ledger_cash_stale
+
+        if wallet["cash_balance_usd"].present?
+          return wallet["cash_balance_usd"].to_f.round(2)
+        end
+
+        if wallet["total_equity_usd"].present?
+          unrealized =
+            if wallet.key?("unrealized_pnl_usd") && !wallet["unrealized_pnl_usd"].nil?
+              wallet["unrealized_pnl_usd"].to_f
+            else
+              portfolio.total_pnl.to_f
+            end
+          return (wallet["total_equity_usd"].to_f - unrealized).round(2)
+        end
+
+        (seed + realized_pnl_usd.to_d).round(2).to_f
       end
 
       def dashboard_active_positions(running_session)

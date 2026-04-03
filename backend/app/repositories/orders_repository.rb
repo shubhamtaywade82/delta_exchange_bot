@@ -50,6 +50,8 @@ module OrdersRepository
         pnl_inr: realized_usd * rate
       )
 
+      credit_portfolio_balance_for_synthetic_close!(pos.portfolio_id, realized_usd)
+
       trade = Trading::Learning::CreditAssigner.finalize_trade!(
         pos,
         entry_features: pos.entry_features || {},
@@ -65,6 +67,7 @@ module OrdersRepository
     end
 
     notify_trade_closed_telegram(trade, reason)
+    position&.portfolio&.sync_margin_from_positions!
     position
   end
 
@@ -83,6 +86,18 @@ module OrdersRepository
     end
   end
   private_class_method :notify_trade_closed_telegram
+
+  # Paper / synthetic exits (trailing, emergency) do not send a closing fill through +FillProcessor+,
+  # so portfolio cash never moves unless we credit here. Live exchange closes are fill-driven — avoid
+  # double-counting when broker fills already ran +Portfolio#apply_fill_and_sync!+.
+  def self.credit_portfolio_balance_for_synthetic_close!(portfolio_id, realized_usd)
+    return unless Trading::PaperTrading.enabled?
+    return if realized_usd.to_d.zero?
+
+    port = Portfolio.lock.find(portfolio_id)
+    port.update!(balance: port.balance.to_d + realized_usd.to_d)
+  end
+  private_class_method :credit_portfolio_balance_for_synthetic_close!
 
   def self.liquidation_reason?(reason)
     reason.to_s == "LIQUIDATION_EXIT"

@@ -45,6 +45,7 @@ module Trading
 
         pnl = calculate_pnl(entry_position, order)
         Trade.create!(
+          portfolio_id:     order.portfolio_id,
           symbol:           order.symbol,
           side:             entry_position.side,
           size:             order.filled_qty,
@@ -53,7 +54,9 @@ module Trading
           pnl_usd:          pnl,
           pnl_inr:          pnl * Finance::UsdInrRate.current,
           duration_seconds: (Time.current - entry_position.entry_time.to_time).to_i,
-          closed_at:        Time.current
+          closed_at:        Time.current,
+          strategy:         ENV.fetch("BOT_TRADE_STRATEGY", "multi_timeframe"),
+          regime:           ENV.fetch("BOT_TRADE_REGIME", "unknown")
         )
       end
 
