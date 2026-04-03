@@ -6,19 +6,237 @@ module Bot
   class Config
     class ValidationError < StandardError; end
 
-    VALID_MODES      = %w[dry_run testnet live].freeze
-    VALID_LOG_LEVELS = %w[debug info warn error].freeze
+    VALID_MODES               = %w[dry_run testnet live].freeze
+    VALID_LOG_LEVELS          = %w[debug info warn error].freeze
+    VALID_SUPERTREND_VARIANTS = %w[classic ml_adaptive].freeze
+    ML_ADAPTIVE_SUPERTREND_TYPE_ALIASES = %w[ml_adaptive_supertrend mast ml_st ml_adaptive].freeze
+
+    # Keys merged from DB in `runtime_raw` — keep in sync with `apply_setting!` calls there.
+    RUNTIME_SETTING_KEYS = %w[
+      bot.mode
+      strategy.supertrend.variant
+      strategy.supertrend.type
+      strategy.supertrend.indicator_type
+      strategy.supertrend.atr_period
+      strategy.supertrend.multiplier
+      strategy.supertrend.ml_adaptive.training_period
+      strategy.supertrend.ml_adaptive.highvol
+      strategy.supertrend.ml_adaptive.midvol
+      strategy.supertrend.ml_adaptive.lowvol
+      strategy.adx.period
+      strategy.adx.threshold
+      strategy.filters.relax_in_dry_run
+      strategy.trailing_stop_pct
+      strategy.timeframes.trend
+      strategy.timeframes.confirm
+      strategy.timeframes.entry
+      strategy.candles_lookback
+      strategy.min_candles_required
+      risk.risk_per_trade_pct
+      risk.max_concurrent_positions
+      risk.max_margin_per_position_pct
+      risk.usd_to_inr_rate
+      risk.simulated_capital_inr
+      notifications.telegram.enabled
+      notifications.telegram.bot_token
+      notifications.telegram.chat_id
+      notifications.telegram.events.status
+      notifications.telegram.events.signals
+      notifications.telegram.events.positions
+      notifications.telegram.events.trailing
+      notifications.telegram.events.errors
+      notifications.daily_summary_time
+      logging.level
+      logging.file
+    ].freeze
+
+    DEFAULTS = {
+      "mode" => "dry_run",
+      "strategy" => {
+        "supertrend" => {
+          "variant" => "classic",
+          "atr_period" => 10,
+          "multiplier" => 3.0,
+          "ml_adaptive" => {
+            "training_period" => 100,
+            "highvol" => 0.75,
+            "midvol" => 0.5,
+            "lowvol" => 0.25
+          }
+        },
+        "adx" => { "period" => 14, "threshold" => 20 },
+        "filters" => { "relax_in_dry_run" => true },
+        "trailing_stop_pct" => 1.5,
+        "timeframes" => { "trend" => "1h", "confirm" => "15m", "entry" => "5m" },
+        "candles_lookback" => 100,
+        "min_candles_required" => 30
+      },
+      "risk" => {
+        "risk_per_trade_pct" => 1.5,
+        "max_concurrent_positions" => 5,
+        "max_margin_per_position_pct" => 40.0,
+        "usd_to_inr_rate" => 85.0,
+        "simulated_capital_inr" => 20_000.0
+      },
+      "notifications" => {
+        "telegram" => {
+          "enabled" => false,
+          "bot_token" => "",
+          "chat_id" => "",
+          "events" => {
+            "status" => true,
+            "signals" => true,
+            "positions" => true,
+            "trailing" => true,
+            "errors" => true
+          }
+        },
+        "daily_summary_time" => "18:00"
+      },
+      "logging" => { "level" => "info", "file" => "logs/bot.log" }
+    }.freeze
 
     def initialize(raw)
       @raw = raw
       validate!
     end
 
-    def self.load(path = Rails.root.join("config/bot.yml"))
-      raw = YAML.safe_load(File.read(path), permitted_classes: [], aliases: true)
+    def self.load(_path = nil)
+      raw = runtime_raw
       mode_override = ENV["BOT_MODE"]
       raw["mode"] = mode_override if mode_override && !mode_override.empty?
       new(raw)
+    end
+
+    def self.runtime_raw
+      raw = Marshal.load(Marshal.dump(DEFAULTS))
+      overlay = bot_yml_hash
+      deep_merge_runtime_overlay!(raw, overlay)
+
+      settings_by_key = Setting.where(key: RUNTIME_SETTING_KEYS).index_by(&:key)
+
+      apply_setting!(raw, "mode", key: "bot.mode", settings_by_key: settings_by_key)
+      apply_setting!(raw, "strategy", "supertrend", "variant", key: "strategy.supertrend.variant", settings_by_key: settings_by_key)
+      apply_setting!(raw, "strategy", "supertrend", "type", key: "strategy.supertrend.type", settings_by_key: settings_by_key)
+      apply_setting!(raw, "strategy", "supertrend", "indicator_type", key: "strategy.supertrend.indicator_type", settings_by_key: settings_by_key)
+      apply_setting!(raw, "strategy", "supertrend", "atr_period", key: "strategy.supertrend.atr_period", settings_by_key: settings_by_key)
+      apply_setting!(raw, "strategy", "supertrend", "multiplier", key: "strategy.supertrend.multiplier", settings_by_key: settings_by_key)
+      apply_setting!(raw, "strategy", "supertrend", "ml_adaptive", "training_period", key: "strategy.supertrend.ml_adaptive.training_period", settings_by_key: settings_by_key)
+      apply_setting!(raw, "strategy", "supertrend", "ml_adaptive", "highvol", key: "strategy.supertrend.ml_adaptive.highvol", settings_by_key: settings_by_key)
+      apply_setting!(raw, "strategy", "supertrend", "ml_adaptive", "midvol", key: "strategy.supertrend.ml_adaptive.midvol", settings_by_key: settings_by_key)
+      apply_setting!(raw, "strategy", "supertrend", "ml_adaptive", "lowvol", key: "strategy.supertrend.ml_adaptive.lowvol", settings_by_key: settings_by_key)
+      apply_setting!(raw, "strategy", "adx", "period", key: "strategy.adx.period", settings_by_key: settings_by_key)
+      apply_setting!(raw, "strategy", "adx", "threshold", key: "strategy.adx.threshold", settings_by_key: settings_by_key)
+      apply_setting!(raw, "strategy", "filters", "relax_in_dry_run", key: "strategy.filters.relax_in_dry_run", settings_by_key: settings_by_key)
+      apply_setting!(raw, "strategy", "trailing_stop_pct", key: "strategy.trailing_stop_pct", settings_by_key: settings_by_key)
+      apply_setting!(raw, "strategy", "timeframes", "trend", key: "strategy.timeframes.trend", settings_by_key: settings_by_key)
+      apply_setting!(raw, "strategy", "timeframes", "confirm", key: "strategy.timeframes.confirm", settings_by_key: settings_by_key)
+      apply_setting!(raw, "strategy", "timeframes", "entry", key: "strategy.timeframes.entry", settings_by_key: settings_by_key)
+      apply_setting!(raw, "strategy", "candles_lookback", key: "strategy.candles_lookback", settings_by_key: settings_by_key)
+      apply_setting!(raw, "strategy", "min_candles_required", key: "strategy.min_candles_required", settings_by_key: settings_by_key)
+      apply_setting!(raw, "risk", "risk_per_trade_pct", key: "risk.risk_per_trade_pct", settings_by_key: settings_by_key)
+      apply_setting!(raw, "risk", "max_concurrent_positions", key: "risk.max_concurrent_positions", settings_by_key: settings_by_key)
+      apply_setting!(raw, "risk", "max_margin_per_position_pct", key: "risk.max_margin_per_position_pct", settings_by_key: settings_by_key)
+      apply_setting!(raw, "risk", "usd_to_inr_rate", key: "risk.usd_to_inr_rate", settings_by_key: settings_by_key)
+      apply_setting!(raw, "risk", "simulated_capital_inr", key: "risk.simulated_capital_inr", settings_by_key: settings_by_key)
+      apply_setting!(raw, "notifications", "telegram", "enabled", key: "notifications.telegram.enabled", settings_by_key: settings_by_key)
+      apply_setting!(raw, "notifications", "telegram", "bot_token", key: "notifications.telegram.bot_token", settings_by_key: settings_by_key)
+      apply_setting!(raw, "notifications", "telegram", "chat_id", key: "notifications.telegram.chat_id", settings_by_key: settings_by_key)
+      apply_setting!(raw, "notifications", "telegram", "events", "status", key: "notifications.telegram.events.status", settings_by_key: settings_by_key)
+      apply_setting!(raw, "notifications", "telegram", "events", "signals", key: "notifications.telegram.events.signals", settings_by_key: settings_by_key)
+      apply_setting!(raw, "notifications", "telegram", "events", "positions", key: "notifications.telegram.events.positions", settings_by_key: settings_by_key)
+      apply_setting!(raw, "notifications", "telegram", "events", "trailing", key: "notifications.telegram.events.trailing", settings_by_key: settings_by_key)
+      apply_setting!(raw, "notifications", "telegram", "events", "errors", key: "notifications.telegram.events.errors", settings_by_key: settings_by_key)
+      apply_setting!(raw, "notifications", "daily_summary_time", key: "notifications.daily_summary_time", settings_by_key: settings_by_key)
+      apply_setting!(raw, "logging", "level", key: "logging.level", settings_by_key: settings_by_key)
+      apply_setting!(raw, "logging", "file", key: "logging.file", settings_by_key: settings_by_key)
+
+      raw["symbols"] = resolve_runtime_symbols(overlay)
+
+      apply_telegram_environment_overrides!(raw)
+
+      raw
+    end
+
+    # Deep-merge only keys that already exist on `base` (typically DEFAULTS-shaped).
+    # `symbols` is not in DEFAULTS — watchlist is set in +resolve_runtime_symbols+ (DB first, then bot.yml).
+    def self.deep_merge_runtime_overlay!(base, overlay)
+      return base if overlay.blank? || !overlay.is_a?(Hash)
+
+      overlay.each do |key, value|
+        next unless base.key?(key)
+
+        if value.is_a?(Hash) && base[key].is_a?(Hash)
+          deep_merge_runtime_overlay!(base[key], value)
+        else
+          base[key] = value
+        end
+      end
+      base
+    end
+
+    def self.bot_yml_hash
+      path = Rails.root.join("config/bot.yml")
+      return nil unless File.file?(path)
+
+      YAML.safe_load(File.read(path), permitted_classes: [], aliases: true)
+    rescue StandardError
+      nil
+    end
+
+    def self.resolve_runtime_symbols(overlay)
+      db = SymbolConfig.where(enabled: true).order(:symbol).map do |row|
+        { "symbol" => row.symbol, "leverage" => row.leverage }
+      end
+      return db if db.any?
+
+      normalized_symbols_from_yaml(overlay)
+    end
+
+    def self.normalized_symbols_from_yaml(overlay)
+      return [] unless overlay.is_a?(Hash)
+
+      list = overlay["symbols"]
+      return [] unless list.is_a?(Array)
+
+      list.filter_map do |entry|
+        next unless entry.is_a?(Hash)
+
+        sym = (entry["symbol"] || entry[:symbol]).to_s.strip
+        next if sym.empty?
+
+        { "symbol" => sym, "leverage" => (entry["leverage"] || entry[:leverage]).to_i }
+      end
+    end
+
+    def self.apply_telegram_environment_overrides!(raw)
+      telegram = raw.dig("notifications", "telegram")
+      return unless telegram.is_a?(Hash)
+
+      token = ENV.fetch("TELEGRAM_BOT_TOKEN", "").to_s.strip
+      telegram["bot_token"] = token if token.present? && telegram["bot_token"].to_s.strip.empty?
+
+      chat = ENV.fetch("TELEGRAM_CHAT_ID", "").to_s.strip
+      telegram["chat_id"] = chat if chat.present? && telegram["chat_id"].to_s.strip.empty?
+
+      apply_telegram_enabled_from_env!(telegram)
+    end
+
+    def self.apply_telegram_enabled_from_env!(telegram)
+      return unless ENV.key?("TELEGRAM_ENABLED")
+
+      flag = ENV["TELEGRAM_ENABLED"].to_s.strip.downcase
+      telegram["enabled"] = %w[1 true yes on].include?(flag)
+    end
+
+    def self.apply_setting!(raw, *path, key:, settings_by_key:)
+      setting = settings_by_key[key]
+      return if setting.nil?
+
+      leaf_key = path.pop
+      container = raw
+      path.each { |segment| container = container[segment] ||= {} }
+      container[leaf_key] = setting.typed_value
     end
 
     def mode               = @raw["mode"]
@@ -28,11 +246,13 @@ module Bot
 
     def symbols
       @symbols ||= begin
-        db_symbols = SymbolConfig.where(enabled: true).map { |s| { symbol: s.symbol, leverage: s.leverage } }
-        if db_symbols.any?
-          db_symbols
+        raw_syms = @raw["symbols"]
+        if raw_syms.is_a?(Array) && raw_syms.any?
+          raw_syms.map do |s|
+            { symbol: s["symbol"] || s[:symbol], leverage: (s["leverage"] || s[:leverage]).to_i }
+          end
         else
-          (@raw["symbols"] || []).map { |s| { symbol: s["symbol"], leverage: s["leverage"] } }
+          SymbolConfig.where(enabled: true).order(:symbol).map { |s| { symbol: s.symbol, leverage: s.leverage } }
         end
       end
     end
@@ -57,6 +277,52 @@ module Bot
       val.to_f
     end
 
+    # classic | ml_adaptive — selects Bot::Strategy::IndicatorFactory Supertrend backend
+    def supertrend_variant
+      v = @raw.dig("strategy", "supertrend", "variant")
+      return "classic" if v.nil? || v.to_s.strip.empty?
+
+      v.to_s.downcase
+    end
+
+    # Optional, algo_scalper-style alias: mast, ml_st, ml_adaptive_supertrend, …
+    def supertrend_indicator_type
+      t = @raw.dig("strategy", "supertrend", "indicator_type") ||
+          @raw.dig("strategy", "supertrend", "type")
+      t.nil? || t.to_s.strip.empty? ? "supertrend" : t.to_s
+    end
+
+    def ml_adaptive_supertrend_training_period
+      (@raw.dig("strategy", "supertrend", "ml_adaptive", "training_period") || 100).to_i
+    end
+
+    def ml_adaptive_supertrend_highvol
+      (@raw.dig("strategy", "supertrend", "ml_adaptive", "highvol") || 0.75).to_f
+    end
+
+    def ml_adaptive_supertrend_midvol
+      (@raw.dig("strategy", "supertrend", "ml_adaptive", "midvol") || 0.5).to_f
+    end
+
+    def ml_adaptive_supertrend_lowvol
+      (@raw.dig("strategy", "supertrend", "ml_adaptive", "lowvol") || 0.25).to_f
+    end
+
+    def effective_min_candles_for_supertrend
+      return min_candles_required unless uses_ml_adaptive_supertrend?
+
+      [
+        min_candles_required,
+        ml_adaptive_supertrend_training_period,
+        supertrend_atr_period
+      ].max
+    end
+
+    def uses_ml_adaptive_supertrend?
+      ML_ADAPTIVE_SUPERTREND_TYPE_ALIASES.include?(supertrend_indicator_type.to_s.downcase) ||
+        supertrend_variant == "ml_adaptive"
+    end
+
     def adx_period
       val = @raw.dig("strategy", "adx", "period")
       error("strategy.adx.period is required") if val.nil?
@@ -67,6 +333,13 @@ module Bot
       val = @raw.dig("strategy", "adx", "threshold")
       error("strategy.adx.threshold is required") if val.nil?
       val.to_f
+    end
+
+    def relax_filters_in_dry_run?
+      val = @raw.dig("strategy", "filters", "relax_in_dry_run")
+      return true if val.nil?
+
+      val == true
     end
 
     def trailing_stop_pct
@@ -116,13 +389,20 @@ module Bot
     end
 
     def simulated_capital_inr
-      @raw.dig("risk", "simulated_capital_inr")&.to_f || 10_000.0
+      @raw.dig("risk", "simulated_capital_inr")&.to_f || 20_000.0
     end
 
     def telegram_enabled?  = @raw.dig("notifications", "telegram", "enabled") == true
     def telegram_token     = @raw.dig("notifications", "telegram", "bot_token")
     def telegram_chat_id   = @raw.dig("notifications", "telegram", "chat_id").to_s
     def daily_summary_time = @raw.dig("notifications", "daily_summary_time")
+    def telegram_event_enabled?(event)
+      events = @raw.dig("notifications", "telegram", "events")
+      return true unless events.is_a?(Hash)
+      return true unless events.key?(event.to_s)
+
+      events[event.to_s] == true
+    end
 
     def log_level  = @raw.dig("logging", "level") || "info"
     def log_file   = @raw.dig("logging", "file") || "logs/bot.log"
@@ -136,7 +416,10 @@ module Bot
       # Skip validation for symbols if they are already in the DB and validated there
       # But we still check names and leverage ranges for safety
       if symbols.empty?
-        error("watchlist must not be empty (add symbols via UI or bot.yml)")
+        error(
+          "watchlist must not be empty — enable at least one SymbolConfig in the DB " \
+          "or add symbols to config/bot.yml"
+        )
       end
       
       symbols.each do |s|
@@ -155,6 +438,18 @@ module Bot
       error("usd_to_inr_rate must be > 0") unless usd_to_inr_rate.positive?
 
       error("min_candles_required must be <= candles_lookback") if min_candles_required > candles_lookback
+
+      unless VALID_SUPERTREND_VARIANTS.include?(supertrend_variant)
+        error("supertrend.variant must be one of: #{VALID_SUPERTREND_VARIANTS.join(', ')}")
+      end
+
+      if uses_ml_adaptive_supertrend?
+        error("ml_adaptive.training_period must be 10–500") unless ml_adaptive_supertrend_training_period.between?(10, 500)
+        error("candles_lookback must be >= ml_adaptive.training_period") if candles_lookback < ml_adaptive_supertrend_training_period
+        h, m, l = ml_adaptive_supertrend_highvol, ml_adaptive_supertrend_midvol, ml_adaptive_supertrend_lowvol
+        error("supertrend.ml_adaptive vol percentiles must satisfy highvol > midvol > lowvol") unless h > m && m > l
+        error("supertrend.ml_adaptive percentile bounds must be in (0,1)") unless h.between?(0.01, 0.99) && m.between?(0.01, 0.99) && l.between?(0.01, 0.99)
+      end
 
       if telegram_enabled?
         error("telegram.bot_token must not be blank when telegram is enabled") if telegram_token.to_s.strip.empty?

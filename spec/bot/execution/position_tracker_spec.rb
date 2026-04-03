@@ -13,6 +13,7 @@ RSpec.describe Bot::Execution::PositionTracker do
       lots: 44,
       entry_price: 45_000.0,
       leverage: 10,
+      contract_value: 1.0,
       trail_pct: 1.5,
       entry_time: Time.now.utc
     }
@@ -69,6 +70,7 @@ RSpec.describe Bot::Execution::PositionTracker do
         lots:        10,
         entry_price: 3_000.0,
         leverage:    10,
+        contract_value: 1.0,
         trail_pct:   2.0,
         entry_time:  Time.now.utc
       }

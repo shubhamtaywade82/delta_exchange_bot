@@ -3,6 +3,161 @@
 require "rails_helper"
 
 RSpec.describe Bot::Config do
+  describe ".load" do
+    before { allow(described_class).to receive(:bot_yml_hash).and_return(nil) }
+
+    it "builds runtime config from DB settings and symbol configs" do
+      SymbolConfig.create!(symbol: "BTCUSD", leverage: 12, enabled: true)
+      Setting.create!(key: "bot.mode", value: "testnet", value_type: "string")
+      Setting.create!(key: "strategy.supertrend.atr_period", value: "11", value_type: "integer")
+      Setting.create!(key: "strategy.adx.threshold", value: "23", value_type: "float")
+
+      config = described_class.load
+
+      expect(config.mode).to eq("testnet")
+      expect(config.symbol_names).to eq(["BTCUSD"])
+      expect(config.supertrend_atr_period).to eq(11)
+      expect(config.adx_threshold).to eq(23.0)
+    end
+
+    it "batch-loads settings in one query instead of per-key find_by" do
+      SymbolConfig.create!(symbol: "BTCUSD", leverage: 12, enabled: true)
+      Setting.create!(key: "bot.mode", value: "dry_run", value_type: "string")
+
+      expect(Setting).to receive(:where).with(key: described_class::RUNTIME_SETTING_KEYS).once.and_call_original
+      expect(Setting).not_to receive(:find_by)
+
+      described_class.load
+    end
+  end
+
+  describe ".runtime_raw" do
+    before do
+      SymbolConfig.create!(symbol: "BTCUSD", leverage: 10, enabled: true)
+    end
+
+    it "merges notifications.telegram from bot.yml when no DB row overrides" do
+      allow(described_class).to receive(:bot_yml_hash).and_return(
+        "notifications" => {
+          "telegram" => {
+            "enabled" => true,
+            "bot_token" => "yaml-token",
+            "chat_id" => "yaml-chat"
+          }
+        }
+      )
+
+      raw = described_class.runtime_raw
+      tg = raw["notifications"]["telegram"]
+      expect(tg["enabled"]).to eq(true)
+      expect(tg["bot_token"]).to eq("yaml-token")
+      expect(tg["chat_id"]).to eq("yaml-chat")
+    end
+
+    it "lets DB settings override bot.yml for telegram" do
+      allow(described_class).to receive(:bot_yml_hash).and_return(
+        "notifications" => {
+          "telegram" => {
+            "enabled" => true,
+            "bot_token" => "yaml-token",
+            "chat_id" => "yaml-chat"
+          }
+        }
+      )
+
+      Setting.create!(key: "notifications.telegram.bot_token", value: "db-token", value_type: "string")
+
+      raw = described_class.runtime_raw
+      expect(raw.dig("notifications", "telegram", "bot_token")).to eq("db-token")
+      expect(raw.dig("notifications", "telegram", "chat_id")).to eq("yaml-chat")
+    end
+
+    it "fills blank telegram bot_token from TELEGRAM_BOT_TOKEN after DB merge" do
+      allow(described_class).to receive(:bot_yml_hash).and_return(nil)
+      Setting.create!(key: "notifications.telegram.enabled", value: "true", value_type: "boolean")
+      Setting.create!(key: "notifications.telegram.chat_id", value: "1", value_type: "string")
+
+      old = ENV["TELEGRAM_BOT_TOKEN"]
+      begin
+        ENV["TELEGRAM_BOT_TOKEN"] = "from-env"
+        raw = described_class.runtime_raw
+        expect(raw.dig("notifications", "telegram", "bot_token")).to eq("from-env")
+      ensure
+        if old
+          ENV["TELEGRAM_BOT_TOKEN"] = old
+        else
+          ENV.delete("TELEGRAM_BOT_TOKEN")
+        end
+      end
+    end
+
+    it "sets telegram enabled from TELEGRAM_ENABLED when the variable is present" do
+      allow(described_class).to receive(:bot_yml_hash).and_return(
+        "notifications" => {
+          "telegram" => {
+            "enabled" => false,
+            "bot_token" => "t",
+            "chat_id" => "1"
+          }
+        }
+      )
+
+      old = ENV["TELEGRAM_ENABLED"]
+      begin
+        ENV["TELEGRAM_ENABLED"] = "1"
+        raw = described_class.runtime_raw
+        expect(raw.dig("notifications", "telegram", "enabled")).to eq(true)
+      ensure
+        if old
+          ENV["TELEGRAM_ENABLED"] = old
+        else
+          ENV.delete("TELEGRAM_ENABLED")
+        end
+      end
+    end
+
+    it "includes telegram notification keys in RUNTIME_SETTING_KEYS" do
+      keys = described_class::RUNTIME_SETTING_KEYS
+      expect(keys).to include(
+        "notifications.telegram.enabled",
+        "notifications.telegram.bot_token",
+        "notifications.telegram.chat_id",
+        "notifications.telegram.events.status",
+        "notifications.telegram.events.signals",
+        "notifications.telegram.events.positions",
+        "notifications.telegram.events.trailing",
+        "notifications.telegram.events.errors"
+      )
+    end
+
+    it "falls back to bot.yml symbols when no enabled SymbolConfig rows exist" do
+      SymbolConfig.delete_all
+      allow(described_class).to receive(:bot_yml_hash).and_return(
+        "symbols" => [
+          { "symbol" => "ETHUSD", "leverage" => 8 }
+        ]
+      )
+
+      raw = described_class.runtime_raw
+
+      expect(raw["symbols"]).to eq([{ "symbol" => "ETHUSD", "leverage" => 8 }])
+    end
+
+    it "prefers enabled SymbolConfig over bot.yml when both exist" do
+      allow(described_class).to receive(:bot_yml_hash).and_return(
+        "symbols" => [
+          { "symbol" => "ETHUSD", "leverage" => 99 }
+        ]
+      )
+
+      raw = described_class.runtime_raw
+
+      expect(raw["symbols"].size).to eq(1)
+      expect(raw["symbols"].first["symbol"]).to eq("BTCUSD")
+      expect(raw["symbols"].first["leverage"]).to eq(10)
+    end
+  end
+
   let(:valid_yaml) do
     {
       "mode" => "testnet",
@@ -48,6 +203,37 @@ RSpec.describe Bot::Config do
   it "exposes supertrend config" do
     expect(config.supertrend_atr_period).to eq(10)
     expect(config.supertrend_multiplier).to eq(3.0)
+    expect(config.supertrend_variant).to eq("classic")
+    expect(config.effective_min_candles_for_supertrend).to eq(30)
+  end
+
+  context "with ml_adaptive supertrend" do
+    let(:ml_yaml) do
+      valid_yaml.deep_dup.tap do |y|
+        y["strategy"] = y["strategy"].merge(
+          "candles_lookback" => 150,
+          "min_candles_required" => 120,
+          "supertrend" => {
+            "variant" => "ml_adaptive",
+            "atr_period" => 10,
+            "multiplier" => 2.0,
+            "ml_adaptive" => { "training_period" => 100 }
+          }
+        )
+      end
+    end
+
+    it "raises when candles_lookback is below training_period" do
+      bad = ml_yaml.deep_dup
+      bad["strategy"]["candles_lookback"] = 50
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /candles_lookback/)
+    end
+
+    it "exposes ml adaptive settings and effective min candles" do
+      cfg = described_class.new(ml_yaml)
+      expect(cfg.ml_adaptive_supertrend_training_period).to eq(100)
+      expect(cfg.effective_min_candles_for_supertrend).to eq(120)
+    end
   end
 
   it "exposes adx config" do
@@ -100,7 +286,7 @@ RSpec.describe Bot::Config do
   context "with empty symbols" do
     it "raises on empty symbols list" do
       bad = valid_yaml.merge("symbols" => [])
-      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /symbols/)
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /watchlist must not be empty/)
     end
   end
 
@@ -114,7 +300,7 @@ RSpec.describe Bot::Config do
   context "with missing symbols key" do
     it "raises ValidationError (not NoMethodError) when symbols key is absent" do
       bad = valid_yaml.reject { |k, _| k == "symbols" }
-      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /symbols/)
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /watchlist must not be empty/)
     end
   end
 

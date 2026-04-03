@@ -1,17 +1,54 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-begin
-  require_relative "../config/environment"
-  puts "Environment loaded"
+require_relative "../config/environment"
 
+# Development: Rails.logger defaults to log/development.log only. Foreman shows STDOUT,
+# so mirror logger output here (web + jobs keep their own processes / log targets).
+if Rails.env.development?
+  $stdout.sync = true
+  Rails.logger.broadcast_to(ActiveSupport::Logger.new($stdout))
+end
+
+# Single long-running process for ./bin/dev (see Procfile).
+# Default: Trading::Runner — real market data + paper execution (when mode is dry_run or EXECUTION_MODE=paper).
+# Set LEGACY_BOT_RUNNER=1 to use the old Bot::Runner stack only.
+
+DEV_SESSION_STRATEGY = "dev_paper_unified"
+
+def legacy_bot_runner!
   config = Bot::Config.load
-  puts "Config loaded: mode=#{config.mode}"
+  puts "[bin/bot] LEGACY_BOT_RUNNER Bot::Runner mode=#{config.mode}"
+  Bot::Runner.new(config: config).start
+end
 
-  runner = Bot::Runner.new(config: config)
-  puts "Runner initialized"
+def unified_trading_runner!
+  cfg = Bot::Config.load
+  paper = Trading::PaperTrading.enabled?
+  puts "[bin/bot] Trading::Runner paper=#{paper} bot.mode=#{cfg.mode}"
 
-  runner.start
+  session = TradingSession.find_or_initialize_by(strategy: DEV_SESSION_STRATEGY)
+  capital_usd = (cfg.simulated_capital_inr / cfg.usd_to_inr_rate).round(2)
+  leverage    = SymbolConfig.where(enabled: true).pick(:leverage) || 10
+
+  session.update!(
+    status:     "running",
+    stopped_at: nil,
+    capital:    capital_usd,
+    leverage:   leverage
+  )
+
+  puts "[bin/bot] TradingSession id=#{session.id} capital_usd=#{capital_usd} leverage=#{leverage}"
+
+  Trading::Runner.new(session_id: session.id).start
+end
+
+begin
+  if ENV["LEGACY_BOT_RUNNER"].to_s == "1"
+    legacy_bot_runner!
+  else
+    unified_trading_runner!
+  end
 rescue StandardError => e
   puts "FATAL ERROR during bot startup:"
   puts e.message

@@ -4,6 +4,11 @@
 module Bot
   module Execution
     class OrderManager
+      CATEGORY_BY_BROKER_CODE = {
+        "ip_not_whitelisted_for_api_key" => "auth_whitelist",
+        "expired_signature" => "signature_time_skew"
+      }.freeze
+
       attr_reader :realized_pnl
 
       def initialize(config:, product_cache:, position_tracker:, risk_calculator:,
@@ -21,6 +26,8 @@ module Bot
 
       def execute_signal(signal)
         symbol = signal.symbol
+        signal_id = signal.respond_to?(:signal_id) ? signal.signal_id : nil
+        @logger.info("order_attempted", signal_id: signal_id, symbol: symbol, side: signal.side, entry_price: signal.entry_price)
 
         if @position_tracker.open?(symbol)
           @logger.warn("skip_position_exists", symbol: symbol)
@@ -42,7 +49,8 @@ module Bot
           risk_per_trade_pct: @config.risk_per_trade_pct,
           trail_pct: @config.trailing_stop_pct,
           contract_value: contract_value,
-          max_margin_per_position_pct: @config.max_margin_per_position_pct
+          max_margin_per_position_pct: @config.max_margin_per_position_pct,
+          side: signal.side
         )
 
         if lots.zero?
@@ -66,14 +74,39 @@ module Bot
 
         @logger.info("trade_opened", symbol: symbol, side: signal.side, entry_usd: fill_price,
                      lots: lots, leverage: leverage, mode: current_mode)
-        @notifier.send_message(trade_opened_message(symbol, signal.side, fill_price, lots, leverage))
+        @notifier.notify_trade_opened(
+          symbol: symbol,
+          side: signal.side,
+          price: fill_price,
+          lots: lots,
+          added_lots: lots,
+          leverage: leverage,
+          trailing_stop: trail_stop_price(signal.side, fill_price),
+          mode: current_mode
+        )
         fill_price
       rescue DeltaExchange::RateLimitError => e
-        @logger.warn("rate_limited", symbol: symbol, retry_after: e.retry_after_seconds)
+        capture_incident(
+          kind: "order_failed",
+          category: "rate_limit",
+          symbol: symbol,
+          signal: signal,
+          message: e.message
+        )
+        @logger.warn("rate_limited", signal_id: signal_id, symbol: symbol, retry_after: e.retry_after_seconds)
         sleep(e.retry_after_seconds)
         nil
       rescue DeltaExchange::ApiError => e
-        @logger.error("order_failed", symbol: symbol, message: e.message)
+        category, broker_code = classify_api_error(e.message)
+        capture_incident(
+          kind: "order_failed",
+          category: category,
+          symbol: symbol,
+          signal: signal,
+          message: e.message,
+          details: { broker_code: broker_code }
+        )
+        @logger.error("order_failed", signal_id: signal_id, symbol: symbol, category: category, broker_code: broker_code, message: e.message)
         nil
       end
 
@@ -81,7 +114,7 @@ module Bot
         pos = @position_tracker.get(symbol)
         return unless pos
 
-        unless @config.dry_run?
+        if @config.live?
           begin
             place_close_order(symbol, pos[:side], pos[:lots])
           rescue DeltaExchange::RateLimitError => e
@@ -109,19 +142,28 @@ module Bot
           pnl_usd:          pnl_usd,
           pnl_inr:          pnl_inr,
           duration_seconds: duration,
-          closed_at:        Time.now.utc
+          closed_at:        Time.now.utc,
+          regime:           ENV.fetch("BOT_TRADE_REGIME", "unknown"),
+          strategy:         ENV.fetch("BOT_TRADE_STRATEGY", "multi_timeframe")
         )
 
         @logger.info("trade_closed", symbol: symbol, exit_usd: exit_price,
                      pnl_usd: pnl_usd.round(2), realized_pnl_usd: @realized_pnl.round(2),
                      reason: reason, duration_seconds: duration)
-        @notifier.send_message(trade_closed_message(symbol, exit_price, pnl_usd, duration, reason))
+        @notifier.notify_trade_closed(
+          symbol: symbol,
+          exit_price: exit_price,
+          pnl_usd: pnl_usd,
+          pnl_inr: pnl_inr,
+          duration_seconds: duration,
+          reason: reason
+        )
       end
 
       private
 
       def place_order(symbol, side, lots, signal)
-        return fake_fill(signal) if @config.dry_run?
+        return fake_fill(signal) unless @config.live?
 
         product_id = @product_cache.product_id_for(symbol)
         order = DeltaExchange::Models::Order.create(
@@ -134,6 +176,8 @@ module Bot
       end
 
       def place_close_order(symbol, side, lots)
+        return if !@config.live?
+
         product_id = @product_cache.product_id_for(symbol)
         DeltaExchange::Models::Order.create(
           product_id: product_id,
@@ -161,20 +205,30 @@ module Bot
         "live"
       end
 
-      def trade_opened_message(symbol, side, price, lots, leverage)
-        emoji = side == :long ? "🟢" : "🔴"
-        tag   = @config.dry_run? ? " [DRY RUN]" : ""
-        stop  = side == :long ? price * (1 - @config.trailing_stop_pct / 100.0) : price * (1 + @config.trailing_stop_pct / 100.0)
-        "#{emoji} #{side.to_s.upcase} #{symbol} opened#{tag}\nEntry: $#{format('%.2f', price)}\nLots: #{lots} | Leverage: #{leverage}x\nTrail Stop: $#{format('%.2f', stop)}"
+      def trail_stop_price(side, entry_price)
+        if side == :long
+          entry_price * (1 - @config.trailing_stop_pct / 100.0)
+        else
+          entry_price * (1 + @config.trailing_stop_pct / 100.0)
+        end
       end
 
-      def trade_closed_message(symbol, exit_price, pnl_usd, duration_secs, reason)
-        hours   = duration_secs / 3600
-        minutes = (duration_secs % 3600) / 60
-        pnl_inr = (pnl_usd * @capital_manager.usd_to_inr_rate).round(0)
-        sign    = pnl_usd >= 0 ? "+" : ""
-        emoji   = pnl_usd >= 0 ? "🟢" : "🔴"
-        "#{emoji} #{symbol} closed — #{reason}\nExit: $#{format('%.2f', exit_price)}\nPnL: #{sign}$#{format('%.2f', pnl_usd)} (#{sign}₹#{pnl_inr})\nDuration: #{hours}h #{minutes}m"
+      def classify_api_error(message)
+        broker_code = message.to_s[/\"code\"=>\"([^\"]+)\"/, 1]
+        category = CATEGORY_BY_BROKER_CODE.fetch(broker_code, "unknown")
+        [category, broker_code]
+      end
+
+      def capture_incident(kind:, category:, symbol:, signal:, message:, details: {})
+        signal_id = signal.respond_to?(:signal_id) ? signal.signal_id : nil
+        IncidentStore.record!(
+          kind: kind,
+          category: category,
+          message: message,
+          symbol: symbol,
+          signal_id: signal_id,
+          details: details
+        )
       end
     end
   end

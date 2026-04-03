@@ -1,0 +1,277 @@
+# Monorepo CI: backend (Rails) + frontend (Vite/React).
+# Requires sibling gem `delta_exchange` — set repo variable DELTA_EXCHANGE_REPOSITORY
+# (e.g. owner/delta_exchange) so the checkout + symlink step can satisfy Gemfile path.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-backend:
+    name: Backend — style & Zeitwerk
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      RUBOCOP_CACHE_ROOT: tmp/rubocop
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Checkout delta_exchange (path gem)
+        if: vars.DELTA_EXCHANGE_REPOSITORY != ''
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ vars.DELTA_EXCHANGE_REPOSITORY }}
+          path: delta_exchange
+          fetch-depth: 1
+
+      - name: Link delta_exchange for Gemfile path ../../delta_exchange
+        run: |
+          if [ -d "${GITHUB_WORKSPACE}/delta_exchange" ]; then
+            ln -sfn "${GITHUB_WORKSPACE}/delta_exchange" "${GITHUB_WORKSPACE}/../delta_exchange"
+          fi
+          if [ ! -d "${GITHUB_WORKSPACE}/../delta_exchange" ]; then
+            echo "::error::Missing path gem at ../../delta_exchange. Set GitHub variable DELTA_EXCHANGE_REPOSITORY to the repo that contains the delta_exchange gem (checked out next to this repo on disk), or vendor the gem."
+            exit 1
+          fi
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version-file: backend/.ruby-version
+          bundler-cache: true
+          working-directory: backend
+
+      - name: RuboCop cache
+        uses: actions/cache@v5
+        env:
+          DEPENDENCIES_HASH: ${{ hashFiles('backend/.ruby-version', 'backend/**/.rubocop.yml', 'backend/**/.rubocop_todo.yml', 'backend/Gemfile.lock') }}
+        with:
+          path: backend/${{ env.RUBOCOP_CACHE_ROOT }}
+          key: rubocop-${{ runner.os }}-${{ env.DEPENDENCIES_HASH }}-${{ github.ref_name == github.event.repository.default_branch && github.run_id || 'default' }}
+          restore-keys: |
+            rubocop-${{ runner.os }}-${{ env.DEPENDENCIES_HASH }}-
+
+      - name: RuboCop
+        run: bin/rubocop -f github
+
+      - name: Zeitwerk check
+        run: bin/rails zeitwerk:check
+
+  security-backend:
+    name: Backend — security scans
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Checkout delta_exchange (path gem)
+        if: vars.DELTA_EXCHANGE_REPOSITORY != ''
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ vars.DELTA_EXCHANGE_REPOSITORY }}
+          path: delta_exchange
+          fetch-depth: 1
+
+      - name: Link delta_exchange for Gemfile path ../../delta_exchange
+        run: |
+          if [ -d "${GITHUB_WORKSPACE}/delta_exchange" ]; then
+            ln -sfn "${GITHUB_WORKSPACE}/delta_exchange" "${GITHUB_WORKSPACE}/../delta_exchange"
+          fi
+          if [ ! -d "${GITHUB_WORKSPACE}/../delta_exchange" ]; then
+            echo "::error::Missing path gem at ../../delta_exchange. Set GitHub variable DELTA_EXCHANGE_REPOSITORY."
+            exit 1
+          fi
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version-file: backend/.ruby-version
+          bundler-cache: true
+          working-directory: backend
+
+      - name: Bundler audit
+        run: bin/bundler-audit update && bin/bundler-audit
+
+      - name: Brakeman
+        run: bin/brakeman --quiet --no-pager --exit-on-warn --exit-on-error
+
+  docker-lint:
+    name: Dockerfile (Hadolint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Hadolint
+        uses: hadolint/hadolint-action@v3.3.0
+        with:
+          dockerfile: backend/Dockerfile
+          failure-threshold: error
+
+  dependency-review:
+    name: Dependency review (PRs)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Dependency review
+        uses: actions/dependency-review-action@v4
+
+  frontend:
+    name: Frontend — lint & build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Audit (high+)
+        run: npm audit --audit-level=high
+        continue-on-error: false
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Typecheck & production build
+        run: npm run build
+
+  test-backend:
+    name: Backend — RSpec
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [quality-backend, security-backend]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: backend_test
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U postgres -d backend_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - "6379:6379"
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      CI: "true"
+      RAILS_ENV: test
+      SECRET_KEY_BASE: test_secret_key_base_for_ci_only
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/backend_test
+      REDIS_URL: redis://127.0.0.1:6379/1
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Checkout delta_exchange (path gem)
+        if: vars.DELTA_EXCHANGE_REPOSITORY != ''
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ vars.DELTA_EXCHANGE_REPOSITORY }}
+          path: delta_exchange
+          fetch-depth: 1
+
+      - name: Link delta_exchange for Gemfile path ../../delta_exchange
+        run: |
+          if [ -d "${GITHUB_WORKSPACE}/delta_exchange" ]; then
+            ln -sfn "${GITHUB_WORKSPACE}/delta_exchange" "${GITHUB_WORKSPACE}/../delta_exchange"
+          fi
+          if [ ! -d "${GITHUB_WORKSPACE}/../delta_exchange" ]; then
+            echo "::error::Missing path gem at ../../delta_exchange. Set GitHub variable DELTA_EXCHANGE_REPOSITORY."
+            exit 1
+          fi
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version-file: backend/.ruby-version
+          bundler-cache: true
+          working-directory: backend
+
+      - name: Database prepare
+        run: bin/rails db:prepare
+
+      - name: RSpec
+        run: bundle exec rspec --format progress
+
+  # Artifact for deploy pipelines or manual promotion (short retention).
+  package-backend:
+    name: Package backend tarball
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [test-backend, frontend, docker-lint]
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Create tarball
+        run: tar -czf backend-${{ github.sha }}.tar.gz backend
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-${{ github.sha }}
+          path: backend-${{ github.sha }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14

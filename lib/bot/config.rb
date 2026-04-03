@@ -6,8 +6,10 @@ module Bot
   class Config
     class ValidationError < StandardError; end
 
-    VALID_MODES      = %w[dry_run testnet live].freeze
-    VALID_LOG_LEVELS = %w[debug info warn error].freeze
+    VALID_MODES               = %w[dry_run testnet live].freeze
+    VALID_LOG_LEVELS          = %w[debug info warn error].freeze
+    VALID_SUPERTREND_VARIANTS = %w[classic ml_adaptive].freeze
+    ML_ADAPTIVE_SUPERTREND_TYPE_ALIASES = %w[ml_adaptive_supertrend mast ml_st ml_adaptive].freeze
 
     def initialize(raw)
       @raw = raw
@@ -48,6 +50,50 @@ module Bot
       val = @raw.dig("strategy", "supertrend", "multiplier")
       error("strategy.supertrend.multiplier is required") if val.nil?
       val.to_f
+    end
+
+    def supertrend_variant
+      v = @raw.dig("strategy", "supertrend", "variant")
+      return "classic" if v.nil? || v.to_s.strip.empty?
+
+      v.to_s.downcase
+    end
+
+    def supertrend_indicator_type
+      t = @raw.dig("strategy", "supertrend", "indicator_type") ||
+          @raw.dig("strategy", "supertrend", "type")
+      t.nil? || t.to_s.strip.empty? ? "supertrend" : t.to_s
+    end
+
+    def ml_adaptive_supertrend_training_period
+      (@raw.dig("strategy", "supertrend", "ml_adaptive", "training_period") || 100).to_i
+    end
+
+    def ml_adaptive_supertrend_highvol
+      (@raw.dig("strategy", "supertrend", "ml_adaptive", "highvol") || 0.75).to_f
+    end
+
+    def ml_adaptive_supertrend_midvol
+      (@raw.dig("strategy", "supertrend", "ml_adaptive", "midvol") || 0.5).to_f
+    end
+
+    def ml_adaptive_supertrend_lowvol
+      (@raw.dig("strategy", "supertrend", "ml_adaptive", "lowvol") || 0.25).to_f
+    end
+
+    def effective_min_candles_for_supertrend
+      return min_candles_required unless uses_ml_adaptive_supertrend?
+
+      [
+        min_candles_required,
+        ml_adaptive_supertrend_training_period,
+        supertrend_atr_period
+      ].max
+    end
+
+    def uses_ml_adaptive_supertrend?
+      ML_ADAPTIVE_SUPERTREND_TYPE_ALIASES.include?(supertrend_indicator_type.to_s.downcase) ||
+        supertrend_variant == "ml_adaptive"
     end
 
     def adx_period
@@ -96,6 +142,13 @@ module Bot
 
     def cvd_window
       @raw.dig("strategy", "filters", "cvd_window")&.to_i || 50
+    end
+
+    def relax_filters_in_dry_run?
+      val = @raw.dig("strategy", "filters", "relax_in_dry_run")
+      return true if val.nil?
+
+      val == true
     end
 
     def oi_poll_interval
@@ -157,6 +210,13 @@ module Bot
     def telegram_token     = @raw.dig("notifications", "telegram", "bot_token")
     def telegram_chat_id   = @raw.dig("notifications", "telegram", "chat_id").to_s
     def daily_summary_time = @raw.dig("notifications", "daily_summary_time")
+    def telegram_event_enabled?(event)
+      events = @raw.dig("notifications", "telegram", "events")
+      return true unless events.is_a?(Hash)
+      return true unless events.key?(event.to_s)
+
+      events[event.to_s] == true
+    end
 
     def log_level  = @raw.dig("logging", "level") || "info"
     def log_file   = @raw.dig("logging", "file") || "logs/bot.log"
@@ -184,6 +244,18 @@ module Bot
       error("usd_to_inr_rate must be > 0") unless usd_to_inr_rate.positive?
 
       error("min_candles_required must be <= candles_lookback") if min_candles_required > candles_lookback
+
+      unless VALID_SUPERTREND_VARIANTS.include?(supertrend_variant)
+        error("supertrend.variant must be one of: #{VALID_SUPERTREND_VARIANTS.join(', ')}")
+      end
+
+      if uses_ml_adaptive_supertrend?
+        error("ml_adaptive.training_period must be 10–500") unless ml_adaptive_supertrend_training_period.between?(10, 500)
+        error("candles_lookback must be >= ml_adaptive.training_period") if candles_lookback < ml_adaptive_supertrend_training_period
+        h, m, l = ml_adaptive_supertrend_highvol, ml_adaptive_supertrend_midvol, ml_adaptive_supertrend_lowvol
+        error("supertrend.ml_adaptive vol percentiles must satisfy highvol > midvol > lowvol") unless h > m && m > l
+        error("supertrend.ml_adaptive percentile bounds must be in (0,1)") unless h.between?(0.01, 0.99) && m.between?(0.01, 0.99) && l.between?(0.01, 0.99)
+      end
 
       if telegram_enabled?
         error("telegram.bot_token must not be blank when telegram is enabled") if telegram_token.to_s.strip.empty?

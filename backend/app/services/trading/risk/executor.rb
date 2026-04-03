@@ -26,7 +26,16 @@ module Trading
       end
 
       def self.tighten_sl!(position, mark_price:)
-        stop = (mark_price.to_d * ENV.fetch("RISK_DANGER_STOP_BUFFER", "0.995").to_d)
+        mark = mark_price.to_d
+        return if mark <= 0
+
+        buffer = ENV.fetch("RISK_DANGER_STOP_BUFFER", "0.98").to_d
+        stop = if position.side.to_s.in?(%w[long buy])
+                 mark * buffer
+               else
+                 mark / buffer
+               end
+
         position.update!(stop_price: stop)
       end
     end

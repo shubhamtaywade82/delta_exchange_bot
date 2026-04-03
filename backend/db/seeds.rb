@@ -1,9 +1,58 @@
-# This file should ensure the existence of records required to run the application in every environment (production,
-# development, test). The code here should be idempotent so that it can be executed at any point in every environment.
-# The data can then be loaded with the bin/rails db:seed command (or created alongside the database with db:setup).
-#
-# Example:
-#
-#   ["Action", "Comedy", "Drama", "Horror"].each do |genre_name|
-#     MovieGenre.find_or_create_by!(name: genre_name)
-#   end
+defaults = {
+  "bot.mode" => ["dry_run", "string"],
+  "strategy.supertrend.variant" => ["ml_adaptive", "string"],
+  "strategy.supertrend.atr_period" => ["10", "integer"],
+  "strategy.supertrend.multiplier" => ["3.0", "float"],
+  "strategy.supertrend.ml_adaptive.training_period" => ["100", "integer"],
+  "strategy.supertrend.ml_adaptive.highvol" => ["0.75", "float"],
+  "strategy.supertrend.ml_adaptive.midvol" => ["0.5", "float"],
+  "strategy.supertrend.ml_adaptive.lowvol" => ["0.25", "float"],
+  "strategy.adx.period" => ["14", "integer"],
+  "strategy.adx.threshold" => ["20", "float"],
+  "strategy.filters.relax_in_dry_run" => ["true", "boolean"],
+  "strategy.trailing_stop_pct" => ["1.5", "float"],
+  "strategy.timeframes.trend" => ["1h", "string"],
+  "strategy.timeframes.confirm" => ["15m", "string"],
+  "strategy.timeframes.entry" => ["1m", "string"],
+  "strategy.candles_lookback" => ["100", "integer"],
+  "strategy.min_candles_required" => ["30", "integer"],
+  "risk.risk_per_trade_pct" => ["1.5", "float"],
+  "risk.max_concurrent_positions" => ["5", "integer"],
+  "risk.max_margin_per_position_pct" => ["40.0", "float"],
+  "risk.usd_to_inr_rate" => ["85.0", "float"],
+  "risk.simulated_capital_inr" => ["20000.0", "float"],
+  "notifications.telegram.enabled" => ["false", "boolean"],
+  "notifications.telegram.bot_token" => ["", "string"],
+  "notifications.telegram.chat_id" => ["", "string"],
+  "notifications.telegram.events.status" => ["true", "boolean"],
+  "notifications.telegram.events.signals" => ["true", "boolean"],
+  "notifications.telegram.events.positions" => ["true", "boolean"],
+  "notifications.telegram.events.trailing" => ["true", "boolean"],
+  "notifications.telegram.events.errors" => ["true", "boolean"],
+  "notifications.daily_summary_time" => ["18:00", "string"],
+  "logging.level" => ["info", "string"],
+  "logging.file" => ["logs/bot.log", "string"],
+  "risk.max_margin_utilization" => ["0.40", "float"],
+  "risk.daily_loss_cap_pct" => ["0.05", "float"],
+  "risk.allow_pyramiding" => ["true", "boolean"],
+  "learning.epsilon" => ["0.05", "float"],
+  "regime.volatility_threshold" => ["50.0", "float"],
+  "regime.spread_threshold" => ["1.0", "float"],
+  "regime.imbalance_threshold" => ["0.4", "float"],
+  "ai.config_cache_seconds" => ["10", "integer"],
+  "ai.ollama_url" => ["http://localhost:11434", "string"],
+  "ai.ollama_api_key" => ["", "string"],
+  "ai.ollama_force_local" => ["false", "boolean"],
+  "ai.ollama_model" => ["llama3", "string"],
+  "ai.ollama_timeout_seconds" => ["90", "integer"],
+  "ai.ollama_max_retries" => ["2", "integer"],
+  "runner.strategy_interval_seconds" => ["30", "integer"],
+  "runner.strategy_symbol_stagger_seconds" => ["1.0", "float"]
+}
+
+defaults.each do |key, (value, value_type)|
+  setting = Setting.find_or_initialize_by(key: key)
+  setting.value = value
+  setting.value_type ||= value_type
+  setting.save!
+end

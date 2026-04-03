@@ -10,9 +10,11 @@ module Trading
       # @param mark_price [Numeric]
       # @return [Result]
       def self.call(position:, mark_price:)
-        qty = position.size.to_d.abs
-        return zero_result if qty.zero?
+        lots = position.size.to_d.abs
+        return zero_result if lots.zero?
 
+        lot = PositionLotSize.multiplier_for(position).to_d
+        qty = lots * lot
         entry = position.entry_price.to_d
         direction = position.side.in?(%w[sell short]) ? -1.to_d : 1.to_d
         unrealized = (mark_price.to_d - entry) * qty * direction

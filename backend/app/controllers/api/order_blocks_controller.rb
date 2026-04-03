@@ -5,7 +5,7 @@ module Api
     STRATEGY_KEY = "delta:strategy:state"
 
     def show
-      symbol = params[:symbol]
+      symbol = params.permit(:symbol)[:symbol]
       redis  = Redis.new
       raw    = redis.hget(STRATEGY_KEY, symbol)
 

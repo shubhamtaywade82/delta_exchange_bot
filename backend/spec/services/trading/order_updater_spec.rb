@@ -2,7 +2,7 @@ require "rails_helper"
 
 RSpec.describe Trading::OrderUpdater do
   let(:session) { create(:trading_session) }
-  let(:position) { Position.create!(symbol: "BTCUSD", side: "buy", status: "init", size: 1) }
+  let(:position) { Position.create!(portfolio: session.portfolio, symbol: "BTCUSD", side: "buy", status: "init", size: 1) }
   let(:order) do
     create(
       :order,

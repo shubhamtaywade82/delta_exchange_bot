@@ -12,25 +12,25 @@ module Bot
           vwap_val    = vwap_result[:vwap]
 
           if side == :long
-            unless cvd_trend == :bullish
+            if cvd_trend == :bearish
               res = { passed: false, reason: "CVD #{cvd_trend} — does not support long entry" }
-              logger&.info("filter_skip_volume", **res)
+              Bot::StructuredLog.log(logger, :info, "filter_skip_volume", **res)
               return res
             end
             unless price_above
               res = { passed: false, reason: "VWAP #{vwap_val}: price #{current_price} below VWAP — blocking long" }
-              logger&.info("filter_skip_volume", **res)
+              Bot::StructuredLog.log(logger, :info, "filter_skip_volume", **res)
               return res
             end
           else
-            unless cvd_trend == :bearish
+            if cvd_trend == :bullish
               res = { passed: false, reason: "CVD #{cvd_trend} — does not support short entry" }
-              logger&.info("filter_skip_volume", **res)
+              Bot::StructuredLog.log(logger, :info, "filter_skip_volume", **res)
               return res
             end
             if price_above
               res = { passed: false, reason: "VWAP #{vwap_val}: price #{current_price} above VWAP — blocking short" }
-              logger&.info("filter_skip_volume", **res)
+              Bot::StructuredLog.log(logger, :info, "filter_skip_volume", **res)
               return res
             end
           end

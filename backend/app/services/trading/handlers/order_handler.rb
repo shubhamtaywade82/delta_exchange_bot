@@ -45,25 +45,24 @@ module Trading
 
         pnl = calculate_pnl(entry_position, order)
         Trade.create!(
+          portfolio_id:     order.portfolio_id,
           symbol:           order.symbol,
           side:             entry_position.side,
           size:             order.filled_qty,
           entry_price:      entry_position.entry_price,
           exit_price:       order.avg_fill_price,
           pnl_usd:          pnl,
-          pnl_inr:          pnl * usd_to_inr_rate,
+          pnl_inr:          pnl * Finance::UsdInrRate.current,
           duration_seconds: (Time.current - entry_position.entry_time.to_time).to_i,
-          closed_at:        Time.current
+          closed_at:        Time.current,
+          strategy:         ENV.fetch("BOT_TRADE_STRATEGY", "multi_timeframe"),
+          regime:           ENV.fetch("BOT_TRADE_REGIME", "unknown")
         )
       end
 
       def calculate_pnl(position, order)
         multiplier = position.side == "long" ? 1 : -1
         (order.avg_fill_price - position.entry_price) * order.filled_qty * multiplier
-      end
-
-      def usd_to_inr_rate
-        Setting.find_by(key: "usd_to_inr_rate")&.value&.to_f || 85.0
       end
 
       def build_position_event(order)

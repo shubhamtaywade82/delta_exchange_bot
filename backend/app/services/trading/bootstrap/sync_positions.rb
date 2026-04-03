@@ -23,8 +23,10 @@ module Trading
       private
 
       def upsert_position(ep)
-        position = Position.find_or_initialize_by(symbol: ep[:symbol], status: Position::STATES - ["closed", "liquidated", "rejected"])
+        position = Position.where(symbol: ep[:symbol]).where.not(status: %w[closed liquidated rejected]).first
+        position ||= Position.new(symbol: ep[:symbol], portfolio: Portfolio.resolve_for_legacy_bot_execution!)
         position.status = "filled" if position.new_record?
+        position.portfolio ||= Portfolio.resolve_for_legacy_bot_execution!
         position.assign_attributes(
           side:              ep[:side],
           size:              ep[:size],

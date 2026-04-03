@@ -8,7 +8,7 @@ module Bot
       REDIS_KEY_PREFIX = "delta_bot:prices:"
 
       def initialize
-        @redis = Redis.new
+        @redis = Redis.current
       end
 
       def update(symbol, price)

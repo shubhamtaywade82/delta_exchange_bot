@@ -36,11 +36,23 @@ module Trading
 
     def fetch_funding_rate
       Rails.cache.fetch("funding:#{@position.symbol}", expires_in: 5.minutes) do
-        @client.get_funding_rate(@position.symbol)
+        funding_rate_from_ticker
       end
     rescue => e
       Rails.logger.warn("[FundingMonitor] Could not fetch funding rate for #{@position.symbol}: #{e.message}")
       nil
+    end
+
+    # Delta gem has no Client#get_funding_rate; current rate is on the public ticker (see Models::Ticker).
+    def funding_rate_from_ticker
+      payload = @client.products.ticker(@position.symbol)
+      result = payload.is_a?(Hash) ? payload[:result] : nil
+      return nil unless result.is_a?(Hash)
+
+      raw = result.with_indifferent_access[:funding_rate]
+      return nil if raw.nil?
+
+      raw.to_f
     end
   end
 end

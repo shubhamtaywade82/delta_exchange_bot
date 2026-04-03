@@ -20,13 +20,22 @@ Bundler.require(*Rails.groups)
 
 module Backend
   class Application < Rails::Application
+    # Repo-root `.env` (monorepo) is loaded first; `backend/.env` from dotenv-rails overrides same keys.
+    repo_root_env = File.expand_path("../../.env", __dir__)
+    config.before_configuration do
+      next unless File.exist?(repo_root_env)
+
+      require "dotenv"
+      Dotenv.load(repo_root_env)
+    end
+
     # Initialize configuration defaults for originally generated Rails version.
     config.load_defaults 8.1
 
     # Please, add to the `ignore` list any other `lib` subdirectories that do
     # not contain `.rb` files, or that should not be reloaded or eager loaded.
     # Common ones are `templates`, `generators`, or `middleware`, for example.
-    config.autoload_lib(ignore: %w[assets tasks])
+    config.autoload_lib(ignore: %w[assets tasks patches])
 
     # Configuration for the application, engines, and railties goes here.
     #

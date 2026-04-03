@@ -51,6 +51,7 @@ group :development, :test do
 
   gem 'rspec-rails'
   gem 'factory_bot_rails'
+  gem "bullet"
 
   # Audits gems for known security defects (use config/bundler-audit.yml to ignore issues)
   gem "bundler-audit", require: false
@@ -62,4 +63,5 @@ group :development, :test do
   gem "rubocop-rails-omakase", require: false
 end
 
-gem 'ollama-client'
+# Local gem: Ollama::Client + Ollama Cloud (Bearer + https://ollama.com). Path from backend/ → project → ai-workspace.
+gem 'ollama-client', path: '../../../ai-workspace/ollama-client'

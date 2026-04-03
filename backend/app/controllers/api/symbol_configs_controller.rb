@@ -7,11 +7,16 @@ module Api
     end
 
     def create
-      # Add or update a symbol in the watchlist
-      symbol     = params[:symbol]
-      leverage   = params[:leverage] || 10
-      enabled    = params[:enabled] != false
-      product_id = params[:product_id]
+      raw = symbol_config_create_params
+      symbol = raw[:symbol]
+      unless symbol.present?
+        render json: { error: "symbol is required" }, status: :unprocessable_content
+        return
+      end
+
+      leverage = raw[:leverage].presence || 10
+      enabled = raw.key?(:enabled) ? ActiveModel::Type::Boolean.new.cast(raw[:enabled]) : true
+      product_id = raw[:product_id]
 
       config = SymbolConfig.find_or_initialize_by(symbol: symbol)
       config.update!(leverage: leverage, enabled: enabled, product_id: product_id)
@@ -30,7 +35,7 @@ module Api
       # For the catalog, we'll just toggle 'enabled' to false if it's already there
       # or remove it if requested.
       config = SymbolConfig.find_by(id: params[:id]) || SymbolConfig.find_by(symbol: params[:id])
-      
+
       if config
         config.update!(enabled: false)
         render json: { success: true, message: "Removed #{config.symbol} from watchlist" }
@@ -43,6 +48,10 @@ module Api
 
     def symbol_config_params
       params.require(:symbol_config).permit(:leverage, :enabled, :product_id)
+    end
+
+    def symbol_config_create_params
+      params.permit(:symbol, :leverage, :enabled, :product_id)
     end
   end
 end

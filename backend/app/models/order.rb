@@ -4,8 +4,11 @@
 # Position state should be derived from linked order states/fills.
 class Order < ApplicationRecord
   belongs_to :trading_session
+  belongs_to :portfolio
   belongs_to :position, optional: true
   has_many :fills, dependent: :destroy
+
+  before_validation :sync_portfolio_from_session, on: :create
 
   STATES = %w[created submitted partially_filled filled cancelled rejected].freeze
   SIDES  = %w[buy sell].freeze
@@ -73,6 +76,10 @@ class Order < ApplicationRecord
   end
 
   private
+
+  def sync_portfolio_from_session
+    self.portfolio_id ||= trading_session&.portfolio_id
+  end
 
   def normalize_status(exchange_status)
     case exchange_status.to_s

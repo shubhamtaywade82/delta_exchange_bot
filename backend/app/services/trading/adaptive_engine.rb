@@ -7,13 +7,13 @@ module Trading
 
     # @param book [Trading::Orderbook::Book]
     # @param trades [Array<Hash, Fill>]
-    # @param client [Object]
     # @return [Hash]
-    def self.tick(book:, trades:, client:)
+    def self.tick(book:, trades:, client: nil)
       features = Trading::Features::Extractor.call(book: book, trades: trades)
       regime = Trading::Strategy::RegimeDetector.call(features)
 
-      ai_config = Rails.cache.fetch("adaptive:ai_config:#{regime}", expires_in: ENV.fetch("AI_CONFIG_CACHE_SECONDS", 10).to_i.seconds) do
+      cache_ttl = Trading::RuntimeConfig.fetch_integer("ai.config_cache_seconds", default: 10, env_key: "AI_CONFIG_CACHE_SECONDS")
+      ai_config = Rails.cache.fetch("adaptive:ai_config:#{regime}", expires_in: cache_ttl.seconds) do
         Trading::Strategy::AiEdgeModel.call(features: features, regime: regime)
       end
 
@@ -30,7 +30,6 @@ module Trading
       )
 
       decision = strategy.call(book: book, features: features, config: config)
-      route_decision(decision: decision, book: book, client: client)
 
       {
         features: features,
@@ -40,19 +39,6 @@ module Trading
         decision: decision,
         expected_edge: scores[selected_strategy]
       }
-    end
-
-    def self.route_decision(decision:, book:, client:)
-      qty = ENV.fetch("MICROSTRUCTURE_ORDER_QTY", "1").to_d
-
-      case decision
-      when :buy
-        Trading::Execution::OrderRouter.place!(decision: :maker_buy, book: book, qty: qty, client: client)
-      when :sell
-        Trading::Execution::OrderRouter.place!(decision: :maker_sell, book: book, qty: qty, client: client)
-      else
-        nil
-      end
     end
   end
 end

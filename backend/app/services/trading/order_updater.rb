@@ -28,6 +28,7 @@ module Trading
         order.transition_to!(target_state) if target_state != order.status
 
         if @event.filled_qty.present?
+          sync_fill_delta_from_cumulative!(order, @event.filled_qty, @event.avg_fill_price)
           order.apply_fill!(
             cumulative_qty: @event.filled_qty,
             avg_fill_price: @event.avg_fill_price,
@@ -41,6 +42,22 @@ module Trading
     end
 
     private
+
+    def sync_fill_delta_from_cumulative!(order, cumulative_qty, avg_fill_price)
+      total = BigDecimal(cumulative_qty.to_s)
+      existing = Fill.where(order_id: order.id).sum(:quantity).to_d
+      delta = total - existing
+      return if delta <= 0
+
+      order.fills.create!(
+        exchange_fill_id: "order_updater:#{order.id}:#{total.to_s('F')}",
+        quantity: delta,
+        price: avg_fill_price,
+        fee: nil,
+        filled_at: Time.current,
+        raw_payload: { source: "order_updater" }
+      )
+    end
 
     def normalize_status(status)
       case status.to_s

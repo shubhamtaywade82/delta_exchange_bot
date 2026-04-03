@@ -2,16 +2,23 @@ mode: dry_run # dry_run | testnet | live
 
 strategy:
   supertrend:
-    atr_period: 10
-    multiplier: 3.0
+    variant: ml_adaptive # classic | ml_adaptive (volatility-regime Supertrend, algo_scalper-style)
+    # indicator_type: mast # optional aliases: ml_adaptive_supertrend, mast, ml_st, ml_adaptive
+    atr_period: 10 # ATR length for ml_adaptive
+    multiplier: 3.0 # factor for ml_adaptive
+    ml_adaptive:
+      training_period: 100
+      highvol: 0.75
+      midvol: 0.5
+      lowvol: 0.25
   adx:
     period: 14
     threshold: 20
-  trailing_stop_pct: 0.2
+  trailing_stop_pct: 1.5
   timeframes:
     trend: "1h"
     confirm: "15m"
-    entry: "5m"
+    entry: "1m"
   candles_lookback: 100
   min_candles_required: 30
 
@@ -20,7 +27,7 @@ risk:
   max_concurrent_positions: 5
   max_margin_per_position_pct: 40
   usd_to_inr_rate: 85.0
-  simulated_capital_inr: 10000.0
+  simulated_capital_inr: 20000.0
 
 symbols:
   - symbol: BTCUSD
@@ -35,8 +42,14 @@ notifications:
     enabled: false
     bot_token: ""
     chat_id: ""
+    events:
+      status: true
+      signals: true
+      positions: true
+      trailing: true
+      errors: true
   daily_summary_time: "18:00"
 
 logging:
-  level: info
+  level: debug
   file: logs/bot.log

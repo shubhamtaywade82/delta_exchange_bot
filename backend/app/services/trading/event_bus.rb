@@ -1,4 +1,8 @@
-# app/services/trading/event_bus.rb
+# frozen_string_literal: true
+
+# In-process pub/sub for the trading process. Contract: at most one Trading::Runner (or equivalent)
+# long-lived loop per OS process — subscribers are global class state and Runner#start calls reset!.
+# Do not run multiple runners in one process without replacing this with an injectable bus.
 module Trading
   class EventBus
     @subscribers = Hash.new { |h, k| h[k] = [] }

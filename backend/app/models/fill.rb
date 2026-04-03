@@ -11,4 +11,12 @@ class Fill < ApplicationRecord
   validates :filled_at, presence: true
 
   scope :chronological, -> { order(:filled_at, :exchange_fill_id) }
+
+  # Signed contract quantity: buy adds, sell reduces (linear perp convention).
+  def signed_quantity
+    return 0.to_d if quantity.blank?
+
+    q = quantity.to_d
+    order.side.to_s == "sell" ? -q : q
+  end
 end

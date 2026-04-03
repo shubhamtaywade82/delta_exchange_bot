@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 require "time"
-require_relative "supertrend"
 require_relative "adx"
+require_relative "indicator_factory"
 require_relative "signal"
 require_relative "indicators/rsi"
 require_relative "indicators/vwap"
@@ -39,8 +39,8 @@ module Bot
                           sufficient?(m15_candles, symbol, "15M") &&
                           sufficient?(m5_candles, symbol, "5M")
 
-        h1_st   = Supertrend.compute(h1_candles,  atr_period: @config.supertrend_atr_period, multiplier: @config.supertrend_multiplier)
-        m15_st  = Supertrend.compute(m15_candles, atr_period: @config.supertrend_atr_period, multiplier: @config.supertrend_multiplier)
+        h1_st   = IndicatorFactory.compute_supertrend(h1_candles, config: @config)
+        m15_st  = IndicatorFactory.compute_supertrend(m15_candles, config: @config)
         m15_adx = ADX.compute(m15_candles, period: @config.adx_period)
         h1_dir       = h1_st.last[:direction]
         m15_dir      = m15_st.last[:direction]
@@ -135,6 +135,17 @@ module Bot
           filters:         filter_results.transform_values { |f| { passed: f[:passed], reason: f[:reason] } }
         )
 
+        filter_results[:volume] = relaxed_filter_result(
+          original: filter_results[:volume],
+          allowed: relaxed_volume_allowed?(cvd_data),
+          reason: "dry_run relax: neutral CVD allowed for demo execution"
+        )
+        filter_results[:derivatives] = relaxed_filter_result(
+          original: filter_results[:derivatives],
+          allowed: relaxed_derivatives_allowed?,
+          reason: "dry_run relax: derivatives gate bypassed for demo execution"
+        )
+
         blocked = filter_results.find { |_k, f| !f[:passed] }
         if blocked
           @logger.debug("strategy_skip", symbol: symbol, reason: "filter_blocked",
@@ -187,8 +198,12 @@ module Bot
       end
 
       def sufficient?(candles, symbol, label)
-        if candles.size < @config.min_candles_required
-          @logger.warn("insufficient_candles", symbol: symbol, timeframe: label, count: candles.size)
+        required = @config.effective_min_candles_for_supertrend
+        if candles.size < required
+          @logger.warn(
+            "insufficient_candles",
+            symbol: symbol, timeframe: label, count: candles.size, required: required
+          )
           return false
         end
         true
@@ -208,6 +223,26 @@ module Bot
         when "w" then value * 604800
         else value * 60
         end
+      end
+
+      def relaxed_filter_result(original:, allowed:, reason:)
+        return original unless allowed
+
+        { passed: true, reason: reason }
+      end
+
+      def relaxed_volume_allowed?(cvd_data)
+        return false unless relaxed_filters_in_dry_run?
+
+        cvd_data && cvd_data[:delta_trend] == :neutral
+      end
+
+      def relaxed_derivatives_allowed?
+        relaxed_filters_in_dry_run?
+      end
+
+      def relaxed_filters_in_dry_run?
+        @config.dry_run? && @config.respond_to?(:relax_filters_in_dry_run?) && @config.relax_filters_in_dry_run?
       end
     end
   end

@@ -27,7 +27,9 @@ module Bot
 
           return nil if Position.exists?(symbol: symbol, status: "filled")
 
+          portfolio = Portfolio.resolve_for_legacy_bot_execution!
           pos = Position.create!(
+            portfolio:      portfolio,
             symbol:         symbol,
             side:           side.to_s,
             status:         "filled",

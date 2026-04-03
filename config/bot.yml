@@ -2,6 +2,7 @@ mode: dry_run # dry_run | testnet | live
 
 strategy:
   supertrend:
+    variant: classic # classic | ml_adaptive — see backend/config/bot.yml
     atr_period: 10
     multiplier: 3.0
   adx:
@@ -21,9 +22,10 @@ strategy:
   filters:
     funding_rate_threshold: 0.05
     cvd_window: 50
+    relax_in_dry_run: true
   derivatives:
     oi_poll_interval: 30
-  trailing_stop_pct: 0.2
+  trailing_stop_pct: 1.5
   timeframes:
     trend: "1h"
     confirm: "15m"
@@ -36,7 +38,7 @@ risk:
   max_concurrent_positions: 3
   max_margin_per_position_pct: 40
   usd_to_inr_rate: 84.0
-  paper_capital_inr: 10000
+  paper_capital_inr: 20000
 
 symbols:
   - symbol: BTCUSD
@@ -51,6 +53,12 @@ notifications:
     enabled: false
     bot_token: ""
     chat_id: ""
+    events:
+      status: true
+      signals: true
+      positions: true
+      trailing: true
+      errors: true
   daily_summary_time: "18:00"
 
 logging:

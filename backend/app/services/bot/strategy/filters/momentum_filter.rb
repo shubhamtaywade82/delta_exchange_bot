@@ -11,13 +11,13 @@ module Bot
 
           if side == :long && rsi_result[:overbought]
             res = { passed: false, reason: "RSI #{val} overbought — blocking long entry" }
-            logger&.info("filter_skip_momentum", **res)
+            Bot::StructuredLog.log(logger, :info, "filter_skip_momentum", **res)
             return res
           end
 
           if side == :short && rsi_result[:oversold]
             res = { passed: false, reason: "RSI #{val} oversold — blocking short entry" }
-            logger&.info("filter_skip_momentum", **res)
+            Bot::StructuredLog.log(logger, :info, "filter_skip_momentum", **res)
             return res
           end
 

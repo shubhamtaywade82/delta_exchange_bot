@@ -1,9 +1,11 @@
 # frozen_string_literal: true
 
 module Trading
-  # PositionRecalculator recomputes position totals from persisted fills, independent of WS arrival order.
+  # Recomputes net position from all fills for (portfolio, symbol); updates wallet-related fields.
   class PositionRecalculator
     MAX_RETRIES = 3
+    # Weighted-average entry from fills can carry huge fractional tails; cap for storage and UI.
+    AVG_ENTRY_DECIMALS = 8
 
     def self.call(position_id)
       new(position_id).call
@@ -13,7 +15,6 @@ module Trading
       @position_id = position_id
     end
 
-    # Rebuilds position quantity and average entry from all related fills.
     # @return [Position]
     def call
       retries = 0
@@ -21,38 +22,142 @@ module Trading
       begin
         ActiveRecord::Base.transaction(isolation: :repeatable_read) do
           position = Position.lock.find(@position_id)
+          lot_d = Trading::Risk::PositionLotSize.multiplier_for(position).to_d
 
-          totals = Fill.joins(:order)
-                       .where(orders: { position_id: position.id })
-                       .select("SUM(fills.quantity) AS total_qty", "SUM(fills.quantity * fills.price) AS total_value")
-                       .take
+          fills = Fill.joins(:order)
+                      .where(orders: { portfolio_id: position.portfolio_id, symbol: position.symbol })
+                      .to_a
 
-          total_qty = totals.total_qty.to_d
-          total_value = totals.total_value.to_d
-          avg_price = total_qty.zero? ? nil : (total_value / total_qty)
+          calc = Trading::Ledger::NetPositionCalculator.from_fills(fills, lot_multiplier: lot_d)
+          q = calc.signed_qty
 
-          next_state = if total_qty.zero?
-                         position.orders.exists? ? "entry_pending" : "init"
-                       elsif total_qty < position.orders.sum(:size).to_d
-                         "partially_filled"
-                       else
-                         "filled"
-                       end
+          next_state = derive_status(position, q, fills)
+          mark = Trading::MarkPrice.for_symbol(position.symbol) || calc.avg_entry
 
-          position.update!(
-            size: total_qty.zero? ? position.size : total_qty,
-            entry_price: avg_price,
-            status: next_state,
-            needs_reconciliation: false
-          )
+          attrs = base_attrs(q, calc, lot_d, next_state, position, mark)
+          merge_trailing_stop!(attrs, position, attrs[:entry_price]) if q.nonzero?
+
+          position.update!(attrs)
 
           position
         end
-      rescue ActiveRecord::StaleObjectError
+      rescue ActiveRecord::StaleObjectError, ActiveRecord::SerializationFailure => e
         retries += 1
-        retry if retries < MAX_RETRIES
-        raise
+        raise if retries >= MAX_RETRIES
+
+        sleep(0.05 * retries) if e.is_a?(ActiveRecord::SerializationFailure)
+        retry
       end
+    end
+
+    private
+
+    def base_attrs(q, calc, lot_d, next_state, position, mark)
+      if q.zero?
+        return {
+          size: 0,
+          side: position.side,
+          entry_price: nil,
+          margin: nil,
+          unrealized_pnl_usd: 0,
+          status: next_state,
+          needs_reconciliation: false
+        }
+      end
+
+      avg = calc.avg_entry&.round(AVG_ENTRY_DECIMALS)
+      lev = effective_leverage(position)
+      margin = if lev.positive? && lot_d.positive? && avg.present?
+                 (q.abs * lot_d * avg.abs) / lev
+      end
+
+      side = q.positive? ? "long" : "short"
+      position.assign_attributes(size: q.abs, side: side, entry_price: avg, margin: margin)
+
+      unrealized = Trading::Risk::PositionRisk.call(position: position, mark_price: mark).unrealized_pnl
+
+      attrs = {
+        size: q.abs,
+        side: side,
+        entry_price: avg,
+        margin: margin,
+        leverage: lev.to_i,
+        unrealized_pnl_usd: unrealized,
+        pnl_usd: nil,
+        status: next_state,
+        needs_reconciliation: false
+      }
+
+      attrs[:contract_value] = lot_d if lot_d.positive? && (position.contract_value.blank? || position.contract_value.to_f.zero?)
+      attrs
+    end
+
+    def derive_status(position, signed_qty, fills)
+      pending_orders = Order.where(portfolio_id: position.portfolio_id, symbol: position.symbol)
+                            .where(status: %w[created submitted partially_filled])
+
+      if signed_qty.zero?
+        return "entry_pending" if pending_orders.exists?
+
+        return fills.any? ? "closed" : "init"
+      end
+
+      pending_orders.exists? ? "partially_filled" : "filled"
+    end
+
+    # Prefer +trading_sessions.leverage+ from the position's orders (execution truth). A stale +positions.leverage+
+    # of 1 would otherwise force initial margin = full notional and blow past portfolio +balance+ in the UI.
+    def effective_leverage(position)
+      session_lev = Order.where(position_id: position.id)
+                         .joins(:trading_session)
+                         .order(:id)
+                         .limit(1)
+                         .pick("trading_sessions.leverage")
+      if session_lev.present? && session_lev.to_i.positive?
+        return BigDecimal(session_lev.to_s)
+      end
+
+      pos_lev = position.leverage
+      if pos_lev.present? && pos_lev.to_i.positive?
+        return BigDecimal(pos_lev.to_s)
+      end
+
+      sym_lev = SymbolConfig.find_by(symbol: position.symbol.to_s)&.leverage
+      if sym_lev.present? && sym_lev.to_i.positive?
+        return BigDecimal(sym_lev.to_s)
+      end
+
+      BigDecimal("1")
+    end
+
+    # +strategy.trailing_stop_pct+ is percent points (e.g. 1.5 => 1.5% distance to initial stop).
+    def merge_trailing_stop!(attrs, position, avg_entry)
+      status = attrs[:status].to_s
+      return unless %w[filled open partially_filled].include?(status)
+      return if position.trail_pct.present?
+
+      avg = avg_entry&.to_d
+      return unless avg&.positive?
+
+      trail = trailing_stop_pct_decimal
+      trail_frac = trail / BigDecimal("100")
+      side = attrs[:side].to_s
+      peak = avg
+      stop = if side.in?(%w[long buy])
+               avg * (BigDecimal("1") - trail_frac)
+      else
+               avg * (BigDecimal("1") + trail_frac)
+      end
+
+      attrs[:trail_pct] = trail
+      attrs[:peak_price] = peak
+      attrs[:stop_price] = stop
+    end
+
+    def trailing_stop_pct_decimal
+      BigDecimal(Bot::Config.load.trailing_stop_pct.to_s)
+    rescue Bot::Config::ValidationError
+      BigDecimal("1.5")
     end
   end
 end
