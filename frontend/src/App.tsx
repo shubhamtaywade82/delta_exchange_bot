@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 import Navbar from './components/Navbar';
+import BotStatusBar, { type BotStatusBarProps } from './components/BotStatusBar';
+import AppFooter from './components/AppFooter';
 import { formatDisplayDecimal, formatUsd } from './utils/tradingDisplay';
 import DashboardPage from './pages/DashboardPage';
 import OperationalStatePage from './pages/OperationalStatePage';
@@ -72,18 +74,28 @@ function DerivativesStrip({ symbols }: { symbols: SymbolState[] }) {
 const App: React.FC = () => {
   const [tickers, setTickers] = useState<TickerData[]>([]);
   const [symbols, setSymbols] = useState<SymbolState[]>([]);
+  const [shellLatencyMs, setShellLatencyMs] = useState<number | null>(null);
+  const [shellStats, setShellStats] = useState<BotStatusBarProps['stats']>(null);
+  const [shellWallet, setShellWallet] = useState<BotStatusBarProps['wallet']>(null);
+  const [shellExecutionHealth, setShellExecutionHealth] = useState<BotStatusBarProps['executionHealth']>(null);
+  const [shellOperationalState, setShellOperationalState] = useState<BotStatusBarProps['operationalState']>(null);
 
   useEffect(() => {
     const fetchGlobal = async () => {
       try {
+        const started = performance.now();
         const { data: dash } = await axios.get('/api/dashboard');
-        
-        // Use backend market data directly for tickers
+        setShellLatencyMs(Math.round(performance.now() - started));
+        setShellStats(dash.stats ?? null);
+        setShellWallet(dash.wallet ?? null);
+        setShellExecutionHealth(dash.execution_health ?? null);
+        setShellOperationalState(dash.operational_state ?? null);
+
         if (dash.market) {
-          const newTickers = dash.market.map((m: any) => ({
+          const newTickers = dash.market.map((m: { symbol: string; price?: number }) => ({
             symbol: m.symbol,
             price: m.price || 0.0,
-            change: (Math.random() - 0.5) * 5 // Mock change until added to backend
+            change: (Math.random() - 0.5) * 5,
           }));
           setTickers(newTickers);
         }
@@ -91,18 +103,25 @@ const App: React.FC = () => {
         const { data: strat } = await axios.get('/api/strategy_status');
         setSymbols(strat.symbols || []);
       } catch (err) {
-        console.error("Global shell sync error", err);
+        console.error('Global shell sync error', err);
       }
     };
 
     fetchGlobal();
-    const interval = setInterval(fetchGlobal, 5000); 
+    const interval = setInterval(fetchGlobal, 5000);
     return () => clearInterval(interval);
   }, []);
 
   return (
     <BrowserRouter>
       <div className="terminal-container">
+        <BotStatusBar
+          latencyMs={shellLatencyMs}
+          stats={shellStats}
+          wallet={shellWallet}
+          executionHealth={shellExecutionHealth}
+          operationalState={shellOperationalState}
+        />
         <TickerBar tickers={tickers} />
         <DerivativesStrip symbols={symbols} />
         <Navbar />
@@ -114,6 +133,7 @@ const App: React.FC = () => {
           <Route path="/analysis" element={<AnalysisDashboardPage />} />
           <Route path="/admin/settings" element={<AdminSettingsPage />} />
         </Routes>
+        <AppFooter />
       </div>
     </BrowserRouter>
   );

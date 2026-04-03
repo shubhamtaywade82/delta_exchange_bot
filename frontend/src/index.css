@@ -25,7 +25,7 @@
   --ticker-height: 42px;
   --fund-height: 32px;
   --navbar-height: 48px;
-  --sticky-top: calc(var(--ticker-height) + var(--fund-height) + var(--navbar-height) + var(--header-height) + 1.5rem);
+  --sticky-top: calc(var(--header-height) + var(--ticker-height) + var(--fund-height) + var(--navbar-height) + 1.5rem);
 
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-header: 'Space Grotesk', var(--font-sans);
@@ -84,7 +84,7 @@ body::after {
   gap: 2.5rem;
   white-space: nowrap;
   position: sticky;
-  top: 0;
+  top: var(--header-height);
   z-index: 100;
 }
 
@@ -121,11 +121,11 @@ body::after {
   background: rgba(5, 5, 10, 0.95);
   border-bottom: 1px solid var(--border-glass);
   padding: 0 2.5rem;
-  height: 48px;
+  height: var(--navbar-height);
   display: flex;
   align-items: center;
   position: sticky;
-  top: calc(var(--ticker-height) + var(--fund-height));
+  top: calc(var(--header-height) + var(--ticker-height) + var(--fund-height));
   z-index: 101;
 }
 
@@ -169,8 +169,8 @@ body::after {
   border-bottom: 1px solid var(--border-glass);
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
   position: sticky;
-  top: calc(var(--ticker-height) + var(--fund-height) + 48px);
-  z-index: 99;
+  top: 0;
+  z-index: 103;
 }
 
 .brand {
@@ -897,7 +897,7 @@ td {
   align-items: center;
   justify-content: center;
   position: sticky;
-  top: var(--ticker-height);
+  top: calc(var(--header-height) + var(--ticker-height));
   z-index: 100;
 }
 

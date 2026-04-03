@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { NavLink } from 'react-router-dom';
 import axios from 'axios';
-import { ShieldAlert, Terminal as TerminalIcon } from 'lucide-react';
+import { Terminal as TerminalIcon } from 'lucide-react';
 import type { OperationalState } from '../types/operationalState';
 import {
   formatDisplayDecimal,
@@ -19,7 +18,6 @@ function localCalendarDateISO(d = new Date()) {
 
 const OperationalStatePage: React.FC = () => {
   const [operationalState, setOperationalState] = useState<OperationalState | null>(null);
-  const [executionHealth, setExecutionHealth] = useState<any>(null);
   const [paperOverrideBusy, setPaperOverrideBusy] = useState(false);
 
   const todayLocal = useCallback(() => localCalendarDateISO(), []);
@@ -32,7 +30,6 @@ const OperationalStatePage: React.FC = () => {
       params.set('calendar_day', todayLocal());
       const { data } = await axios.get(`/api/dashboard?${params.toString()}`);
       setOperationalState(data.operational_state ?? null);
-      setExecutionHealth(data.execution_health ?? null);
     } catch (err) {
       console.error('Operational state sync error', err);
     }
@@ -59,36 +56,6 @@ const OperationalStatePage: React.FC = () => {
 
   return (
     <div className="dashboard-content pt-4 operational-page">
-      <header className="terminal-header">
-        <div className="brand">
-          <div className="brand-text">
-            <ShieldAlert size={18} className="icon-accent" />
-            <h1>OPERATIONAL_STATE</h1>
-            <NavLink to="/" className="operational-back-link">
-              ← DASHBOARD
-            </NavLink>
-            <div className="system-status">
-              <span className="dot online"></span>
-              <span className="status-online">LIVE_VIEW</span>
-            </div>
-          </div>
-        </div>
-        <div className="session-stats">
-          <div className="mini-stat">
-            <label>EXECUTION</label>
-            <span className={`value ${executionHealth?.healthy ? 'pos' : executionHealth ? 'neg' : ''}`}>
-              {executionHealth?.healthy ? 'HEALTHY' : executionHealth?.category?.toUpperCase() || 'UNKNOWN'}
-            </span>
-          </div>
-          <div className="mini-stat">
-            <label>AUTO_ENTRY</label>
-            <span className={`value ${operationalState?.auto_entry_allowed ? 'pos' : operationalState ? 'neg' : ''}`}>
-              {operationalState == null ? '—' : operationalState.auto_entry_allowed ? 'ALLOWED' : 'BLOCKED'}
-            </span>
-          </div>
-        </div>
-      </header>
-
       <main className="operational-page-main">
         <section className="terminal-section operational-state-section">
           <div className="section-header">

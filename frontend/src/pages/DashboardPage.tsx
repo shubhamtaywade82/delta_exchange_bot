@@ -1,15 +1,13 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { NavLink } from 'react-router-dom';
 import axios from 'axios';
-import { 
-  Wallet, 
-  History, 
-  Cpu, 
-  Terminal as TerminalIcon,
+import {
+  Wallet,
+  History,
+  Cpu,
   BarChart3,
-  Activity
+  Activity,
 } from 'lucide-react';
-import type { SignalActivity, OperationalState } from '../types/operationalState';
+import type { SignalActivity } from '../types/operationalState';
 import {
   formatDisplayDecimal,
   formatInr,
@@ -183,9 +181,7 @@ const DashboardPage: React.FC = () => {
   const [strategyStatus, setStrategyStatus] = useState<StrategyStatus | null>(null);
   const [wallet, setWallet] = useState<any>(null);
   const [stats, setStats] = useState<any>(null);
-  const [executionHealth, setExecutionHealth] = useState<any>(null);
   const [signalActivity, setSignalActivity] = useState<SignalActivity | null>(null);
-  const [operationalState, setOperationalState] = useState<OperationalState | null>(null);
   const [expandedSym, setExpandedSym] = useState<string | null>(null);
   const [tradeHistoryDay, setTradeHistoryDay] = useState<string>(() => localCalendarDateISO());
   const [tradesMeta, setTradesMeta] = useState<{ total_count: number; limit: number; day: string | null } | null>(
@@ -224,9 +220,7 @@ const DashboardPage: React.FC = () => {
       );
       setWallet(dash.wallet);
       setStats(dash.stats);
-      setExecutionHealth(dash.execution_health);
       setSignalActivity(dash.signal_activity ?? null);
-      setOperationalState(dash.operational_state ?? null);
 
       const { data: strat } = await axios.get('/api/strategy_status');
       setStrategyStatus(strat);
@@ -242,60 +236,6 @@ const DashboardPage: React.FC = () => {
 
   return (
     <div className="dashboard-content pt-4">
-      <header className="terminal-header">
-        <div className="brand">
-          <div className="brand-text">
-            <TerminalIcon size={18} className="icon-pulse" />
-            <h1>DELTA_BOT</h1>
-            <NavLink to="/operational" className="dashboard-ops-link" title="Gates, blockers, signal timeline">
-              OPERATIONAL →
-            </NavLink>
-            <div className="system-status">
-              <span className="dot online"></span>
-              <span className="status-online">ONLINE_ v2.0</span>
-              <span className="status-latency">12ms</span>
-            </div>
-          </div>
-        </div>
-        <div className="session-stats">
-          <div className="mini-stat">
-            <label>WIN_RATE</label>
-            <span className="value">{stats?.win_rate != null ? `${formatDisplayDecimal(stats.win_rate)}%` : '--'}</span>
-          </div>
-          <div className="mini-stat">
-            <label>TOTAL_PNL</label>
-            <span className={`value ${(stats?.total_pnl_usd ?? 0) >= 0 ? 'pos' : 'neg'}`}>
-              {formatInr(stats?.total_pnl_inr ?? 0)}
-            </span>
-          </div>
-          {wallet && (
-            <div className="mini-stat">
-              <label>TOTAL_EQUITY</label>
-              <span className="value">
-                {wallet.paper_mode ? '📄 ' : ''}
-                {wallet.total_equity_inr != null
-                  ? formatInr(wallet.total_equity_inr)
-                  : wallet.available_usd != null
-                    ? formatUsd(wallet.available_usd)
-                    : '--'}
-              </span>
-            </div>
-          )}
-          <div className="mini-stat">
-            <label>EXECUTION</label>
-            <span className={`value ${executionHealth?.healthy ? 'pos' : executionHealth ? 'neg' : ''}`}>
-              {executionHealth?.healthy ? 'HEALTHY' : executionHealth?.category?.toUpperCase() || 'UNKNOWN'}
-            </span>
-          </div>
-          <div className="mini-stat">
-            <label>AUTO_ENTRY</label>
-            <span className={`value ${operationalState?.auto_entry_allowed ? 'pos' : operationalState ? 'neg' : ''}`}>
-              {operationalState == null ? '—' : operationalState.auto_entry_allowed ? 'ALLOWED' : 'BLOCKED'}
-            </span>
-          </div>
-        </div>
-      </header>
-
       <main className="terminal-grid">
         <div className="grid-left">
           {strategyStatus && (
@@ -757,18 +697,6 @@ const DashboardPage: React.FC = () => {
           </section>
         </div>
       </main>
-
-      <footer className="terminal-footer">
-        <div className="command-line">
-          <span className="prompt">root@delta-bot:v2.0#</span>
-          <span className="cursor-blink">Awaiting input_</span>
-        </div>
-        <div className="system-metrics">
-          <span>MODE: DRY_RUN</span>
-          <span>SESSIONS: ACTIVE</span>
-          <span>LOAD: 0.24ms</span>
-        </div>
-      </footer>
     </div>
   );
 }
