@@ -2,7 +2,7 @@
 
 module Trading
   module Risk
-    # LiquidationGuard classifies position safety from margin usage.
+    # Classifies position safety from margin usage (not mark-price proximity; see +Trading::NearLiquidationExit+).
     class LiquidationGuard
       THRESHOLD = ENV.fetch("RISK_DANGER_MARGIN_RATIO", "0.9").to_d
 

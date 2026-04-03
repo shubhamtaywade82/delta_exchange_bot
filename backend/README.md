@@ -57,10 +57,12 @@ Risk runs at two hooks:
 Modules:
 - `Trading::Risk::PositionRisk`
 - `Trading::Risk::MarginCalculator`
-- `Trading::Risk::LiquidationGuard`
+- `Trading::Risk::LiquidationGuard` (margin-ratio classification on ticks / after fills)
 - `Trading::Risk::PortfolioGuard` (PnL / exposure limits for new entries)
 - `Trading::Risk::Engine`
 - `Trading::Risk::Executor`
+
+`Trading::NearLiquidationExit` runs in the runner loop and force-exits when cached LTP is within a small band of the position’s liquidation price (distinct from margin-ratio `Risk::LiquidationGuard`).
 
 `Trading::EmergencyShutdown` flattens **open positions for the session’s portfolio** and cancels that session’s orders (operational stop). `ExecutionEngine` checks `PortfolioGuard` before placing any new order.
 

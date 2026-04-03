@@ -108,7 +108,7 @@ module Trading
           @last_strategy_run = now
         end
 
-        LiquidationGuard.check_all(client: @client)
+        NearLiquidationExit.check_all(client: @client)
         FundingMonitor.check_all(client: @client)
         sleep 5
       end
