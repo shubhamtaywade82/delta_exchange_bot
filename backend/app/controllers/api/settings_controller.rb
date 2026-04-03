@@ -3,11 +3,13 @@
 class Api::SettingsController < ApplicationController
   def index
     settings = Setting.order(:key).map do |setting|
+      vt = setting.value_type || "string"
       {
         key: setting.key,
         value: setting.value,
-        value_type: setting.value_type || "string",
-        typed_value: setting.typed_value
+        value_type: vt,
+        typed_value: setting.typed_value,
+        ui: RuntimeSettingUi.payload_for(setting.key, value_type: vt)
       }
     end
     render json: settings

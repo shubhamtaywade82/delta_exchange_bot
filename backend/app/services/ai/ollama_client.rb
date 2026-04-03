@@ -14,6 +14,20 @@ module Ai
   class OllamaClient
     CLOUD_BASE_URL = "https://ollama.com"
     DEFAULT_LOCAL_URL = "http://localhost:11434"
+    # SMC / large prompts routinely exceed a few seconds on local CPUs; keep aligned with .env.example.
+    DEFAULT_TIMEOUT_SECONDS = 90
+
+    ConnectionSettings = Data.define(
+      :request_timeout_seconds,
+      :max_retries,
+      :resolved_base_url,
+      :model_name,
+      :api_key
+    ) do
+      def api_key_present?
+        api_key.to_s.strip != ""
+      end
+    end
 
     class << self
       # @param prompt [String]
@@ -21,57 +35,65 @@ module Ai
       def ask(prompt)
         raise LoadError, "ollama-client gem is unavailable" unless OLLAMA_GEM_AVAILABLE
 
-        with_retries do
-          Timeout.timeout(request_timeout_seconds) do
-            ollama_client.generate(prompt: prompt, model: model_name, strict: false)
+        settings = read_connection_settings
+        with_retries(max_retries: settings.max_retries) do
+          Timeout.timeout(settings.request_timeout_seconds) do
+            build_client(settings).generate(prompt: prompt, model: settings.model_name, strict: false)
           end
         end
       end
 
-      def ollama_client
-        Ollama::Client.new(config: build_config)
-      end
-
-      def build_config
-        cfg = Ollama::Config.new
-        cfg.base_url = resolved_base_url
-        key = api_key
-        cfg.api_key = key if key.present?
-        cfg.model = model_name
-        cfg.timeout = request_timeout_seconds
-        cfg.retries = max_retries
-        cfg.strict_json = false
-        cfg
-      end
-
       def resolved_base_url
-        url = configured_base_url.to_s.strip.chomp("/")
-        if force_local_ollama?
+        read_connection_settings.resolved_base_url
+      end
+
+      def read_connection_settings
+        url = configured_base_url_string
+        api_key_value = read_api_key_string
+        force_local = read_force_local_boolean
+        ConnectionSettings.new(
+          request_timeout_seconds: read_timeout_seconds,
+          max_retries: read_max_retries,
+          resolved_base_url: resolve_base_url(url, api_key_value, force_local),
+          model_name: read_model_name_string,
+          api_key: api_key_value
+        )
+      end
+
+      def build_client(settings)
+        cfg = Ollama::Config.new
+        cfg.base_url = settings.resolved_base_url
+        cfg.api_key = settings.api_key if settings.api_key_present?
+        cfg.model = settings.model_name
+        cfg.timeout = settings.request_timeout_seconds
+        cfg.retries = settings.max_retries
+        cfg.strict_json = false
+        Ollama::Client.new(config: cfg)
+      end
+
+      def configured_base_url_string
+        ENV["OLLAMA_BASE_URL"].presence ||
+          ENV["OLLAMA_URL"].presence ||
+          Trading::RuntimeConfig.fetch_string("ai.ollama_url", default: "", env_key: nil).to_s.strip
+      end
+
+      def read_force_local_boolean
+        Trading::RuntimeConfig.fetch_boolean("ai.ollama_force_local", default: false, env_key: "OLLAMA_FORCE_LOCAL")
+      end
+
+      def resolve_base_url(url, api_key_value, force_local)
+        url = url.to_s.strip.chomp("/")
+        if force_local
           return url.presence || DEFAULT_LOCAL_URL
         end
 
-        if api_key_present? && (url.blank? || localhost_url?(url))
+        if api_key_value.present? && (url.blank? || localhost_url?(url))
           CLOUD_BASE_URL
         elsif url.present?
           url
         else
           DEFAULT_LOCAL_URL
         end
-      end
-
-      # ENV wins over DB `Setting` rows so deployment/.env overrides seeded defaults (OLLAMA_URL is the DB env_key).
-      def configured_base_url
-        ENV["OLLAMA_BASE_URL"].presence ||
-          ENV["OLLAMA_URL"].presence ||
-          db_or_default_ollama_url
-      end
-
-      def db_or_default_ollama_url
-        Trading::RuntimeConfig.fetch_string("ai.ollama_url", default: "", env_key: nil).to_s.strip
-      end
-
-      def force_local_ollama?
-        Trading::RuntimeConfig.fetch_boolean("ai.ollama_force_local", default: false, env_key: "OLLAMA_FORCE_LOCAL")
       end
 
       def localhost_url?(url)
@@ -82,12 +104,12 @@ module Ai
         false
       end
 
-      def with_retries
+      def with_retries(max_retries:)
         attempts = 0
         begin
           attempts += 1
           yield
-        rescue StandardError => e
+        rescue StandardError
           raise if attempts > max_retries
 
           sleep(0.2 * attempts)
@@ -95,28 +117,28 @@ module Ai
         end
       end
 
-      def model_name
+      def read_model_name_string
         ENV["OLLAMA_AGENT_MODEL"].presence ||
           ENV["OLLAMA_MODEL"].presence ||
           Trading::RuntimeConfig.fetch_string("ai.ollama_model", default: "llama3", env_key: nil).presence ||
           "llama3"
       end
 
-      def request_timeout_seconds
-        timeout = Trading::RuntimeConfig.fetch_integer("ai.ollama_timeout_seconds", default: 8, env_key: "OLLAMA_TIMEOUT_SECONDS")
-        timeout.positive? ? timeout : 8
+      def read_timeout_seconds
+        timeout = Trading::RuntimeConfig.fetch_integer(
+          "ai.ollama_timeout_seconds",
+          default: DEFAULT_TIMEOUT_SECONDS,
+          env_key: "OLLAMA_TIMEOUT_SECONDS"
+        )
+        timeout.positive? ? timeout : DEFAULT_TIMEOUT_SECONDS
       end
 
-      def max_retries
+      def read_max_retries
         retries = Trading::RuntimeConfig.fetch_integer("ai.ollama_max_retries", default: 2, env_key: "OLLAMA_MAX_RETRIES")
         retries.negative? ? 0 : retries
       end
 
-      def api_key_present?
-        api_key.to_s.strip != ""
-      end
-
-      def api_key
+      def read_api_key_string
         ENV["OLLAMA_API_KEY"].to_s.strip.presence ||
           Trading::RuntimeConfig.fetch_string("ai.ollama_api_key", default: "", env_key: nil).to_s.strip
       end

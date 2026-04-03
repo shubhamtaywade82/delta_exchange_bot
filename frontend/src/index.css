@@ -8,18 +8,18 @@
   --border-accent: rgba(56, 189, 248, 0.25);
   --border-success: rgba(0, 255, 136, 0.2);
   --border-danger: rgba(255, 77, 77, 0.2);
-  
-  --primary: #00e5ff; 
+
+  --primary: #00e5ff;
   --primary-glow: rgba(0, 229, 255, 0.25);
-  
-  --success: #00ff88; 
-  --danger: #ff4d4d; 
-  --warning: #ffaa00; 
-  
+
+  --success: #00ff88;
+  --danger: #ff4d4d;
+  --warning: #ffaa00;
+
   --text-main: #f1f5f9;
   --text-dim: #94a3b8;
   --text-muted: #475569;
-  
+
   --header-height: 72px;
   --footer-height: 48px;
   --ticker-height: 42px;
@@ -40,7 +40,7 @@ body {
   color: var(--text-main);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
-  background-image: 
+  background-image:
     radial-gradient(circle at 50% 0%, rgba(0, 229, 255, 0.05), transparent 50%),
     linear-gradient(rgba(18, 20, 32, 0.5) 1px, transparent 1px),
     linear-gradient(90deg, rgba(18, 20, 32, 0.5) 1px, transparent 1px);
@@ -107,13 +107,44 @@ body::after {
   color: var(--text-main);
 }
 
-.ticker-item .price.pop {
+.pop {
   animation: price-flash 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @keyframes price-flash {
   0% { color: var(--primary); text-shadow: 0 0 8px var(--primary-glow); }
   100% { color: var(--text-main); text-shadow: none; }
+}
+
+/* LTP row: directly under DELTA_BOT, above OI/FUND strip; aligns with strategy watchlist symbols */
+.watchlist-ltp-bar {
+  gap: 0;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.watchlist-ltp-bar-heading {
+  flex-shrink: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--text-muted);
+  padding-right: 1rem;
+  margin-right: 1rem;
+  border-right: 1px solid var(--border-glass);
+  font-family: var(--font-mono);
+}
+
+.watchlist-ltp-bar-items {
+  display: flex;
+  align-items: center;
+  gap: 2.5rem;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
 }
 
 /* Navbar */
@@ -332,7 +363,7 @@ body::after {
   border: 1px solid var(--border-glass);
   border-radius: 1rem;
   overflow: visible; /* Changed from hidden to avoid cutting content */
-  box-shadow: 
+  box-shadow:
     0 4px 6px -1px rgba(0, 0, 0, 0.1),
     0 20px 40px -8px rgba(0, 0, 0, 0.4),
     inset 0 1px 1px rgba(255, 255, 255, 0.05);
@@ -343,7 +374,7 @@ body::after {
 
 .terminal-section:hover {
   border-color: var(--border-accent);
-  box-shadow: 
+  box-shadow:
     0 0 20px rgba(0, 229, 255, 0.05),
     0 20px 40px -8px rgba(0, 0, 0, 0.5);
 }
@@ -1178,7 +1209,6 @@ td {
 .catalog-page {
   padding: 2.5rem;
   max-width: 1400px;
-  margin: 0 auto;
 }
 
 .catalog-header {
@@ -1193,6 +1223,167 @@ td {
   font-size: 1.5rem;
   letter-spacing: 2px;
   margin: 0 0 0.5rem 0;
+}
+
+/* Admin settings: stacked group panels */
+.admin-settings-runtime-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+  padding: 0 0.15rem;
+}
+
+.admin-settings-runtime-title {
+  margin: 0;
+  font-family: var(--font-header);
+  font-size: 1.15rem;
+  letter-spacing: 2px;
+}
+
+.admin-settings-panel-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+
+.admin-settings-panel-span-full {
+  flex: 1 1 100%;
+  width: 100%;
+}
+
+/* Panels size to their table (content width); wrap on small viewports. */
+.admin-settings-group-panel {
+  flex: 0 1 auto;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.admin-settings-group-panel .section-header h2 {
+  font-size: 1rem;
+  letter-spacing: 1.5px;
+}
+
+/* Avoid stretching columns across a forced 100% width — let KEY/TYPE size to content, VALUE keeps room. */
+.admin-settings-group-panel .table-wrapper table {
+  width: max-content;
+  max-width: 100%;
+}
+
+.admin-settings-group-panel th:nth-child(1),
+.admin-settings-group-panel td:nth-child(1) {
+  white-space: nowrap;
+}
+
+.admin-settings-group-panel th:nth-child(2),
+.admin-settings-group-panel td:nth-child(2) {
+  white-space: nowrap;
+  width: 1%;
+}
+
+.admin-settings-group-panel th:nth-child(3),
+.admin-settings-group-panel td:nth-child(3) {
+  min-width: 12rem;
+}
+
+.admin-settings-group-panel th:nth-child(4),
+.admin-settings-group-panel td:nth-child(4) {
+  white-space: nowrap;
+  width: 1%;
+}
+
+.setting-type-select {
+  padding: 0.45rem 0.75rem;
+  max-width: 130px;
+}
+
+.setting-type-badge {
+  display: inline-block;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-glass);
+  border-radius: 4px;
+}
+
+.setting-value-select,
+.setting-value-number,
+.setting-value-text {
+  padding: 0.45rem 0.75rem;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.setting-value-select {
+  min-width: 10rem;
+}
+
+.setting-toggle-track {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.2rem 0.35rem 0.2rem 0.2rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.setting-toggle-track:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.setting-toggle-thumb {
+  position: relative;
+  width: 2.6rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border-glass);
+  flex-shrink: 0;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.setting-toggle-thumb::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(50% - 4px);
+  height: calc(100% - 4px);
+  border-radius: 50%;
+  background: var(--text-main);
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.setting-toggle-track--on .setting-toggle-thumb {
+  background: rgba(0, 255, 136, 0.2);
+  border-color: rgba(0, 255, 136, 0.35);
+}
+
+.setting-toggle-track--on .setting-toggle-thumb::after {
+  transform: translateX(100%);
+}
+
+.setting-toggle-label {
+  min-width: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.setting-toggle-track--on .setting-toggle-label {
+  color: var(--success);
 }
 
 .catalog-controls {

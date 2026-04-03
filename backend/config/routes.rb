@@ -1,4 +1,6 @@
 Rails.application.routes.draw do
+  mount ActionCable.server => "/cable"
+
   namespace :api do
     get "dashboard" => "dashboard#index"
     post "dashboard/paper_risk_override" => "dashboard#paper_risk_override"

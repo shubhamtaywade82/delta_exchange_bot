@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useLiveLtp } from './liveLtp/LiveLtpProvider';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 import Navbar from './components/Navbar';
@@ -10,12 +11,7 @@ import OperationalStatePage from './pages/OperationalStatePage';
 import CatalogPage from './pages/CatalogPage';
 import AdminSettingsPage from './pages/AdminSettingsPage';
 import AnalysisDashboardPage from './pages/AnalysisDashboardPage';
-
-interface TickerData {
-  symbol: string;
-  price: number;
-  change?: number;
-}
+import { FlashValue } from './components/common/FlashValue';
 
 interface SymbolState {
   symbol: string;
@@ -28,22 +24,41 @@ function trendArrow(trend?: string) {
   return trend === 'rising' || trend === 'bullish' ? '▲' : '▼';
 }
 
-function TickerBar({ tickers }: { tickers: TickerData[] }) {
+/** Between DELTA_BOT header and derivatives (OI/FUND). Uses strategy symbol list + dashboard ltp:SYMBOL cache. */
+function WatchlistLtpBar({
+  symbols,
+  ltpBySymbol,
+}: {
+  symbols: SymbolState[];
+  ltpBySymbol: Record<string, number>;
+}) {
+  if (symbols.length === 0) return null;
+
   return (
-    <div className="ticker-bar">
-      {tickers.map(data => {
-        return (
-          <div key={data.symbol} className="ticker-item">
-            <span className="symbol">{data.symbol.replace('USDT', '').replace('USD', '')}</span>
-            <span className={`price ${data.price ? 'pop' : ''}`}>{formatUsd(data.price)}</span>
-            <span className={`change ${(data.change ?? 0) >= 0 ? 'pos' : 'neg'}`}>
-              {data.change != null && Number.isFinite(data.change)
-                ? `${data.change > 0 ? '+' : ''}${formatDisplayDecimal(data.change)}%`
-                : '--'}
-            </span>
-          </div>
-        );
-      })}
+    <div
+      className="ticker-bar watchlist-ltp-bar"
+      role="region"
+      aria-label="Watchlist last traded prices"
+    >
+      <div className="watchlist-ltp-bar-heading">LTP</div>
+      <div className="watchlist-ltp-bar-items">
+        {symbols.map(s => {
+          const ltp = ltpBySymbol[s.symbol];
+          const hasLtp = ltp != null && Number.isFinite(ltp) && ltp > 0;
+          return (
+            <div key={s.symbol} className="ticker-item">
+              <span className="symbol">{s.symbol.replace('USDT', '').replace('USD', '')}</span>
+              <FlashValue
+                value={ltp}
+                className="price"
+                title="Last traded price (Rails cache ltp:SYMBOL; written by market feed / runner)"
+              >
+                {hasLtp ? formatUsd(ltp) : '--'}
+              </FlashValue>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -72,7 +87,8 @@ function DerivativesStrip({ symbols }: { symbols: SymbolState[] }) {
 }
 
 const App: React.FC = () => {
-  const [tickers, setTickers] = useState<TickerData[]>([]);
+  const liveLtp = useLiveLtp();
+  const [ltpBySymbol, setLtpBySymbol] = useState<Record<string, number>>({});
   const [symbols, setSymbols] = useState<SymbolState[]>([]);
   const [shellLatencyMs, setShellLatencyMs] = useState<number | null>(null);
   const [shellStats, setShellStats] = useState<BotStatusBarProps['stats']>(null);
@@ -92,12 +108,15 @@ const App: React.FC = () => {
         setShellOperationalState(dash.operational_state ?? null);
 
         if (dash.market) {
-          const newTickers = dash.market.map((m: { symbol: string; price?: number }) => ({
-            symbol: m.symbol,
-            price: m.price || 0.0,
-            change: (Math.random() - 0.5) * 5,
-          }));
-          setTickers(newTickers);
+          const ltpMap: Record<string, number> = {};
+          (dash.market as { symbol: string; price?: number }[]).forEach(m => {
+            if (!m.symbol) return;
+            const p = Number(m.price);
+            ltpMap[m.symbol] = Number.isFinite(p) ? p : 0;
+          });
+          setLtpBySymbol(ltpMap);
+        } else {
+          setLtpBySymbol({});
         }
 
         const { data: strat } = await axios.get('/api/strategy_status');
@@ -112,6 +131,11 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const mergedLtpBySymbol = useMemo(
+    () => ({ ...ltpBySymbol, ...liveLtp }),
+    [ltpBySymbol, liveLtp]
+  );
+
   return (
     <BrowserRouter>
       <div className="terminal-container">
@@ -122,7 +146,7 @@ const App: React.FC = () => {
           executionHealth={shellExecutionHealth}
           operationalState={shellOperationalState}
         />
-        <TickerBar tickers={tickers} />
+        <WatchlistLtpBar symbols={symbols} ltpBySymbol={mergedLtpBySymbol} />
         <DerivativesStrip symbols={symbols} />
         <Navbar />
         <Routes>

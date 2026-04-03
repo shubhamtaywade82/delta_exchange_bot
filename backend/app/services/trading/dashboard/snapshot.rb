@@ -3,7 +3,7 @@
 module Trading
   module Dashboard
     class Snapshot
-      USD_INR_FOR_DISPLAY = 85.0
+      USD_INR_FALLBACK = 85.0
       BROKER_TRADES_LIMIT_DEFAULT = 500
       BROKER_TRADES_LIMIT_MAX = 2000
 
@@ -17,6 +17,13 @@ module Trading
         @trades_limit_raw = trades_limit
       end
 
+      def display_usd_inr_rate
+        rate = Bot::Config.load.usd_to_inr_rate.to_f
+        return rate if rate.positive?
+
+        USD_INR_FALLBACK
+      end
+
       def to_h
         running_session = resolve_running_session
         active_positions = dashboard_active_positions(running_session)
@@ -24,12 +31,19 @@ module Trading
         wallet = load_wallet_for_dashboard(portfolio: portfolio, positions: active_positions)
         market = build_market_rows
         trade_totals = Trade.dashboard_pnl_totals
-        realized_pnl_usd = dashboard_realized_pnl_usd(running_session, trade_totals)
+        inr_rate = display_usd_inr_rate
+        paper_strict_realized =
+          paper_session?(running_session) ? paper_session_realized_usd_strict(running_session) : nil
+        realized_display_usd = dashboard_realized_display_usd(
+          running_session,
+          trade_totals,
+          strict_usd: paper_strict_realized
+        )
         ledger_equity_usd = dashboard_ledger_equity_usd(
           wallet: wallet,
           portfolio: portfolio,
           running_session: running_session,
-          realized_pnl_usd: realized_pnl_usd
+          realized_pnl_usd: paper_strict_realized || realized_display_usd
         )
         kpi_totals = dashboard_kpi_trade_totals(running_session, trade_totals)
         daily_pnl = kpi_totals[:daily_pnl].round(2)
@@ -49,12 +63,12 @@ module Trading
         )
 
         {
-          positions: active_positions.map { |p| position_payload(p) },
+          positions: active_positions.map { |p| position_payload(p, inr_rate: inr_rate) },
           positions_meta: {
             as_of_date: calendar_day_string,
             count: active_positions.size
           },
-          trades: trade_rows.map { |t| trade_payload(t) },
+          trades: trade_rows.map { |t| trade_payload(t, inr_rate: inr_rate) },
           trades_calendar_days: trade_calendar_days,
           trades_meta: {
             total_count: trades_total,
@@ -63,10 +77,10 @@ module Trading
           },
           wallet: wallet,
           stats: {
-            total_pnl_usd: realized_pnl_usd,
-            total_pnl_inr: (realized_pnl_usd * USD_INR_FOR_DISPLAY).round(0),
+            total_pnl_usd: realized_display_usd,
+            total_pnl_inr: (realized_display_usd * inr_rate).round(0),
             total_equity_usd: ledger_equity_usd,
-            total_equity_inr: (ledger_equity_usd * USD_INR_FOR_DISPLAY).round(0),
+            total_equity_inr: (ledger_equity_usd * inr_rate).round(0),
             win_rate: win_rate,
             daily_pnl: daily_pnl,
             weekly_pnl: weekly_pnl,
@@ -81,12 +95,9 @@ module Trading
 
       private
 
-      # Paper + running session: +PortfolioLedgerEntry+ when present; else balance delta vs session seed;
-      # else +Trade+ rows for this portfolio; else legacy +Trade+ rows since +session.started_at+ (nil
-      # +portfolio_id+) so the status bar matches TRADE_HISTORY when fills never hit the ledger.
-      def dashboard_realized_pnl_usd(running_session, trade_totals)
-        return trade_totals[:total_realized].round(2) unless paper_session?(running_session)
-
+      # Strict paper realized: ledger, balance delta vs seed, then session-scoped +Trade+ rows only.
+      # Used for headline equity (synthetic seed + realized) so wallet cash stays authoritative when strict is ~0.
+      def paper_session_realized_usd_strict(running_session)
         pid = running_session.portfolio_id
         if PortfolioLedgerEntry.where(portfolio_id: pid).exists?
           return PortfolioLedgerEntry.where(portfolio_id: pid).sum(:realized_pnl_delta).to_f.round(2)
@@ -98,6 +109,20 @@ module Trading
         return delta_balance.round(2).to_f if delta_balance.abs >= BigDecimal("0.005")
 
         Trade.sum_effective_pnl_usd(paper_session_broker_trades_scope(running_session)).round(2)
+      end
+
+      # Status-bar TOTAL_PNL: same as strict when that is non-zero; else today’s broker-settled sum so
+      # KPIs align with the default TRADE_HISTORY day when trades carry another session’s +portfolio_id+.
+      def dashboard_realized_display_usd(running_session, trade_totals, strict_usd:)
+        return trade_totals[:total_realized].round(2) unless paper_session?(running_session)
+
+        strict = strict_usd
+        return strict if strict.abs >= BigDecimal("0.005")
+
+        day_sum = Trade.sum_effective_pnl_usd(broker_settled_trades_today_scope)
+        return day_sum.round(2) if day_sum.abs >= BigDecimal("0.005")
+
+        strict
       end
 
       def paper_session_broker_trades_scope(running_session)
@@ -112,7 +137,14 @@ module Trading
       def dashboard_kpi_trade_totals(running_session, global_totals)
         return global_totals unless paper_session?(running_session)
 
-        Trade.dashboard_pnl_totals_for_scope(paper_session_broker_trades_scope(running_session))
+        scoped = paper_session_broker_trades_scope(running_session)
+        scoped_totals = Trade.dashboard_pnl_totals_for_scope(scoped)
+        return scoped_totals if scoped_totals[:trade_count].positive?
+
+        day_totals = Trade.dashboard_pnl_totals_for_scope(broker_settled_trades_today_scope)
+        return day_totals if day_totals[:trade_count].positive?
+
+        scoped_totals
       end
 
       def paper_session?(running_session)
@@ -286,6 +318,10 @@ module Trading
              .where.not(closed_at: nil)
       end
 
+      def broker_settled_trades_today_scope
+        broker_settled_trades_scope.where(closed_at: Time.zone.today.all_day)
+      end
+
       def trades_day_value
         raw = @trades_day_raw.to_s.strip
         return Time.zone.today if raw.blank?
@@ -310,7 +346,7 @@ module Trading
         [limit, BROKER_TRADES_LIMIT_MAX].min
       end
 
-      def trade_payload(trade)
+      def trade_payload(trade, inr_rate:)
         pnl_usd = trade.effective_pnl_usd.to_f
         {
           symbol: trade.symbol,
@@ -319,12 +355,12 @@ module Trading
           entry_price: trade.entry_price,
           exit_price: trade.exit_price,
           pnl_usd: pnl_usd,
-          pnl_inr: (pnl_usd * USD_INR_FOR_DISPLAY).round(0),
+          pnl_inr: (pnl_usd * inr_rate).round(0),
           timestamp: trade.closed_at
         }
       end
 
-      def position_payload(position)
+      def position_payload(position, inr_rate:)
         entry_price = round_price_for_json(position.entry_price)
         mark = round_price_for_json(Rails.cache.read("ltp:#{position.symbol}")) || entry_price
         unrealized_usd = unrealized_pnl_usd(position: position, mark: mark).round(2)
@@ -338,7 +374,7 @@ module Trading
           mark_price: mark,
           opened_at: opened_at&.iso8601,
           unrealized_pnl: unrealized_usd,
-          unrealized_pnl_inr: (unrealized_usd * USD_INR_FOR_DISPLAY).round(0),
+          unrealized_pnl_inr: (unrealized_usd * inr_rate).round(0),
           unrealized_pnl_pct: unrealized_pnl_pct(position, unrealized_usd),
           leverage: position.leverage,
           status: position.status
@@ -380,13 +416,47 @@ module Trading
       end
 
       def build_market_rows
-        SymbolConfig.where(enabled: true).map do |config|
+        # Use unified watchlist from Bot::Config (merges DB + bot.yml)
+        Bot::Config.load.symbols.map do |s|
+          config = SymbolConfig.find_or_initialize_by(symbol: s[:symbol])
           {
-            symbol: config.symbol,
-            price: Rails.cache.read("ltp:#{config.symbol}")&.to_f || 0.0,
-            leverage: config.leverage
+            symbol: s[:symbol],
+            price: resolve_dashboard_mark_price(config),
+            leverage: config.leverage || s[:leverage]
           }
         end
+      end
+
+      # Live path: Rails.cache ltp:SYMBOL (WsClient / Runner, 30s TTL). Same-process dev MemoryStore
+      # misses cross-process; PriceStore uses Redis.current (aligned with cache DB in development).
+      # Then paper broker Redis LTP, then catalog sync columns when REST/catalog last ran.
+      def resolve_dashboard_mark_price(config)
+        sym = config.symbol
+        raw_ltp = Rails.cache.read("ltp:#{sym}")
+        p = raw_ltp.nil? ? 0.0 : raw_ltp.to_f
+        return round_market_price(p) if p.positive?
+
+        raw_ps = Bot::Feed::PriceStore.new.get(sym)
+        p = raw_ps.nil? ? 0.0 : raw_ps.to_f
+        return round_market_price(p) if p.positive?
+
+        if config.product_id.present?
+          pr = ::PaperTrading::RedisStore.get_ltp(config.product_id)
+          p = pr&.to_f
+          return round_market_price(p) if p&.positive?
+        end
+
+        p = config.last_mark_price&.to_f
+        return round_market_price(p) if p&.positive?
+
+        p = config.last_close_price&.to_f
+        return round_market_price(p) if p&.positive?
+
+        0.0
+      end
+
+      def round_market_price(value)
+        value.to_d.round(8).to_f
       end
 
       def build_signal_activity

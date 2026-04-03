@@ -207,7 +207,16 @@ module Bot
                end
 
         unless side
-          Bot::StructuredLog.log(@logger, :info, "strategy_skip", symbol: symbol, reason: "no_confluence")
+          Bot::StructuredLog.log(
+            @logger,
+            :info,
+            "strategy_skip",
+            symbol: symbol,
+            reason: "no_confluence",
+            h1: h1_dir,
+            m15: m15_dir,
+            m5: entry_last_dir
+          )
           return nil
         end
 

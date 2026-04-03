@@ -6,7 +6,7 @@ RSpec.describe Bot::Feed::PriceStore do
   subject(:store) { described_class.new }
 
   before do
-    r = Redis.new
+    r = Redis.current
     r.keys("#{described_class::REDIS_KEY_PREFIX}*").each { |k| r.del(k) }
   end
 

@@ -12,7 +12,7 @@ module Bot
           vwap_val    = vwap_result[:vwap]
 
           if side == :long
-            unless cvd_trend == :bullish
+            if cvd_trend == :bearish
               res = { passed: false, reason: "CVD #{cvd_trend} — does not support long entry" }
               Bot::StructuredLog.log(logger, :info, "filter_skip_volume", **res)
               return res
@@ -23,7 +23,7 @@ module Bot
               return res
             end
           else
-            unless cvd_trend == :bearish
+            if cvd_trend == :bullish
               res = { passed: false, reason: "CVD #{cvd_trend} — does not support short entry" }
               Bot::StructuredLog.log(logger, :info, "filter_skip_volume", **res)
               return res

@@ -50,6 +50,12 @@ module Trading
 
         raw = Ai::OllamaClient.ask(prompt)
         parse_model_json(raw)
+      rescue Timeout::Error
+        Rails.logger.warn(
+          "[AiSmcSynthesizer] #{symbol}: Ollama timed out (increase ai.ollama_timeout_seconds or " \
+          "OLLAMA_TIMEOUT_SECONDS; ensure `ollama serve` is running and the model is pulled)."
+        )
+        nil
       rescue StandardError => e
         Rails.logger.warn("[AiSmcSynthesizer] #{symbol}: #{e.message}")
         nil

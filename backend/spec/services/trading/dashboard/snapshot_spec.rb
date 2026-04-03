@@ -49,6 +49,27 @@ RSpec.describe Trading::Dashboard::Snapshot do
         expect(session.portfolio_id).to be_present
       end
 
+      it "falls back to today settled trades for TOTAL_PNL and KPIs when no rows match the session portfolio" do
+        session = create(:trading_session, status: "running", capital: "1000.0")
+        other = create(:portfolio)
+        create(
+          :trade,
+          portfolio: other,
+          symbol: "BTCUSD",
+          side: "short",
+          pnl_usd: 12.0,
+          closed_at: Time.current,
+          strategy: "multi_timeframe",
+          regime: "trending"
+        )
+
+        payload = described_class.call(calendar_day: nil, trades_day: nil, trades_limit: nil)
+
+        expect(session.portfolio_id).to be_present
+        expect(payload[:stats][:total_pnl_usd]).to eq(12.0)
+        expect(payload[:stats][:win_rate]).to eq(100.0)
+      end
+
       it "keeps WIN_RATE on the same broker-settled session scope as TOTAL_PNL" do
         session = create(:trading_session, status: "running")
         create(:trade, pnl_usd: -100.0, closed_at: 1.day.ago)

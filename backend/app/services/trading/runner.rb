@@ -50,6 +50,8 @@ module Trading
     end
 
     def bootstrap!
+      ensure_symbols_configured!
+
       if PaperTrading.enabled?
         Rails.logger.info("[Runner] Paper mode — skipping exchange position/order bootstrap")
         return
@@ -57,6 +59,21 @@ module Trading
 
       Bootstrap::SyncPositions.call(client: @client)
       Bootstrap::SyncOrders.call(client: @client, session: @session)
+    end
+
+    def ensure_symbols_configured!
+      config = Bot::Config.load
+      config.symbols.each do |s|
+        row = SymbolConfig.find_or_initialize_by(symbol: s[:symbol])
+        row.leverage = s[:leverage] if row.new_record? || row.leverage.nil?
+        row.enabled = true
+        row.save!
+      end
+
+      # Immediate sync so dashboard has data before first WS tick
+      Trading::Delta::ProductCatalogSync.sync_all!
+    rescue StandardError => e
+      Rails.logger.warn("[Runner] ensure_symbols_configured failed: #{e.message}")
     end
 
     def register_event_handlers!
@@ -72,7 +89,7 @@ module Trading
     end
 
     def start_ws!
-      symbols  = SymbolConfig.where(enabled: true).pluck(:symbol)
+      symbols  = Bot::Config.load.symbol_names
       testnet  = @session.strategy.include?("testnet") || ENV["DELTA_TESTNET"] == "true"
 
       @ws_thread = Thread.new do
@@ -114,8 +131,8 @@ module Trading
 
     def run_strategy
       pass_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      symbols = SymbolConfig.where(enabled: true).pluck(:symbol)
       config  = Bot::Config.load
+      symbols = config.symbol_names
 
       # MTF entries only — independent of Trading::Analysis::DigestBuilder / Ollama (analysis dashboard job).
       # Reuse the migrated strategy logic which fetches OHLCV from API
@@ -280,7 +297,7 @@ module Trading
     end
 
     def notify_startup_status
-      symbols = SymbolConfig.where(enabled: true).pluck(:symbol).join(", ")
+      symbols = Bot::Config.load.symbol_names.join(", ")
       paper = PaperTrading.enabled? ? "paper" : "live"
       TelegramNotifications.deliver do |n|
         n.notify_status(

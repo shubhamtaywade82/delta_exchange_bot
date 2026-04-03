@@ -24,6 +24,13 @@ RSpec.describe Ai::OllamaClient do
         else ""
         end
       end
+      allow(Trading::RuntimeConfig).to receive(:fetch_integer) do |k, **_opts|
+        case k
+        when "ai.ollama_timeout_seconds" then 90
+        when "ai.ollama_max_retries" then 2
+        else 0
+        end
+      end
       allow(Trading::RuntimeConfig).to receive(:fetch_boolean)
         .with("ai.ollama_force_local", hash_including(default: false, env_key: "OLLAMA_FORCE_LOCAL"))
         .and_return(force_local)

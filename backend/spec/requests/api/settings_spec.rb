@@ -11,6 +11,8 @@ RSpec.describe "Api::Settings", type: :request do
     expect(payload).to be_an(Array)
     expect(payload.first["key"]).to eq("risk.max_concurrent_positions")
     expect(payload.first["typed_value"]).to eq(7)
+    expect(payload.first["ui"]).to be_a(Hash)
+    expect(payload.first["ui"]["widget"]).to eq("number")
   end
 
   it "updates setting and refreshes runtime cache" do

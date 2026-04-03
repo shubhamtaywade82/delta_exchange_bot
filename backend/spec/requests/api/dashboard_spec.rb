@@ -21,6 +21,7 @@ RSpec.describe "Api::Dashboard", type: :request do
       allow(Bot::Execution::IncidentStore).to receive(:recent).and_return([])
       allow(Trading::PaperTrading).to receive(:enabled?).and_return(false)
       SymbolConfig.create!(symbol: "BTCUSD", leverage: 10, enabled: true)
+      Redis.current.scan_each(match: "#{Bot::Feed::PriceStore::REDIS_KEY_PREFIX}*") { |k| Redis.current.del(k) }
     end
 
     it "uses calendar_day for positions_meta (client local day, not server UTC drift)" do
@@ -122,6 +123,27 @@ RSpec.describe "Api::Dashboard", type: :request do
       expect(act["last_rejection"]["error_message"]).to eq("kill switch: exposure cap reached")
     end
 
+    it "includes market price from PriceStore when ltp cache key is absent" do
+      Bot::Feed::PriceStore.new.update("BTCUSD", 41_111.5)
+
+      get "/api/dashboard"
+
+      row = JSON.parse(response.body)["market"].find { |m| m["symbol"] == "BTCUSD" }
+      expect(row["price"]).to eq(41_111.5)
+    end
+
+    it "falls back to symbol_configs.last_mark_price when cache and price store are empty" do
+      SymbolConfig.find_by!(symbol: "BTCUSD").update!(
+        last_mark_price: 77_777.25,
+        last_close_price: nil
+      )
+
+      get "/api/dashboard"
+
+      row = JSON.parse(response.body)["market"].find { |m| m["symbol"] == "BTCUSD" }
+      expect(row["price"]).to eq(77_777.25)
+    end
+
     it "includes unrealized_pnl_inr and unrealized_pnl_pct aligned with cached LTP" do
       create(:position,
              symbol: "BTCUSD",
@@ -132,7 +154,6 @@ RSpec.describe "Api::Dashboard", type: :request do
              leverage: 10,
              margin: 10.0)
       Rails.cache.write("ltp:BTCUSD", 99.0)
-      allow(Redis).to receive(:new).and_return(instance_double(Redis, get: nil))
 
       get "/api/dashboard"
 
@@ -159,7 +180,6 @@ RSpec.describe "Api::Dashboard", type: :request do
              leverage: 10,
              margin: 100.0)
       Rails.cache.write("ltp:BTCUSD", 50_000.0)
-      allow(Redis).to receive(:new).and_return(instance_double(Redis, get: nil))
 
       get "/api/dashboard"
 
@@ -180,7 +200,6 @@ RSpec.describe "Api::Dashboard", type: :request do
              margin: 67.0,
              contract_value: nil)
       Rails.cache.write("ltp:BTCUSD", 66_955.0)
-      allow(Redis).to receive(:new).and_return(instance_double(Redis, get: nil))
 
       get "/api/dashboard"
 
@@ -202,7 +221,6 @@ RSpec.describe "Api::Dashboard", type: :request do
              margin: 67.0,
              contract_value: 0.001)
       Rails.cache.write("ltp:BTCUSD", 66_816.9)
-      allow(Redis).to receive(:new).and_return(instance_double(Redis, get: nil))
 
       get "/api/dashboard"
 
@@ -227,7 +245,6 @@ RSpec.describe "Api::Dashboard", type: :request do
     end
 
     it "lists only broker-settled trades with a symbol and supports day filter" do
-      allow(Redis).to receive(:new).and_return(instance_double(Redis, get: nil))
       day = Date.new(2026, 3, 31)
       create(:trade, symbol: "ETHUSD", side: "long", closed_at: day.in_time_zone.change(hour: 12),
              strategy: "multi_timeframe", regime: "trending", pnl_usd: 1.0)
@@ -245,7 +262,6 @@ RSpec.describe "Api::Dashboard", type: :request do
     end
 
     it "defaults trade history to the current day when trades_day is omitted" do
-      allow(Redis).to receive(:new).and_return(instance_double(Redis, get: nil))
       day = Date.new(2026, 3, 31)
       travel_to day.in_time_zone.change(hour: 12) do
         create(:trade, symbol: "ETHUSD", side: "long", closed_at: day.in_time_zone.change(hour: 8),
@@ -262,7 +278,6 @@ RSpec.describe "Api::Dashboard", type: :request do
     end
 
     it "infers trade history PnL from entry and exit when stored pnl_usd is zero" do
-      allow(Redis).to receive(:new).and_return(instance_double(Redis, get: nil))
       day = Date.new(2026, 3, 31)
       travel_to day.in_time_zone.change(hour: 12) do
         create(:trade,
@@ -295,7 +310,6 @@ RSpec.describe "Api::Dashboard", type: :request do
              leverage: 10,
              entry_time: 3.days.ago)
       Rails.cache.write("ltp:BTCUSD", 66_979.0)
-      allow(Redis).to receive(:new).and_return(instance_double(Redis, get: nil))
 
       get "/api/dashboard"
 

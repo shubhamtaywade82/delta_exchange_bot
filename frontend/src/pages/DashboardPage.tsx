@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
+import { useLiveLtp } from '../liveLtp/LiveLtpProvider';
 import {
   Wallet,
   History,
@@ -16,6 +17,7 @@ import {
   formatUsd,
   sideBadgeMeta,
 } from '../utils/tradingDisplay';
+import { FlashValue } from '../components/common/FlashValue';
 
 
 interface FilterResult {
@@ -131,7 +133,9 @@ function SignalQualityPanel({ sym }: { sym: SymbolState }) {
         <div className="analysis-item">
           <label>MOMENTUM</label>
           <div className="item-content">
-            <span className="value">RSI {sym.rsi != null ? formatDisplayDecimal(sym.rsi) : '--'}</span>
+            <span className="value">
+              RSI <FlashValue value={sym.rsi}>{sym.rsi != null ? formatDisplayDecimal(sym.rsi) : '--'}</FlashValue>
+            </span>
             {filterBadge(allFilters?.momentum)}
           </div>
         </div>
@@ -139,9 +143,13 @@ function SignalQualityPanel({ sym }: { sym: SymbolState }) {
           <label>VOLUME</label>
           <div className="item-content">
             <span className="value">
-              {sym.cvd_trend ? `${trendArrow(sym.cvd_trend)} ${formatDisplayDecimal(sym.cvd_delta ?? 0)}` : '--'}
+              <FlashValue value={`${sym.cvd_trend}-${sym.cvd_delta}`}>
+                {sym.cvd_trend ? `${trendArrow(sym.cvd_trend)} ${formatDisplayDecimal(sym.cvd_delta ?? 0)}` : '--'}
+              </FlashValue>
               <span className="divider">|</span>
-              {formatDisplayDecimal(sym.vwap_deviation_pct ?? 0)}%
+              <FlashValue value={sym.vwap_deviation_pct}>
+                {formatDisplayDecimal(sym.vwap_deviation_pct ?? 0)}%
+              </FlashValue>
             </span>
             {filterBadge(allFilters?.volume)}
           </div>
@@ -150,9 +158,11 @@ function SignalQualityPanel({ sym }: { sym: SymbolState }) {
           <label>DERIVATIVES</label>
           <div className="item-content">
             <span className="value">
-              OI {sym.oi_usd ? `$${formatDisplayDecimal(sym.oi_usd / 1_000_000)}M` : '--'}
+              OI <FlashValue value={sym.oi_usd}>{sym.oi_usd ? `$${formatDisplayDecimal(sym.oi_usd / 1_000_000)}M` : '--'}</FlashValue>
               <span className="divider">|</span>
-              {formatDisplayDecimal((sym.funding_rate ?? 0) * 100)}%
+              <FlashValue value={sym.funding_rate}>
+                {formatDisplayDecimal((sym.funding_rate ?? 0) * 100)}%
+              </FlashValue>
             </span>
             {filterBadge(allFilters?.derivatives)}
           </div>
@@ -176,6 +186,7 @@ function SignalQualityPanel({ sym }: { sym: SymbolState }) {
 // Dashboard Specific UI Components below
 
 const DashboardPage: React.FC = () => {
+  const liveLtp = useLiveLtp();
   const [positions, setPositions] = useState<any[]>([]);
   const [trades, setTrades] = useState<any[]>([]);
   const [strategyStatus, setStrategyStatus] = useState<StrategyStatus | null>(null);
@@ -284,9 +295,11 @@ const DashboardPage: React.FC = () => {
                           <td><span className={`dir-badge ${sym.h1_dir || 'neutral'}`}>{sym.h1_dir?.toUpperCase() || '---'}</span></td>
                           <td><span className={`dir-badge ${sym.m15_dir || 'neutral'}`}>{sym.m15_dir?.toUpperCase() || '---'}</span></td>
                           <td>
-                            <span className="font-mono" style={{ color: (sym.adx ?? 0) > 20 ? 'var(--primary)' : 'var(--text-muted)' }}>
-                              {formatDisplayDecimal(sym.adx ?? 0)}
-                            </span>
+                            <FlashValue value={sym.adx}>
+                              <span className="font-mono" style={{ color: (sym.adx ?? 0) > 20 ? 'var(--primary)' : 'var(--text-muted)' }}>
+                                {formatDisplayDecimal(sym.adx ?? 0)}
+                              </span>
+                            </FlashValue>
                           </td>
                           <td><span className="text-dim">--</span></td>
                           <td><span className={`side-badge ${sym.signal ? 'long' : 'none'}`}>{sym.signal?.toUpperCase() || 'NONE'}</span></td>
@@ -427,7 +440,11 @@ const DashboardPage: React.FC = () => {
                             })
                           : "--"}
                       </td>
-                      <td className="font-mono">{formatQuotePrice(p.mark_price)}</td>
+                      <td className="font-mono">
+                        <FlashValue value={liveLtp[p.symbol] ?? p.mark_price}>
+                          {formatQuotePrice(liveLtp[p.symbol] ?? p.mark_price)}
+                        </FlashValue>
+                      </td>
                       <td className="font-mono">{formatDisplayDecimal(p.size)}</td>
                       <td className="font-mono text-zinc-400">{p.leverage}x</td>
                       <td
