@@ -100,7 +100,13 @@ module Trading
       Redis.current.set(Bot::Account::CapitalManager::REDIS_KEY, data.to_json)
       data
     rescue StandardError => e
-      Rails.logger.warn("[PaperWalletPublisher] Redis persist failed: #{e.message}")
+      HotPathErrorPolicy.log_swallowed_error(
+        component: "PaperWalletPublisher",
+        operation: "persist_portfolio_payload",
+        error:     e,
+        log_level: :warn,
+        portfolio_id: portfolio.id
+      )
       nil
     end
 
@@ -177,7 +183,13 @@ module Trading
       Redis.current.set(Bot::Account::CapitalManager::REDIS_KEY, data.to_json)
       data
     rescue StandardError => e
-      Rails.logger.warn("[PaperWalletPublisher] Redis persist failed: #{e.message}")
+      HotPathErrorPolicy.log_swallowed_error(
+        component: "PaperWalletPublisher",
+        operation: "write_delta_wallet_state_from_paper_wallet",
+        error:     e,
+        log_level: :warn,
+        paper_wallet_id: wallet.id
+      )
       nil
     end
 
@@ -196,7 +208,14 @@ module Trading
       Position.active_for_portfolio(portfolio.id).find_each do |position|
         Trading::PositionRecalculator.call(position.id)
       rescue StandardError => e
-        Rails.logger.warn("[PaperWalletPublisher] PositionRecalculator failed position_id=#{position.id}: #{e.message}")
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "PaperWalletPublisher",
+          operation: "reconcile_position_margins_if_insolvent!",
+          error:     e,
+          log_level: :warn,
+          position_id: position.id,
+          portfolio_id: portfolio.id
+        )
       end
     end
 

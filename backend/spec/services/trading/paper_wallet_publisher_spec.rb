@@ -10,6 +10,36 @@ RSpec.describe Trading::PaperWalletPublisher do
       expect(described_class.wallet_snapshot!).to be_nil
     end
 
+    it "returns nil and reports when Redis write fails (portfolio path)" do
+      allow(Trading::PaperTrading).to receive(:enabled?).and_return(true)
+      allow(Bot::Config).to receive(:load).and_return(
+        double("Config", usd_to_inr_rate: 85.0, simulated_capital_inr: 850_000.0)
+      )
+
+      session = create(:trading_session, status: "running")
+      session.portfolio.update!(
+        balance: BigDecimal("10000"),
+        available_balance: BigDecimal("10000"),
+        used_margin: 0
+      )
+
+      redis = instance_double(Redis)
+      allow(redis).to receive(:set).and_raise(Redis::BaseError, "connection refused")
+      allow(Redis).to receive(:current).and_return(redis)
+      allow(Rails.error).to receive(:report)
+
+      expect(described_class.wallet_snapshot!).to be_nil
+
+      expect(Rails.error).to have_received(:report).with(
+        instance_of(Redis::BaseError),
+        handled: true,
+        context: hash_including(
+          "component" => "PaperWalletPublisher",
+          "operation" => "persist_portfolio_payload"
+        )
+      )
+    end
+
     it "aligns spendable with equity when no active positions (no stale blocked margin)" do
       allow(Trading::PaperTrading).to receive(:enabled?).and_return(true)
       allow(Bot::Config).to receive(:load).and_return(
