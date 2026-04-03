@@ -38,7 +38,7 @@ module Trading
           lev = effective_leverage(position, session)
           margin_after = margin_for_net(calc.signed_qty, calc.avg_entry, lot_d, lev)
 
-          current_row = Position.active.find_by(portfolio_id: portfolio.id, symbol: symbol)
+          current_row = Position.active_for_portfolio(portfolio.id).find_by(symbol: symbol)
           margin_before = current_row&.margin&.to_d || 0.to_d
 
           incremental = margin_after - margin_before

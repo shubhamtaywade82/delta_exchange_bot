@@ -25,7 +25,7 @@ module Trading
     private
 
     def active_positions_for_session_portfolio
-      Position.active.where(portfolio_id: @session.portfolio_id)
+      Position.active_for_portfolio(@session.portfolio_id)
     end
 
     def check_max_concurrent_positions!

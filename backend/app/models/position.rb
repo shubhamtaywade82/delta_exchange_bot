@@ -25,6 +25,11 @@ class Position < ApplicationRecord
     where(status: %w[entry_pending partially_filled filled exit_pending open])
   }
 
+  # Active rows for one portfolio (prefer this over chaining +active+ with raw +portfolio_id+ filters).
+  scope :active_for_portfolio, lambda { |portfolio_id|
+    active.where(portfolio_id: portfolio_id)
+  }
+
   TRANSITIONS = {
     "init" => %w[entry_pending rejected],
     "entry_pending" => %w[partially_filled filled rejected],

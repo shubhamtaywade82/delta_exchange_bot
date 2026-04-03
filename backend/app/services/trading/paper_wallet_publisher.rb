@@ -193,7 +193,7 @@ module Trading
       Rails.logger.info(
         "[PaperWalletPublisher] Reconciling position margins (blocked > ledger cash) portfolio_id=#{portfolio.id}"
       )
-      Position.active.where(portfolio_id: portfolio.id).find_each do |position|
+      Position.active_for_portfolio(portfolio.id).find_each do |position|
         Trading::PositionRecalculator.call(position.id)
       rescue StandardError => e
         Rails.logger.warn("[PaperWalletPublisher] PositionRecalculator failed position_id=#{position.id}: #{e.message}")

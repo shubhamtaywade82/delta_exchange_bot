@@ -3,8 +3,11 @@
 module PositionsRepository
   # @param portfolio_id [Integer, nil] when nil, first active row for +symbol+ (legacy / tick handlers without portfolio context).
   def self.open_for(symbol, portfolio_id: nil)
-    scope = Position.active.where(symbol: symbol)
-    scope = scope.where(portfolio_id: portfolio_id) unless portfolio_id.nil?
+    scope = if portfolio_id.nil?
+              Position.active.where(symbol: symbol)
+            else
+              Position.active_for_portfolio(portfolio_id).where(symbol: symbol)
+            end
 
     scope.first
   end
@@ -47,7 +50,7 @@ module PositionsRepository
   end
 
   def self.upsert_from_order(order)
-    position = Position.active.where(portfolio_id: order.portfolio_id).find_or_initialize_by(symbol: order.symbol)
+    position = Position.active_for_portfolio(order.portfolio_id).find_or_initialize_by(symbol: order.symbol)
     position.portfolio_id = order.portfolio_id
     position.assign_attributes(
       side:        order.side.to_s == "buy" ? "long" : "short",
@@ -61,7 +64,7 @@ module PositionsRepository
   end
 
   def self.close!(symbol, portfolio_id)
-    Position.active.where(symbol: symbol, portfolio_id: portfolio_id).update_all(
+    Position.active_for_portfolio(portfolio_id).where(symbol: symbol).update_all(
       status: "closed", exit_time: Time.current
     )
   end

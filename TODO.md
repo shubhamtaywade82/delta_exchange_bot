@@ -21,6 +21,7 @@ Work through items **in priority order**, one PR-sized slice at a time.
 - [x] **P0 — Risk manager:** max concurrent positions, margin utilization, pyramiding existence check, and daily loss cap all use the **session’s portfolio** (`active_positions_for_session_portfolio` + `Trade` scoped by `portfolio_id`). **Semantic change:** rows with `trades.portfolio_id` nil no longer count toward any session’s daily loss cap (fills from `OrderHandler` / `CreditAssigner` set `portfolio_id`). Specs: `risk_manager_spec` (+ cross-portfolio isolation examples).
 - [x] **P0 — Order fill / position intent:** `PositionsRepository` now infers **open vs close** from order side + existing net side (sell closes long, buy closes short; opposite opens). Fills are **portfolio-scoped** (`open_for`, `close!`, `upsert_from_order`). `OrderHandler` snapshots the open position **before** close so `Trade` rows are created correctly. **Note:** the live WS path still runs through `FillProcessor` / `PositionRecalculator`; `OrderHandler` remains the contract for `:order_filled` if published. Specs: `spec/repositories/positions_repository_spec.rb`, `spec/services/trading/handlers/order_handler_spec.rb`.
 - [x] **P1 — Near-liquidation naming + CI script:** runner mark-price emergency exit renamed to `Trading::NearLiquidationExit` (file `near_liquidation_exit.rb`); `Trading::Risk::LiquidationGuard` unchanged (margin ratio). Specs: `near_liquidation_exit_spec.rb`. `backend/bin/ci` now runs `bundle exec rspec` after lint/security (`config/ci.rb` header documents scope).
+- [x] **P1 — `Position.active_for_portfolio`:** named scope on `Position`; portfolio-scoped queries updated in `PositionsRepository`, `EmergencyShutdown`, `RiskManager`, `PaperWalletPublisher`, `MarginAffordability`. `NearLiquidationExit` keeps a global scan (commented) and uses `find_each` for batching. Spec: `position_spec` (`active_for_portfolio`). Remaining `Position.active` uses are intentional cross-session/portfolio scans or dashboard-wide views — migrate in a later pass if needed.
 
 ---
 
@@ -91,8 +92,7 @@ Turn the 2026-04-03 repo audits into one prioritized, checkable backlog for the 
 
 ## P1 — Architecture, operations, and integration
 
-- [ ] **`Position.active` intent:** introduce explicit scopes/names (`active_positions_for_portfolio`, `all_active_positions`, `session_positions`, etc.) and migrate call-sites.  
-  - Includes: `near_liquidation_exit.rb`, `funding_monitor.rb`, `risk/entry_gates_summary.rb`, `paper_wallet_publisher.rb`, `mark_prices_pnl_job.rb`, `position_reconciliation.rb`, others found by search.
+- [ ] **`Position.active` intent (remaining):** optional follow-up — name or document **global** scans (`funding_monitor.rb`, `risk/entry_gates_summary.rb`, `mark_prices_pnl_job.rb`, `position_reconciliation.rb`, `ws_client.rb`, `dashboard/snapshot.rb`, `bootstrap/sync_positions.rb`, `risk/portfolio_snapshot.rb`, API `positions_controller`, `bot/execution/position_tracker.rb`). Portfolio-scoped paths now use `Position.active_for_portfolio` where applicable.
 
 - [ ] **`ollama-client` path dependency:** document and automate provisioning (publish, vendor, submodule, or CI checkout) so bundle matches `Gemfile` path — backlog notes CI/docs treat it unlike the `delta_exchange` path gem, so expectations should be explicit for both.  
   - Files: `backend/Gemfile`, `backend/Gemfile.lock`, `.github/workflows/ci.yml`, `.github/workflows/deploy.yml`, `.github/README.md`.

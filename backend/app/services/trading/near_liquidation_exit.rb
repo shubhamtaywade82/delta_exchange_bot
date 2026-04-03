@@ -7,7 +7,8 @@ module Trading
     BUFFER_PCT = 0.10
 
     def self.check_all(client:)
-      Position.active.each do |position|
+      # Intentionally all active rows (runner may watch multiple portfolios / sessions).
+      Position.active.find_each do |position|
         new(position, client).check!
       end
     end
