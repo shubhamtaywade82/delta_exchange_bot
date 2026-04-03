@@ -52,6 +52,25 @@ RSpec.describe Trading::HotPathErrorPolicy do
       )
     end
 
+    it "passes handled: false to the reporter when report_handled is false" do
+      error = StandardError.new("will reraise")
+      allow(Rails.logger).to receive(:error)
+      allow(Rails.error).to receive(:report)
+
+      described_class.log_swallowed_error(
+        component: "WsClient",
+        operation: "feed_loop",
+        error:     error,
+        report_handled: false
+      )
+
+      expect(Rails.error).to have_received(:report).with(
+        error,
+        handled: false,
+        context: hash_including("component" => "WsClient", "operation" => "feed_loop")
+      )
+    end
+
     it "does not raise when the error reporter fails" do
       allow(Rails.logger).to receive(:error)
       allow(Rails.logger).to receive(:warn)

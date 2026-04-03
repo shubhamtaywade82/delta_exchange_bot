@@ -5,14 +5,15 @@ module Trading
   module HotPathErrorPolicy
     class << self
       # @param log_level [:error, :warn] +:warn+ for non-critical side effects (e.g. dashboard publish).
-      def log_swallowed_error(component:, operation:, error:, log_level: :error, **context)
+      # @param report_handled [Boolean] pass +false+ when the error is re-raised after logging (e.g. WS feed loop).
+      def log_swallowed_error(component:, operation:, error:, log_level: :error, report_handled: true, **context)
         ctx = context.compact
         level = normalize_log_level(log_level)
         suffix = ctx.empty? ? "" : " #{ctx.map { |k, v| "#{k}=#{v}" }.join(' ')}"
         line = "[#{component}] #{operation} — #{error.class}: #{error.message}#{suffix}"
         Rails.logger.public_send(level, line)
         payload = { component: component, operation: operation.to_s, log_level: level.to_s }.merge(ctx)
-        Rails.error.report(error, handled: true, context: stringify_keys(payload))
+        Rails.error.report(error, handled: report_handled, context: stringify_keys(payload))
       rescue StandardError => reporting_error
         Rails.logger.warn("[#{component}] HotPathErrorPolicy report failed: #{reporting_error.message}")
       end

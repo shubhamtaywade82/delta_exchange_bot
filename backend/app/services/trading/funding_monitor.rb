@@ -38,8 +38,14 @@ module Trading
       Rails.cache.fetch("funding:#{@position.symbol}", expires_in: 5.minutes) do
         funding_rate_from_ticker
       end
-    rescue => e
-      Rails.logger.warn("[FundingMonitor] Could not fetch funding rate for #{@position.symbol}: #{e.message}")
+    rescue StandardError => e
+      HotPathErrorPolicy.log_swallowed_error(
+        component: "FundingMonitor",
+        operation: "fetch_funding_rate",
+        error:     e,
+        log_level: :warn,
+        symbol:    @position.symbol
+      )
       nil
     end
 
