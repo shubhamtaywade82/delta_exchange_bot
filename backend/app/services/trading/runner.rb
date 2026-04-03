@@ -10,6 +10,7 @@ module Trading
       @running = true
       @last_strategy_run = 0
       @last_adaptive_observed_at = {}
+      @strategy_logger = nil
     end
 
     def start
@@ -31,7 +32,26 @@ module Trading
 
     private
 
+    def strategy_session_logger
+      @strategy_logger ||= build_strategy_session_logger
+    end
+
+    def build_strategy_session_logger
+      cfg  = Bot::Config.load
+      path = Rails.root.join(cfg.log_file)
+      Bot::Notifications::StrategySessionLogger.new(
+        file: path.to_s,
+        level: cfg.log_level,
+        rails_logger: Rails.logger
+      )
+    rescue StandardError => e
+      Rails.logger.warn("[Runner] StrategySessionLogger unavailable (#{e.class}: #{e.message}); using Rails.logger only")
+      Rails.logger
+    end
+
     def bootstrap!
+      ensure_symbols_configured!
+
       if PaperTrading.enabled?
         Rails.logger.info("[Runner] Paper mode — skipping exchange position/order bootstrap")
         return
@@ -39,6 +59,21 @@ module Trading
 
       Bootstrap::SyncPositions.call(client: @client)
       Bootstrap::SyncOrders.call(client: @client, session: @session)
+    end
+
+    def ensure_symbols_configured!
+      config = Bot::Config.load
+      config.symbols.each do |s|
+        row = SymbolConfig.find_or_initialize_by(symbol: s[:symbol])
+        row.leverage = s[:leverage] if row.new_record? || row.leverage.nil?
+        row.enabled = true
+        row.save!
+      end
+
+      # Immediate sync so dashboard has data before first WS tick
+      Trading::Delta::ProductCatalogSync.sync_all!
+    rescue StandardError => e
+      Rails.logger.warn("[Runner] ensure_symbols_configured failed: #{e.message}")
     end
 
     def register_event_handlers!
@@ -54,20 +89,20 @@ module Trading
     end
 
     def start_ws!
-      symbols  = SymbolConfig.where(enabled: true).pluck(:symbol)
+      symbols  = Bot::Config.load.symbol_names
       testnet  = @session.strategy.include?("testnet") || ENV["DELTA_TESTNET"] == "true"
 
       @ws_thread = Thread.new do
         # WsClient still useful for real-time LTP/PnL in UI via PriceStore
         MarketData::WsClient.new(client: @client, symbols: symbols, testnet: testnet).start
-      rescue => e
-        Rails.logger.error("[Runner] WS thread crashed: #{e.message}")
+      rescue StandardError => e
+        Rails.logger.error("[Runner] WS thread crashed: #{e.class}: #{e.message}")
       end
     end
 
     def run_loop
       while running?
-        now = Time.now.to_i
+        now = Time.current.to_i
         if now - @last_strategy_run >= strategy_interval_seconds
           run_strategy
           @last_strategy_run = now
@@ -96,20 +131,26 @@ module Trading
 
     def run_strategy
       pass_started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      symbols = SymbolConfig.where(enabled: true).pluck(:symbol)
       config  = Bot::Config.load
+      symbols = config.symbol_names
 
+      # MTF entries only — independent of Trading::Analysis::DigestBuilder / Ollama (analysis dashboard job).
       # Reuse the migrated strategy logic which fetches OHLCV from API
       strategy = Bot::Strategy::MultiTimeframe.new(
         config:      config,
         market_data: @client.market_data,
-        logger:      Rails.logger
+        logger:      strategy_session_logger
       )
 
       symbols.each_with_index do |symbol, index|
         sleep(strategy_symbol_stagger_seconds) if index.positive?
 
-        ltp    = Rails.cache.read("ltp:#{symbol}") || fetch_last_price(symbol)
+        ltp = normalized_ltp(symbol)
+        unless ltp
+          Rails.logger.warn("[Runner] Skipping #{symbol}: no positive LTP (cache or REST)")
+          next
+        end
+
         signal = strategy.evaluate(symbol, current_price: ltp)
         if signal
           execute_signal(
@@ -128,8 +169,8 @@ module Trading
         next unless adaptive_signal
 
         execute_signal(**adaptive_signal)
-      rescue => e
-        Rails.logger.error("[Runner] Strategy error for #{symbol}: #{e.message}")
+      rescue StandardError => e
+        Rails.logger.error("[Runner] Strategy error for #{symbol}: #{e.class}: #{e.message}")
       end
 
       elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - pass_started
@@ -161,8 +202,15 @@ module Trading
 
       EventBus.publish(:signal_generated, converted)
       order = ExecutionEngine.execute(converted, session: @session, client: @client)
-      notify_signal_and_entry(order, converted) if order
-      signal_record&.update!(status: "executed")
+      if order
+        notify_signal_and_entry(order, converted)
+        signal_record&.update!(status: "executed")
+      else
+        signal_record&.update!(
+          status: "skipped_duplicate",
+          error_message: "idempotency: same symbol/side/candle_timestamp already executed"
+        )
+      end
     rescue Trading::RiskManager::RiskError => e
       signal_record&.update!(status: "rejected", error_message: e.message)
       Rails.logger.warn("[Runner] Signal rejected for #{symbol}: #{e.message}")
@@ -217,12 +265,29 @@ module Trading
       )
     end
 
+    def normalized_ltp(symbol)
+      raw = Rails.cache.read("ltp:#{symbol}")
+      candidate = raw.nil? ? nil : raw.to_f
+      candidate = fetch_last_price(symbol) unless candidate&.positive?
+      candidate&.positive? ? candidate : nil
+    end
+
     def fetch_last_price(symbol)
-      # Fallback if WS not populated cache yet
       ticker = @client.market_data.ticker(symbol)
-      ticker["mark_price"]&.to_f || ticker["close"]&.to_f
-    rescue
-      0.0
+      extract_positive_ticker_price(ticker)
+    rescue StandardError => e
+      Rails.logger.warn("[Runner] fetch_last_price failed symbol=#{symbol}: #{e.class}: #{e.message}")
+      nil
+    end
+
+    def extract_positive_ticker_price(ticker)
+      %w[mark_price close].each do |key|
+        next if ticker[key].nil?
+
+        price = ticker[key].to_f
+        return price if price.positive?
+      end
+      nil
     end
 
     def running?
@@ -232,7 +297,7 @@ module Trading
     end
 
     def notify_startup_status
-      symbols = SymbolConfig.where(enabled: true).pluck(:symbol).join(", ")
+      symbols = Bot::Config.load.symbol_names.join(", ")
       paper = PaperTrading.enabled? ? "paper" : "live"
       TelegramNotifications.deliver do |n|
         n.notify_status(
@@ -273,6 +338,7 @@ module Trading
         side: side_sym,
         price: pos.entry_price.to_f,
         lots: pos.size.to_f,
+        added_lots: order.size.to_f,
         leverage: pos.leverage.to_i,
         trailing_stop: pos.stop_price.to_f,
         mode: mode
@@ -280,16 +346,7 @@ module Trading
     end
 
     def build_client
-      if PaperTrading.enabled?
-        key    = ENV["DELTA_API_KEY"].to_s
-        secret = ENV["DELTA_API_SECRET"].to_s
-        return DeltaExchange::Client.new(api_key: key.presence, api_secret: secret.presence)
-      end
-
-      DeltaExchange::Client.new(
-        api_key:    ENV.fetch("DELTA_API_KEY"),
-        api_secret: ENV.fetch("DELTA_API_SECRET")
-      )
+      RunnerClient.build
     end
   end
 end

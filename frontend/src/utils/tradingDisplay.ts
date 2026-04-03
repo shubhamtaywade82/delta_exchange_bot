@@ -7,6 +7,56 @@ export function formatSignalActivityTimestamp(iso: string | undefined) {
   }
 }
 
+/** Fixed 2 fractional digits when non-whole; trailing zeros; whole values render without a decimal part. */
+export const DISPLAY_DECIMAL_PLACES = 2 as const;
+
+export function formatDisplayDecimal(value: unknown): string {
+  if (value == null || value === '') return '--';
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return String(value);
+
+  const fixed = n.toFixed(DISPLAY_DECIMAL_PLACES);
+  const dot = fixed.indexOf('.');
+  const intStr = dot >= 0 ? fixed.slice(0, dot) : fixed;
+  const fracStr = dot >= 0 ? fixed.slice(dot + 1) : '';
+  const fracIsZero = fracStr === '0'.repeat(DISPLAY_DECIMAL_PLACES);
+
+  if (fracIsZero) {
+    return Number(intStr).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  }
+
+  const intFormatted = Number(intStr).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  return `${intFormatted}.${fracStr}`;
+}
+
+export function formatUsd(value: unknown): string {
+  const core = formatDisplayDecimal(value);
+  if (core === '--') return '--';
+  return `$${core}`;
+}
+
+export function formatInr(value: unknown): string {
+  const core = formatDisplayDecimal(value);
+  if (core === '--') return '--';
+  return `₹${core}`;
+}
+
+/** Quote / mark / entry prices — same rules as all dashboard numerics. */
+export function formatQuotePrice(value: unknown): string {
+  return formatDisplayDecimal(value);
+}
+
+/** SMC / analysis bands — same 2-decimal cap as the rest of the dashboard. */
+export function formatSmcPrice(value: unknown): string {
+  if (value == null || value === '') return '—';
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return '—';
+  return n.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: DISPLAY_DECIMAL_PLACES,
+  });
+}
+
 export function sideBadgeMeta(side: unknown) {
   const normalized = String(side ?? '').trim().toLowerCase();
   if (normalized === 'buy' || normalized === 'long') {

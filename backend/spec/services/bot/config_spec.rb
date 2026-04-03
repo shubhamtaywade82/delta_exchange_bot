@@ -129,6 +129,33 @@ RSpec.describe Bot::Config do
         "notifications.telegram.events.errors"
       )
     end
+
+    it "falls back to bot.yml symbols when no enabled SymbolConfig rows exist" do
+      SymbolConfig.delete_all
+      allow(described_class).to receive(:bot_yml_hash).and_return(
+        "symbols" => [
+          { "symbol" => "ETHUSD", "leverage" => 8 }
+        ]
+      )
+
+      raw = described_class.runtime_raw
+
+      expect(raw["symbols"]).to eq([{ "symbol" => "ETHUSD", "leverage" => 8 }])
+    end
+
+    it "prefers enabled SymbolConfig over bot.yml when both exist" do
+      allow(described_class).to receive(:bot_yml_hash).and_return(
+        "symbols" => [
+          { "symbol" => "ETHUSD", "leverage" => 99 }
+        ]
+      )
+
+      raw = described_class.runtime_raw
+
+      expect(raw["symbols"].size).to eq(1)
+      expect(raw["symbols"].first["symbol"]).to eq("BTCUSD")
+      expect(raw["symbols"].first["leverage"]).to eq(10)
+    end
   end
 
   let(:valid_yaml) do
@@ -259,7 +286,7 @@ RSpec.describe Bot::Config do
   context "with empty symbols" do
     it "raises on empty symbols list" do
       bad = valid_yaml.merge("symbols" => [])
-      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /symbols/)
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /watchlist must not be empty/)
     end
   end
 
@@ -273,7 +300,7 @@ RSpec.describe Bot::Config do
   context "with missing symbols key" do
     it "raises ValidationError (not NoMethodError) when symbols key is absent" do
       bad = valid_yaml.reject { |k, _| k == "symbols" }
-      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /symbols/)
+      expect { described_class.new(bad) }.to raise_error(Bot::Config::ValidationError, /watchlist must not be empty/)
     end
   end
 

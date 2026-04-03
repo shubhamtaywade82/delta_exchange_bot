@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_02_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_03_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -38,9 +38,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_120000) do
     t.datetime "created_at", null: false
     t.decimal "entry_price", precision: 20, scale: 8, null: false
     t.string "error_message"
+    t.decimal "risk_pct", precision: 8, scale: 6
     t.string "side", null: false
     t.string "source", null: false
     t.string "status", default: "generated", null: false
+    t.decimal "stop_price", precision: 24, scale: 8
     t.string "strategy", null: false
     t.string "symbol", null: false
     t.bigint "trading_session_id", null: false
@@ -77,6 +79,120 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_120000) do
     t.index ["position_id"], name: "index_orders_on_position_id"
     t.index ["trading_session_id"], name: "index_orders_on_trading_session_id"
     t.check_constraint "filled_qty IS NULL OR size IS NULL OR filled_qty <= size", name: "orders_no_overfill"
+  end
+
+  create_table "paper_fills", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "exchange_fill_id"
+    t.datetime "filled_at", null: false
+    t.bigint "paper_order_id", null: false
+    t.decimal "price", precision: 36, scale: 18, null: false
+    t.integer "size", null: false
+    t.datetime "updated_at", null: false
+    t.index ["exchange_fill_id"], name: "index_paper_fills_on_exchange_fill_id", unique: true, where: "(exchange_fill_id IS NOT NULL)"
+    t.index ["paper_order_id"], name: "index_paper_fills_on_paper_order_id"
+  end
+
+  create_table "paper_orders", force: :cascade do |t|
+    t.decimal "avg_fill_price", precision: 36, scale: 18
+    t.string "client_order_id", null: false
+    t.datetime "created_at", null: false
+    t.decimal "limit_price", precision: 36, scale: 18
+    t.string "order_type", null: false
+    t.bigint "paper_product_snapshot_id", null: false
+    t.bigint "paper_trading_signal_id", null: false
+    t.bigint "paper_wallet_id", null: false
+    t.string "side", null: false
+    t.integer "size", null: false
+    t.string "state", null: false
+    t.datetime "updated_at", null: false
+    t.index ["client_order_id"], name: "index_paper_orders_on_client_order_id", unique: true
+    t.index ["paper_product_snapshot_id"], name: "index_paper_orders_on_paper_product_snapshot_id"
+    t.index ["paper_trading_signal_id"], name: "index_paper_orders_on_paper_trading_signal_id"
+    t.index ["paper_wallet_id"], name: "index_paper_orders_on_paper_wallet_id"
+  end
+
+  create_table "paper_positions", force: :cascade do |t|
+    t.decimal "avg_entry_price", precision: 36, scale: 18, null: false
+    t.datetime "created_at", null: false
+    t.integer "leverage", default: 1, null: false
+    t.integer "net_quantity", default: 0, null: false
+    t.bigint "paper_product_snapshot_id", null: false
+    t.bigint "paper_wallet_id", null: false
+    t.decimal "risk_unit_per_contract", precision: 36, scale: 18, null: false
+    t.string "side", null: false
+    t.datetime "updated_at", null: false
+    t.index ["paper_product_snapshot_id"], name: "index_paper_positions_on_paper_product_snapshot_id"
+    t.index ["paper_wallet_id", "paper_product_snapshot_id"], name: "index_paper_positions_on_wallet_and_product", unique: true
+    t.index ["paper_wallet_id"], name: "index_paper_positions_on_paper_wallet_id"
+  end
+
+  create_table "paper_product_snapshots", force: :cascade do |t|
+    t.decimal "close_price", precision: 36, scale: 18
+    t.string "contract_type"
+    t.decimal "contract_value", precision: 36, scale: 18, null: false
+    t.datetime "created_at", null: false
+    t.integer "default_leverage"
+    t.decimal "mark_price", precision: 36, scale: 18
+    t.string "notional_type"
+    t.integer "position_size_limit"
+    t.integer "product_id", null: false
+    t.jsonb "raw_metadata", default: {}, null: false
+    t.decimal "risk_unit_per_contract", precision: 36, scale: 18, null: false
+    t.string "settling_asset"
+    t.string "symbol", null: false
+    t.decimal "tick_size", precision: 36, scale: 18, null: false
+    t.datetime "updated_at", null: false
+    t.string "valuation_strategy", default: "contract_linear", null: false
+    t.index ["product_id"], name: "index_paper_product_snapshots_on_product_id", unique: true
+    t.index ["symbol"], name: "index_paper_product_snapshots_on_symbol", unique: true
+  end
+
+  create_table "paper_trading_signals", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.decimal "entry_price", precision: 36, scale: 18, null: false
+    t.string "idempotency_key", null: false
+    t.decimal "max_loss_inr", precision: 20, scale: 2, default: "5000.0", null: false
+    t.bigint "paper_wallet_id", null: false
+    t.integer "product_id", null: false
+    t.string "rejection_reason"
+    t.decimal "risk_pct", precision: 16, scale: 10
+    t.string "side", null: false
+    t.string "status", default: "pending", null: false
+    t.decimal "stop_price", precision: 36, scale: 18, null: false
+    t.datetime "updated_at", null: false
+    t.index ["idempotency_key"], name: "index_paper_trading_signals_on_idempotency_key", unique: true
+    t.index ["paper_wallet_id", "status"], name: "index_paper_trading_signals_on_paper_wallet_id_and_status"
+    t.index ["paper_wallet_id"], name: "index_paper_trading_signals_on_paper_wallet_id"
+  end
+
+  create_table "paper_wallet_ledger_entries", force: :cascade do |t|
+    t.decimal "amount_inr", precision: 20, scale: 2, null: false
+    t.datetime "created_at", null: false
+    t.string "direction", null: false
+    t.string "entry_type", null: false
+    t.jsonb "meta", default: {}, null: false
+    t.string "notes"
+    t.bigint "paper_wallet_id", null: false
+    t.bigint "reference_id"
+    t.string "reference_type"
+    t.datetime "updated_at", null: false
+    t.index ["paper_wallet_id", "entry_type"], name: "idx_on_paper_wallet_id_entry_type_b03b77b663"
+    t.index ["paper_wallet_id"], name: "index_paper_wallet_ledger_entries_on_paper_wallet_id"
+    t.index ["reference_type", "reference_id"], name: "index_paper_ledger_on_reference"
+    t.index ["reference_type", "reference_id"], name: "index_paper_wallet_ledger_entries_on_reference"
+  end
+
+  create_table "paper_wallets", force: :cascade do |t|
+    t.decimal "available_inr", precision: 20, scale: 2, default: "0.0", null: false
+    t.decimal "balance_inr", precision: 20, scale: 2, default: "0.0", null: false
+    t.datetime "created_at", null: false
+    t.decimal "equity_inr", precision: 20, scale: 2, default: "0.0", null: false
+    t.string "name", default: "default", null: false
+    t.decimal "realized_pnl_inr", precision: 20, scale: 2, default: "0.0", null: false
+    t.decimal "unrealized_pnl_inr", precision: 20, scale: 2, default: "0.0", null: false
+    t.datetime "updated_at", null: false
+    t.decimal "used_margin_inr", precision: 20, scale: 2, default: "0.0", null: false
   end
 
   create_table "portfolio_ledger_entries", force: :cascade do |t|
@@ -128,7 +244,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_120000) do
     t.decimal "unrealized_pnl_usd", precision: 20, scale: 8
     t.datetime "updated_at", null: false
     t.index ["needs_reconciliation"], name: "index_positions_on_needs_reconciliation"
-    t.index ["portfolio_id", "symbol"], name: "idx_positions_one_open_net_per_portfolio_symbol", unique: true, where: "((status)::text = ANY ((ARRAY['init'::character varying, 'entry_pending'::character varying, 'partially_filled'::character varying, 'filled'::character varying, 'exit_pending'::character varying, 'open'::character varying])::text[]))"
+    t.index ["portfolio_id", "symbol"], name: "idx_positions_one_open_net_per_portfolio_symbol", unique: true, where: "((status)::text = ANY (ARRAY[('init'::character varying)::text, ('entry_pending'::character varying)::text, ('partially_filled'::character varying)::text, ('filled'::character varying)::text, ('exit_pending'::character varying)::text, ('open'::character varying)::text]))"
     t.index ["portfolio_id"], name: "index_positions_on_portfolio_id"
   end
 
@@ -292,12 +408,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_120000) do
   end
 
   create_table "symbol_configs", force: :cascade do |t|
+    t.string "contract_type"
     t.datetime "created_at", null: false
     t.boolean "enabled"
+    t.datetime "fetched_at"
+    t.decimal "last_close_price", precision: 24, scale: 8
+    t.decimal "last_mark_price", precision: 24, scale: 8
     t.integer "leverage"
+    t.jsonb "metadata", default: {}, null: false
     t.integer "product_id"
     t.string "symbol"
+    t.decimal "tick_size", precision: 24, scale: 12
     t.datetime "updated_at", null: false
+    t.index ["enabled"], name: "index_symbol_configs_on_enabled"
   end
 
   create_table "trades", force: :cascade do |t|
@@ -312,6 +435,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_120000) do
     t.integer "holding_time_ms", default: 0
     t.decimal "pnl_inr"
     t.decimal "pnl_usd"
+    t.bigint "portfolio_id"
     t.decimal "realized_edge", precision: 12, scale: 6
     t.decimal "realized_pnl", precision: 16, scale: 6, default: "0.0"
     t.string "regime", null: false
@@ -320,6 +444,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_120000) do
     t.string "strategy", null: false
     t.string "symbol"
     t.datetime "updated_at", null: false
+    t.index ["portfolio_id"], name: "index_trades_on_portfolio_id"
     t.index ["regime"], name: "index_trades_on_regime"
     t.index ["strategy", "regime"], name: "index_trades_on_strategy_and_regime"
     t.index ["strategy"], name: "index_trades_on_strategy"
@@ -344,6 +469,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_120000) do
   add_foreign_key "orders", "portfolios"
   add_foreign_key "orders", "positions"
   add_foreign_key "orders", "trading_sessions"
+  add_foreign_key "paper_fills", "paper_orders"
+  add_foreign_key "paper_orders", "paper_product_snapshots"
+  add_foreign_key "paper_orders", "paper_trading_signals"
+  add_foreign_key "paper_orders", "paper_wallets"
+  add_foreign_key "paper_positions", "paper_product_snapshots"
+  add_foreign_key "paper_positions", "paper_wallets"
+  add_foreign_key "paper_trading_signals", "paper_wallets"
+  add_foreign_key "paper_wallet_ledger_entries", "paper_wallets"
   add_foreign_key "portfolio_ledger_entries", "fills"
   add_foreign_key "portfolio_ledger_entries", "portfolios"
   add_foreign_key "positions", "portfolios"
@@ -354,5 +487,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_120000) do
   add_foreign_key "solid_queue_ready_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_recurring_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_scheduled_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
+  add_foreign_key "trades", "portfolios"
   add_foreign_key "trading_sessions", "portfolios"
 end

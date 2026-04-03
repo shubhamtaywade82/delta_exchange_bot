@@ -20,6 +20,15 @@ Bundler.require(*Rails.groups)
 
 module Backend
   class Application < Rails::Application
+    # Repo-root `.env` (monorepo) is loaded first; `backend/.env` from dotenv-rails overrides same keys.
+    repo_root_env = File.expand_path("../../.env", __dir__)
+    config.before_configuration do
+      next unless File.exist?(repo_root_env)
+
+      require "dotenv"
+      Dotenv.load(repo_root_env)
+    end
+
     # Initialize configuration defaults for originally generated Rails version.
     config.load_defaults 8.1
 

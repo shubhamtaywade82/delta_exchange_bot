@@ -15,9 +15,10 @@
 default: &default
   adapter: postgresql
   encoding: unicode
-  # For details on connection pooling, see Rails configuration guide
+  # Active Record uses `pool` (not `max_connections`). Total clients ≈ pool × each Rails process
+  # (Puma, bin/jobs, bin/bot, consoles). FATAL "too many clients" → stop extras or set DATABASE_POOL lower.
   # https://guides.rubyonrails.org/configuring.html#database-pooling
-  max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  pool: <%= [ENV.fetch("DATABASE_POOL", ENV.fetch("RAILS_MAX_THREADS", "5")).to_i, 1].max %>
 
 
 development:

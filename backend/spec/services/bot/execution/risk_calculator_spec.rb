@@ -7,11 +7,11 @@ RSpec.describe Bot::Execution::RiskCalculator do
 
   # BTCUSD example:
   # available_usdt=500, entry=$45000, 10x leverage, 1.5% risk, 1.5% trail, contract_value=0.001
-  # capital_inr=42500, risk_inr=637.5, risk_usd=7.5
-  # trail_distance=$675, loss_per_lot=$0.675
-  # raw_lots=11.11, leveraged_lots=111.11 → 111 lots
-  # margin for 111 lots = 111*0.001*45000/10 = $499.5 → exceeds 40% cap ($200)
-  # capped = floor(200*10/(0.001*45000)) = floor(44.44) = 44 lots
+  # risk_usd = 500 × 1.5% = 7.5
+  # trail_distance = 45000 × 1.5% = 675; risk_per_contract = 675 × 0.001 = 0.675
+  # qty_risk = floor(7.5 / 0.675) = 11
+  # margin_wallet = 500 × 40% = 200; qty_margin = floor(200×0.98×10 / (0.001×45000)) = 43
+  # final = min(11, 43) = 11
 
   let(:params) do
     {
@@ -25,8 +25,8 @@ RSpec.describe Bot::Execution::RiskCalculator do
     }
   end
 
-  it "returns 44 lots after margin cap for BTCUSD example" do
-    expect(calculator.compute(**params)).to eq(44)
+  it "returns risk-limited contracts when risk binds before the margin wallet cap" do
+    expect(calculator.compute(**params)).to eq(11)
   end
 
   it "returns 0 when capital is too small for even 1 lot" do
@@ -44,5 +44,11 @@ RSpec.describe Bot::Execution::RiskCalculator do
       max_margin_per_position_pct: 40.0
     )
     expect(result).to be > 0
+  end
+
+  it "uses a higher stop for short side so risk_per_contract matches adverse move" do
+    long_qty = calculator.compute(**params.merge(side: "buy"))
+    short_qty = calculator.compute(**params.merge(side: "sell"))
+    expect(long_qty).to eq(short_qty)
   end
 end

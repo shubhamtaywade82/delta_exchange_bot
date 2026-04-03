@@ -4,11 +4,36 @@ import { Settings, Save } from 'lucide-react';
 
 type ValueType = 'string' | 'integer' | 'float' | 'boolean';
 
+type SettingWidget = 'toggle' | 'select' | 'number' | 'text' | 'password';
+
+interface SettingUi {
+  widget: SettingWidget;
+  options?: Array<{ value: string; label: string }>;
+  value_kind?: 'integer' | 'float';
+  min?: number | null;
+  max?: number | null;
+  step?: number | 'any' | null;
+}
+
 interface RuntimeSetting {
   key: string;
   value: string;
   value_type: ValueType;
   typed_value: string | number | boolean | null;
+  ui?: SettingUi | null;
+}
+
+function effectiveUi(setting: RuntimeSetting): SettingUi {
+  if (setting.ui?.widget) return setting.ui;
+  const vt = setting.value_type ?? 'string';
+  if (vt === 'boolean') return { widget: 'toggle' };
+  if (vt === 'integer') return { widget: 'number', value_kind: 'integer', step: 1 };
+  if (vt === 'float') return { widget: 'number', value_kind: 'float', step: 'any' };
+  return { widget: 'text' };
+}
+
+function isTruthyString(raw: string): boolean {
+  return ['true', '1', 'yes', 'on'].includes(raw.trim().toLowerCase());
 }
 
 interface SettingChange {
@@ -18,6 +43,72 @@ interface SettingChange {
   source: string;
   reason: string | null;
   created_at: string;
+}
+
+const SETTING_GROUP_ORDER = [
+  'bot',
+  'strategy',
+  'risk',
+  'runner',
+  'regime',
+  'notifications',
+  'logging',
+  'learning',
+  'ai',
+] as const;
+
+const SETTING_GROUP_LABELS: Record<string, string> = {
+  bot: 'BOT',
+  strategy: 'STRATEGY',
+  risk: 'RISK',
+  runner: 'RUNNER',
+  regime: 'REGIME',
+  notifications: 'NOTIFICATIONS',
+  logging: 'LOGGING',
+  learning: 'LEARNING',
+  ai: 'AI',
+};
+
+function settingGroupPrefix(key: string): string {
+  const dot = key.indexOf('.');
+  return dot === -1 ? 'other' : key.slice(0, dot).toLowerCase();
+}
+
+interface SettingGroupSection {
+  id: string;
+  label: string;
+  items: RuntimeSetting[];
+}
+
+function buildSettingGroupSections(settings: RuntimeSetting[]): SettingGroupSection[] {
+  const buckets: Record<string, RuntimeSetting[]> = {};
+  settings.forEach(s => {
+    const g = settingGroupPrefix(s.key);
+    if (!buckets[g]) buckets[g] = [];
+    buckets[g].push(s);
+  });
+  Object.values(buckets).forEach(list => list.sort((a, b) => a.key.localeCompare(b.key)));
+
+  const seen = new Set<string>();
+  const sections: SettingGroupSection[] = [];
+
+  SETTING_GROUP_ORDER.forEach(id => {
+    const items = buckets[id];
+    if (!items?.length) return;
+    sections.push({ id, label: SETTING_GROUP_LABELS[id] ?? id.toUpperCase(), items });
+    seen.add(id);
+  });
+
+  Object.keys(buckets)
+    .filter(id => !seen.has(id))
+    .sort()
+    .forEach(id => {
+      const items = buckets[id];
+      if (!items?.length) return;
+      sections.push({ id, label: id === 'other' ? 'OTHER' : id.toUpperCase(), items });
+    });
+
+  return sections;
 }
 
 const AdminSettingsPage: React.FC = () => {
@@ -68,6 +159,8 @@ const AdminSettingsPage: React.FC = () => {
     });
   }, [drafts, settings]);
 
+  const settingSections = useMemo(() => buildSettingGroupSections(settings), [settings]);
+
   const updateDraft = (key: string, patch: Partial<{ value: string; value_type: ValueType }>) => {
     setDrafts(prev => ({
       ...prev,
@@ -97,6 +190,124 @@ const AdminSettingsPage: React.FC = () => {
     }
   };
 
+  const renderSettingTableRows = (items: RuntimeSetting[]) =>
+    items.map(setting => {
+      const draft = drafts[setting.key] || { value: setting.value, value_type: setting.value_type };
+      const dirty = draft.value !== setting.value || draft.value_type !== setting.value_type;
+      const ui = effectiveUi(setting);
+      const showTypeEditor = ui.widget === 'text';
+
+      const renderTypeCell = () => {
+        if (showTypeEditor) {
+          return (
+            <select
+              value={draft.value_type}
+              onChange={e => updateDraft(setting.key, { value_type: e.target.value as ValueType })}
+              className="search-input setting-type-select"
+            >
+              <option value="string">string</option>
+              <option value="integer">integer</option>
+              <option value="float">float</option>
+              <option value="boolean">boolean</option>
+            </select>
+          );
+        }
+        return <span className="setting-type-badge font-mono">{draft.value_type}</span>;
+      };
+
+      const renderValueCell = () => {
+        switch (ui.widget) {
+          case 'toggle': {
+            const on = isTruthyString(draft.value);
+            return (
+              <button
+                type="button"
+                role="switch"
+                aria-checked={on}
+                className={`setting-toggle-track${on ? ' setting-toggle-track--on' : ''}`}
+                onClick={() => updateDraft(setting.key, { value: on ? 'false' : 'true' })}
+              >
+                <span className="setting-toggle-thumb" />
+                <span className="setting-toggle-label">{on ? 'ON' : 'OFF'}</span>
+              </button>
+            );
+          }
+          case 'select': {
+            const opts = ui.options ?? [];
+            const known = new Set(opts.map(o => o.value));
+            const currentMissing = draft.value !== '' && !known.has(draft.value);
+            return (
+              <select
+                value={draft.value}
+                onChange={e => updateDraft(setting.key, { value: e.target.value })}
+                className="search-input setting-value-select"
+              >
+                {currentMissing && (
+                  <option value={draft.value}>{draft.value} (current)</option>
+                )}
+                {opts.map(opt => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            );
+          }
+          case 'number': {
+            const stepProp = ui.step === 'any' || ui.step == null ? 'any' : String(ui.step);
+            return (
+              <input
+                type="number"
+                value={draft.value}
+                onChange={e => updateDraft(setting.key, { value: e.target.value })}
+                className="search-input setting-value-number"
+                min={ui.min ?? undefined}
+                max={ui.max ?? undefined}
+                step={stepProp}
+              />
+            );
+          }
+          case 'password':
+            return (
+              <input
+                type="password"
+                value={draft.value}
+                onChange={e => updateDraft(setting.key, { value: e.target.value })}
+                className="search-input setting-value-text"
+                autoComplete="off"
+              />
+            );
+          default:
+            return (
+              <input
+                type="text"
+                value={draft.value}
+                onChange={e => updateDraft(setting.key, { value: e.target.value })}
+                className="search-input setting-value-text"
+              />
+            );
+        }
+      };
+
+      return (
+        <tr key={setting.key} className="row-hover">
+          <td className="font-bold">{setting.key}</td>
+          <td>{renderTypeCell()}</td>
+          <td>{renderValueCell()}</td>
+          <td>
+            <button
+              className="btn-add"
+              onClick={() => saveSetting(setting.key)}
+              disabled={!dirty || savingKey === setting.key}
+            >
+              <Save size={14} style={{ marginRight: 6 }} />
+              {savingKey === setting.key ? 'SAVING' : 'SAVE'}
+            </button>
+          </td>
+        </tr>
+      );
+    });
+
   return (
     <div className="catalog-page">
       <div className="catalog-header">
@@ -122,75 +333,69 @@ const AdminSettingsPage: React.FC = () => {
         </section>
       )}
 
-      <section className="terminal-section">
-        <div className="section-header">
-          <div className="header-title-group">
-            <Settings size={16} className="icon-accent" />
-            <h2>RUNTIME_SETTINGS</h2>
-          </div>
-          <span className="section-badge">{loading ? 'LOADING' : 'LIVE'}</span>
+      <div className="admin-settings-runtime-strip">
+        <div className="header-title-group">
+          <Settings size={16} className="icon-accent" />
+          <h2 className="admin-settings-runtime-title">RUNTIME_SETTINGS</h2>
         </div>
+        <span className="section-badge">{loading ? 'LOADING' : 'LIVE'}</span>
+      </div>
 
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>KEY</th>
-                <th>TYPE</th>
-                <th>VALUE</th>
-                <th>ACTION</th>
-              </tr>
-            </thead>
-            <tbody>
-              {settings.map(setting => {
-                const draft = drafts[setting.key] || { value: setting.value, value_type: setting.value_type };
-                const dirty = draft.value !== setting.value || draft.value_type !== setting.value_type;
-                return (
-                  <tr key={setting.key} className="row-hover">
-                    <td className="font-bold">{setting.key}</td>
-                    <td>
-                      <select
-                        value={draft.value_type}
-                        onChange={e => updateDraft(setting.key, { value_type: e.target.value as ValueType })}
-                        className="search-input"
-                        style={{ padding: '0.45rem 0.75rem', maxWidth: '130px' }}
-                      >
-                        <option value="string">string</option>
-                        <option value="integer">integer</option>
-                        <option value="float">float</option>
-                        <option value="boolean">boolean</option>
-                      </select>
-                    </td>
-                    <td>
-                      <input
-                        value={draft.value}
-                        onChange={e => updateDraft(setting.key, { value: e.target.value })}
-                        className="search-input"
-                        style={{ padding: '0.45rem 0.75rem' }}
-                      />
-                    </td>
-                    <td>
-                      <button
-                        className="btn-add"
-                        onClick={() => saveSetting(setting.key)}
-                        disabled={!dirty || savingKey === setting.key}
-                      >
-                        <Save size={14} style={{ marginRight: 6 }} />
-                        {savingKey === setting.key ? 'SAVING' : 'SAVE'}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {!loading && settings.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="text-center text-muted">NO_SETTINGS_FOUND</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <div className="admin-settings-panel-stack">
+        {loading && settings.length === 0 && (
+          <section className="terminal-section admin-settings-panel-span-full">
+            <div className="section-header">
+              <div className="header-title-group">
+                <Settings size={16} className="icon-accent" />
+                <h2>LOADING</h2>
+              </div>
+            </div>
+            <p className="text-muted" style={{ padding: '1rem 1.25rem', margin: 0 }}>
+              LOADING_RUNTIME_SETTINGS
+            </p>
+          </section>
+        )}
+
+        {!loading && settings.length === 0 && (
+          <section className="terminal-section admin-settings-panel-span-full">
+            <div className="section-header">
+              <div className="header-title-group">
+                <Settings size={16} className="icon-accent" />
+                <h2>RUNTIME</h2>
+              </div>
+            </div>
+            <p className="text-muted" style={{ padding: '1rem 1.25rem', margin: 0 }}>
+              NO_SETTINGS_FOUND
+            </p>
+          </section>
+        )}
+
+        {!loading &&
+          settingSections.map(section => (
+            <section key={section.id} className="terminal-section admin-settings-group-panel">
+              <div className="section-header">
+                <div className="header-title-group">
+                  <Settings size={16} className="icon-accent" />
+                  <h2>{section.label}</h2>
+                </div>
+                <span className="section-badge">{section.items.length}</span>
+              </div>
+              <div className="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>KEY</th>
+                      <th>TYPE</th>
+                      <th>VALUE</th>
+                      <th>ACTION</th>
+                    </tr>
+                  </thead>
+                  <tbody>{renderSettingTableRows(section.items)}</tbody>
+                </table>
+              </div>
+            </section>
+          ))}
+      </div>
 
       <section className="terminal-section">
         <div className="section-header">

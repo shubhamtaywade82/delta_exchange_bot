@@ -32,6 +32,26 @@ RSpec.describe Bot::Notifications::TelegramNotifier do
       notifier.notify_signal_generated(symbol: "BTCUSD", side: :long, price: 42_000.0, strategy: "multi_timeframe")
     end
 
+    it "labels first open as POSITION OPENED" do
+      expect(bot_double.api).to receive(:send_message).with(
+        hash_including(text: include("POSITION OPENED"))
+      )
+      notifier.notify_trade_opened(
+        symbol: "BTCUSD", side: :short, price: 66_000.0, lots: 10.0, added_lots: 10.0,
+        leverage: 20, trailing_stop: 67_000.0, mode: "paper"
+      )
+    end
+
+    it "labels add-on fill as POSITION SCALED with delta and total" do
+      expect(bot_double.api).to receive(:send_message).with(
+        hash_including(text: a_string_including("POSITION SCALED", "+Lots this fill"))
+      )
+      notifier.notify_trade_opened(
+        symbol: "BTCUSD", side: :short, price: 66_500.0, lots: 13.0, added_lots: 3.0,
+        leverage: 20, trailing_stop: 67_000.0, mode: "paper"
+      )
+    end
+
     it "logs a single-line error to Rails-style loggers when the API fails" do
       rails_logger = instance_double(ActiveSupport::Logger)
       notifier = described_class.new(enabled: true, token: "token", chat_id: "123", logger: rails_logger)

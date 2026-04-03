@@ -49,7 +49,8 @@ module Bot
           risk_per_trade_pct: @config.risk_per_trade_pct,
           trail_pct: @config.trailing_stop_pct,
           contract_value: contract_value,
-          max_margin_per_position_pct: @config.max_margin_per_position_pct
+          max_margin_per_position_pct: @config.max_margin_per_position_pct,
+          side: signal.side
         )
 
         if lots.zero?
@@ -78,6 +79,7 @@ module Bot
           side: signal.side,
           price: fill_price,
           lots: lots,
+          added_lots: lots,
           leverage: leverage,
           trailing_stop: trail_stop_price(signal.side, fill_price),
           mode: current_mode

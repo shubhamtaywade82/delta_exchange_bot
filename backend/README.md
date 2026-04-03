@@ -95,3 +95,10 @@ Loop:
 - Updates are bounded (`OnlineUpdater::CLIP`) and clamped to safe ranges.
 - Learning pauses automatically when portfolio PnL breaches `LEARNING_FREEZE_PNL`.
 - `AiRefinementJob` runs off-path (every 10 minutes) to suggest parameter bounds; execution remains deterministic.
+
+## Paper trading: session capital vs portfolio balance
+
+- **`trading_sessions.capital` is USD.** Risk sizing (`Trading::OrderBuilder`, position sizer) treats it as a US dollar notional budget and converts to INR for risk math via `Finance::UsdInrRate`. Do not store INR in this column expecting USD behavior.
+- **Portfolio cash is the execution ledger.** `portfolios.balance` is updated by fills and realized PnL; `available_balance` is `balance - used_margin` (initial margin on open positions). Dashboard “total equity” for paper is cash plus unrealized on open rows — not the same as “free cash.”
+- **Reconciling the wallet card:** `total_equity = cash_balance + unrealized_pnl`. `free_cash = cash_balance - blocked_margin`. So `total_equity - blocked_margin` equals `free_cash + unrealized_pnl`, not `free_cash`. Small INR gaps vs mental math are normal because each line is rounded from USD separately.
+- **Operational check:** When starting a session, confirm the linked portfolio’s opening `balance` matches the intended starting cash in the same units as your seed or migration (e.g. blank `capital` backfill historically used **10_000 USD**). If the UI shows a small INR equity number, verify you did not confuse INR display with a USD session budget.

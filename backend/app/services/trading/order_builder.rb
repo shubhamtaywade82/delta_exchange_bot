@@ -44,37 +44,67 @@ module Trading
       contract_value = Trading::Risk::PositionLotSize.multiplier_for(@position).to_f
       stop_price = effective_stop_price(entry)
 
-      balance_inr = @session.capital.to_d * Finance::UsdInrRate.current
       risk_pct = bounded_risk_pct(base_risk_pct * adaptive_risk_multiplier * bias_adjustment_factor)
 
       result = Finance::PositionSizer.compute!(
-        balance_inr: balance_inr.to_f,
+        balance_usd: risk_basis_usd,
         risk_percent: risk_pct,
         entry_price: entry,
         stop_price: stop_price,
         contract_value: contract_value,
-        usd_inr: Finance::UsdInrRate.current
+        leverage: effective_leverage,
+        margin_wallet_usd: margin_wallet_usd,
+        position_size_limit: product_position_size_limit
       )
 
-      if result.contracts.zero?
-        raise SizingError,
-              "risk budget yields zero contracts (stop_distance=#{result.stop_distance}, " \
-              "risk_per_contract=#{result.risk_per_contract})"
-      end
+      raise SizingError, sizing_failure_detail(result) if result.contracts.zero?
 
       result.contracts
+    end
+
+    def effective_leverage
+      lev = @position.leverage.to_i
+      lev = @session.leverage.to_i if lev <= 0
+      lev.positive? ? lev : 1
+    end
+
+    def risk_basis_usd
+      b = @session.portfolio.reload.balance.to_f
+      return b if b.positive?
+
+      @session.capital.to_f
+    end
+
+    def margin_wallet_usd
+      @session.portfolio.reload.available_balance.to_f
+    end
+
+    def product_position_size_limit
+      PaperProductSnapshot.find_by(symbol: @position.symbol.to_s)&.position_size_limit
+    end
+
+    def sizing_failure_detail(result)
+      if result.qty_risk.positive? && result.qty_margin.to_i < result.qty_risk
+        "sizing capped to zero by margin or product limit (qty_risk=#{result.qty_risk}, " \
+          "qty_margin=#{result.qty_margin}, stop_distance=#{result.stop_distance}, " \
+          "risk_per_contract=#{result.risk_per_contract})"
+      else
+        "risk budget yields zero contracts (stop_distance=#{result.stop_distance}, " \
+          "risk_per_contract=#{result.risk_per_contract})"
+      end
     end
 
     def effective_stop_price(entry)
       explicit = @signal.respond_to?(:stop_price) ? @signal.stop_price : nil
       return explicit.to_f if explicit.present?
 
-      trail_pct = Trading::RuntimeConfig.fetch_float(
+      trail_raw = Trading::RuntimeConfig.fetch_float(
         "risk.trail_pct_for_sizing",
         default: 1.5,
         env_key: "RISK_TRAIL_PCT_FOR_SIZING"
       )
-      trail_distance = entry * (trail_pct / 100.0)
+      trail_fraction = Trading::Percent.as_fraction(trail_raw)
+      trail_distance = entry * trail_fraction
 
       case @signal.side.to_s.downcase
       when "long", "buy"
@@ -91,7 +121,7 @@ module Trading
     end
 
     def bounded_risk_pct(value)
-      [[value, 0.05].min, 0.005].max
+      [ [ value, 0.05 ].min, 0.005 ].max
     end
 
     def adaptive_risk_multiplier
@@ -108,7 +138,7 @@ module Trading
 
       bias = Float(adaptive_context["bias"] || adaptive_context.dig("ai_config", "bias") || 0.0)
       directional_bias = @signal.side.to_s.in?(%w[buy long]) ? bias : -bias
-      [[1.0 + (directional_bias * 0.2), 1.2].min, 0.8].max
+      [ [ 1.0 + (directional_bias * 0.2), 1.2 ].min, 0.8 ].max
     rescue ArgumentError, TypeError
       1.0
     end

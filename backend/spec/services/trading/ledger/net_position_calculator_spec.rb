@@ -28,6 +28,14 @@ RSpec.describe Trading::Ledger::NetPositionCalculator do
       expect(result.cumulative_realized_pnl).to eq((52_000 - 50_000) * 2)
     end
 
+    it "scales realized PnL by contract lot multiplier (aligns with PositionRisk)" do
+      buy = fill(2, 50_000, side: "buy", id: 1)
+      sell = fill(2, 52_000, side: "sell", id: 2)
+      lot = BigDecimal("0.001")
+      result = described_class.from_fills([buy, sell], lot_multiplier: lot)
+      expect(result.cumulative_realized_pnl).to eq((52_000 - 50_000) * 2 * lot)
+    end
+
     it "opens short remainder after closing long (flip)" do
       buy = fill(2, 50_000, side: "buy", id: 1)
       sell = fill(3, 48_000, side: "sell", id: 2)
@@ -45,6 +53,14 @@ RSpec.describe Trading::Ledger::NetPositionCalculator do
       sell = fill(1, 51_000, side: "sell", id: 2)
       delta = described_class.realized_delta_for_append([buy], sell)
       expect(delta).to eq(1000)
+    end
+
+    it "scales realized delta by lot multiplier" do
+      buy = fill(1, 50_000, side: "buy", id: 1)
+      sell = fill(1, 51_000, side: "sell", id: 2)
+      lot = BigDecimal("0.001")
+      delta = described_class.realized_delta_for_append([buy], sell, lot_multiplier: lot)
+      expect(delta).to eq(BigDecimal("1000") * lot)
     end
   end
 end

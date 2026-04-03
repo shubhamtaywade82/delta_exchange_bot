@@ -119,7 +119,13 @@ module Trading
                         .where(orders: { portfolio_id: portfolio.id, symbol: order.symbol })
                         .where.not(fills: { id: fill.id })
                         .to_a
-      delta = Trading::Ledger::NetPositionCalculator.realized_delta_for_append(prior_fills, fill)
+      lot = Trading::Risk::PositionLotSize.from_exchange(order.symbol.to_s).to_d
+      lot = 1.to_d if lot <= 0
+      delta = Trading::Ledger::NetPositionCalculator.realized_delta_for_append(
+        prior_fills,
+        fill,
+        lot_multiplier: lot
+      )
       portfolio.apply_fill_and_sync!(fill, delta_realized: delta)
     end
 

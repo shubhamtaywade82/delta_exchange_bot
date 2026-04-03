@@ -92,7 +92,7 @@ module Trading
       end
 
       def daily_loss_gate
-        today_pnl = Trade.where("closed_at >= ?", Time.current.beginning_of_day).sum(:pnl_usd).to_f
+        today_pnl = Trade.sum_effective_pnl_usd(Trade.where("closed_at >= ?", Time.current.beginning_of_day))
         cap_pct = RuntimeConfig.fetch_float("risk.daily_loss_cap_pct", default: 0.05, env_key: "RISK_DAILY_LOSS_CAP_PCT")
         cap_usd = @session.capital.to_f * cap_pct
         {

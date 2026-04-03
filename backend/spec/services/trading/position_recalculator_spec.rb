@@ -40,6 +40,31 @@ RSpec.describe Trading::PositionRecalculator do
     expect(position.reload.size.to_d).to eq(1.to_d)
   end
 
+  it "sets trail_pct peak_price and stop_price when net position opens without trail" do
+    config = instance_double(Bot::Config, trailing_stop_pct: 1.0)
+    allow(Bot::Config).to receive(:load).and_return(config)
+
+    order.update!(size: 1)
+    create(:fill, order: order, quantity: 1, price: 50_000, exchange_fill_id: "Ftrail")
+
+    described_class.call(position.id)
+
+    position.reload
+    expect(position.trail_pct).to eq(BigDecimal("1"))
+    expect(position.peak_price).to eq(position.entry_price)
+    expect(position.stop_price).to eq(position.entry_price.to_d * BigDecimal("0.99"))
+  end
+
+  it "clears terminal pnl_usd while the net position remains open" do
+    order.update!(size: 1)
+    position.update_columns(pnl_usd: -999.0)
+    create(:fill, order: order, quantity: 1, price: 50_000, exchange_fill_id: "Fpnl")
+
+    described_class.call(position.id)
+
+    expect(position.reload.pnl_usd).to be_nil
+  end
+
   it "recomputes quantity and average entry from persisted fills" do
     order
     create(:fill, order: order, quantity: 1, price: 49_000, exchange_fill_id: "F1")
@@ -49,11 +74,26 @@ RSpec.describe Trading::PositionRecalculator do
 
     position.reload
     expect(position.size.to_d).to eq(3.to_d)
-    expect(position.entry_price.to_d).to eq((151_000.to_d / 3))
+    avg = (151_000.to_d / 3).round(Trading::PositionRecalculator::AVG_ENTRY_DECIMALS)
+    expect(position.entry_price.to_d).to eq(avg)
     expect(position.status).to eq("partially_filled")
     expect(position.needs_reconciliation).to eq(false)
 
-    avg = 151_000.to_d / 3
+    expected_margin = (3 * BigDecimal("0.001") * avg) / 10
+    expect(position.margin.to_d).to eq(expected_margin)
+  end
+
+  it "uses trading session leverage from orders when position row wrongly stores 1x" do
+    position.update_columns(leverage: 1, size: 0, entry_price: nil, margin: nil)
+    order.update!(size: 3)
+    session.update!(leverage: 10)
+    create(:fill, order: order, quantity: 3, price: 50_000, exchange_fill_id: "F-lev-fix")
+
+    described_class.call(position.id)
+
+    position.reload
+    avg = BigDecimal("50000")
+    expect(position.leverage).to eq(10)
     expected_margin = (3 * BigDecimal("0.001") * avg) / 10
     expect(position.margin.to_d).to eq(expected_margin)
   end

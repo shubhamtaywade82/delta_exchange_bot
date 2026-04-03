@@ -30,6 +30,9 @@ module Bot
         Integer(ENV.fetch("STRATEGY_CANDLE_FETCH_MAX_ATTEMPTS", "3"))
       CANDLE_RETRY_BASE_SLEEP_S =
         Float(ENV.fetch("STRATEGY_CANDLE_RETRY_BASE_SLEEP_S", "1.25"))
+      # History APIs usually omit the in-progress bar at `end`; a window of exactly N periods
+      # then returns N−1 closed bars. Fetch one extra period, then keep the newest `candles_lookback`.
+      LOOKBACK_SLACK_BARS = 1
       def initialize(config:, market_data:, logger:)
         @config      = config
         @market_data = market_data
@@ -48,9 +51,49 @@ module Bot
         sleep_candle_resolution_stagger
         entry_candles   = fetch_candles(symbol, @config.timeframe_entry)
 
-        return nil unless sufficient?(trend_candles, symbol, timeframe_tag(@config.timeframe_trend)) &&
-                          sufficient?(confirm_candles, symbol, timeframe_tag(@config.timeframe_confirm)) &&
-                          sufficient?(entry_candles, symbol, timeframe_tag(@config.timeframe_entry))
+        req = @config.effective_min_candles_for_supertrend
+        tf_trend = timeframe_tag(@config.timeframe_trend)
+        tf_confirm = timeframe_tag(@config.timeframe_confirm)
+        tf_entry = timeframe_tag(@config.timeframe_entry)
+        candle_counts = {
+          tf_trend => trend_candles.size,
+          tf_confirm => confirm_candles.size,
+          tf_entry => entry_candles.size
+        }
+
+        unless sufficient?(trend_candles, symbol, tf_trend)
+          persist_evaluation_blocked(
+            symbol,
+            current_price: current_price,
+            reason: :insufficient_candles,
+            insufficient_timeframe: tf_trend,
+            candle_counts_by_timeframe: candle_counts,
+            min_candles_required: req
+          )
+          return nil
+        end
+        unless sufficient?(confirm_candles, symbol, tf_confirm)
+          persist_evaluation_blocked(
+            symbol,
+            current_price: current_price,
+            reason: :insufficient_candles,
+            insufficient_timeframe: tf_confirm,
+            candle_counts_by_timeframe: candle_counts,
+            min_candles_required: req
+          )
+          return nil
+        end
+        unless sufficient?(entry_candles, symbol, tf_entry)
+          persist_evaluation_blocked(
+            symbol,
+            current_price: current_price,
+            reason: :insufficient_candles,
+            insufficient_timeframe: tf_entry,
+            candle_counts_by_timeframe: candle_counts,
+            min_candles_required: req
+          )
+          return nil
+        end
 
         trend_st   = IndicatorFactory.compute_supertrend(trend_candles, config: @config)
         confirm_st = IndicatorFactory.compute_supertrend(confirm_candles, config: @config)
@@ -125,6 +168,12 @@ module Bot
             volume: vol_res,
             derivatives: der_res
           },
+          ltp_evaluated: current_price,
+          evaluation_blocked: false,
+          evaluation_block_reason: nil,
+          insufficient_timeframe: nil,
+          candle_counts_by_timeframe: nil,
+          min_candles_required: nil,
           updated_at: Time.current.iso8601
         })
 
@@ -158,7 +207,16 @@ module Bot
                end
 
         unless side
-          Bot::StructuredLog.log(@logger, :info, "strategy_skip", symbol: symbol, reason: "no_confluence")
+          Bot::StructuredLog.log(
+            @logger,
+            :info,
+            "strategy_skip",
+            symbol: symbol,
+            reason: "no_confluence",
+            h1: h1_dir,
+            m15: m15_dir,
+            m5: entry_last_dir
+          )
           return nil
         end
 
@@ -221,7 +279,8 @@ module Bot
 
       def fetch_candles_once(symbol, resolution)
         end_ts   = Time.now.to_i
-        start_ts = end_ts - (resolution_to_seconds(resolution) * @config.candles_lookback)
+        span_bars = @config.candles_lookback + LOOKBACK_SLACK_BARS
+        start_ts = end_ts - (resolution_to_seconds(resolution) * span_bars)
 
         raw = Timeout.timeout(CANDLE_FETCH_TIMEOUT_S) do
           @market_data.candles({
@@ -243,7 +302,7 @@ module Bot
 
         return [] unless candles_payload.is_a?(Array)
 
-        candles_payload.map do |c|
+        rows = candles_payload.map do |c|
           { open:      (c[:open]      || c["open"])&.to_f      || raise("missing open in candle"),
             high:      (c[:high]      || c["high"])&.to_f      || raise("missing high in candle"),
             low:       (c[:low]       || c["low"])&.to_f       || raise("missing low in candle"),
@@ -251,6 +310,8 @@ module Bot
             volume:    (c[:volume]    || c["volume"])&.to_f    || 0.0,
             timestamp: (c[:timestamp] || c["timestamp"] || c[:time] || c["time"])&.to_i || raise("missing timestamp in candle") }
         end.sort_by { |c| c[:timestamp] }
+
+        cap_candles_to_lookback(rows)
       rescue Timeout::Error
         Bot::StructuredLog.log(
           @logger,
@@ -263,6 +324,13 @@ module Bot
         Bot::StructuredLog.log(@logger, :error, "candle_fetch_failed", symbol: symbol, resolution: resolution,
           message: e.message)
         []
+      end
+
+      def cap_candles_to_lookback(rows)
+        limit = @config.candles_lookback
+        return rows if rows.size <= limit
+
+        rows.last(limit)
       end
 
       def sleep_candle_resolution_stagger
@@ -310,6 +378,39 @@ module Bot
         @redis.hset("delta:strategy:state", symbol, data.to_json)
       rescue StandardError => e
         Bot::StructuredLog.log(@logger, :error, "strategy_persistence_failed", symbol: symbol, message: e.message)
+      end
+
+      def persist_evaluation_blocked(symbol, current_price:, reason:, **extra)
+        persist_symbol_state(
+          symbol,
+          cleared_indicator_payload.merge(
+            updated_at: Time.current.iso8601,
+            ltp_evaluated: current_price,
+            evaluation_blocked: true,
+            evaluation_block_reason: reason.to_s,
+            **extra
+          )
+        )
+      end
+
+      def cleared_indicator_payload
+        {
+          h1_dir: nil,
+          m15_dir: nil,
+          m5_dir: nil,
+          entry_timeframe: @config.timeframe_entry,
+          adx: nil,
+          rsi: nil,
+          vwap: nil,
+          vwap_deviation_pct: nil,
+          cvd_trend: nil,
+          cvd_delta: nil,
+          cvd_delta_pct: nil,
+          oi_trend: nil,
+          oi_usd: nil,
+          funding_rate: nil,
+          filters: { momentum: nil, volume: nil, derivatives: nil }
+        }
       end
 
       def relaxed_volume_allowed?(cvd_data)

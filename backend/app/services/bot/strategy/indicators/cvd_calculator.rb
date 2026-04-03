@@ -20,7 +20,13 @@ module Bot
 
           delta     = buy_vol - sell_vol
           delta_pct = (delta / total_vol * 100.0).round(2)
-          trend     = delta > 0 ? :bullish : :bearish
+          trend = if delta > 0
+                    :bullish
+                  elsif delta < 0
+                    :bearish
+                  else
+                    :neutral
+                  end
 
           {
             delta: delta.round(0),

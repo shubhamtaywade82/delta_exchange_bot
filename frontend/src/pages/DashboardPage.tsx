@@ -1,16 +1,23 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { NavLink } from 'react-router-dom';
 import axios from 'axios';
-import { 
-  Wallet, 
-  History, 
-  Cpu, 
-  Terminal as TerminalIcon,
+import { useLiveLtp } from '../liveLtp/LiveLtpProvider';
+import {
+  Wallet,
+  History,
+  Cpu,
   BarChart3,
-  Activity
+  Activity,
 } from 'lucide-react';
-import type { SignalActivity, OperationalState } from '../types/operationalState';
-import { formatSignalActivityTimestamp, sideBadgeMeta } from '../utils/tradingDisplay';
+import type { SignalActivity } from '../types/operationalState';
+import {
+  formatDisplayDecimal,
+  formatInr,
+  formatQuotePrice,
+  formatSignalActivityTimestamp,
+  formatUsd,
+  sideBadgeMeta,
+} from '../utils/tradingDisplay';
+import { FlashValue } from '../components/common/FlashValue';
 
 
 interface FilterResult {
@@ -90,6 +97,23 @@ function formatTradeHistoryDayLabel(iso: string) {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { dateStyle: 'medium' });
 }
 
+/** Free cash = balance − blocked margin; negative means IM exceeds cash. */
+function walletCashValueClassName(value: unknown): string {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return 'wallet-value';
+  if (n < 0) return 'wallet-value neg';
+  return 'wallet-value pos';
+}
+
+/** Signed PnL-style coloring (zero is neutral). */
+function walletSignedValueClassName(value: unknown): string {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return 'wallet-value';
+  if (n < 0) return 'wallet-value neg';
+  if (n > 0) return 'wallet-value pos';
+  return 'wallet-value';
+}
+
 function SignalQualityPanel({ sym }: { sym: SymbolState }) {
   const allFilters = sym.filters;
   const allPassed = allFilters &&
@@ -109,7 +133,9 @@ function SignalQualityPanel({ sym }: { sym: SymbolState }) {
         <div className="analysis-item">
           <label>MOMENTUM</label>
           <div className="item-content">
-            <span className="value">RSI {sym.rsi?.toFixed(0) ?? '--'}</span>
+            <span className="value">
+              RSI <FlashValue value={sym.rsi}>{sym.rsi != null ? formatDisplayDecimal(sym.rsi) : '--'}</FlashValue>
+            </span>
             {filterBadge(allFilters?.momentum)}
           </div>
         </div>
@@ -117,9 +143,13 @@ function SignalQualityPanel({ sym }: { sym: SymbolState }) {
           <label>VOLUME</label>
           <div className="item-content">
             <span className="value">
-              {sym.cvd_trend ? `${trendArrow(sym.cvd_trend)} ${(sym.cvd_delta ?? 0).toFixed(0)}` : '--'}
+              <FlashValue value={`${sym.cvd_trend}-${sym.cvd_delta}`}>
+                {sym.cvd_trend ? `${trendArrow(sym.cvd_trend)} ${formatDisplayDecimal(sym.cvd_delta ?? 0)}` : '--'}
+              </FlashValue>
               <span className="divider">|</span>
-              {(sym.vwap_deviation_pct ?? 0).toFixed(2)}%
+              <FlashValue value={sym.vwap_deviation_pct}>
+                {formatDisplayDecimal(sym.vwap_deviation_pct ?? 0)}%
+              </FlashValue>
             </span>
             {filterBadge(allFilters?.volume)}
           </div>
@@ -128,9 +158,11 @@ function SignalQualityPanel({ sym }: { sym: SymbolState }) {
           <label>DERIVATIVES</label>
           <div className="item-content">
             <span className="value">
-              OI {sym.oi_usd ? `$${(sym.oi_usd / 1_000_000).toFixed(1)}M` : '--'}
+              OI <FlashValue value={sym.oi_usd}>{sym.oi_usd ? `$${formatDisplayDecimal(sym.oi_usd / 1_000_000)}M` : '--'}</FlashValue>
               <span className="divider">|</span>
-              {((sym.funding_rate ?? 0) * 100).toFixed(4)}%
+              <FlashValue value={sym.funding_rate}>
+                {formatDisplayDecimal((sym.funding_rate ?? 0) * 100)}%
+              </FlashValue>
             </span>
             {filterBadge(allFilters?.derivatives)}
           </div>
@@ -154,14 +186,13 @@ function SignalQualityPanel({ sym }: { sym: SymbolState }) {
 // Dashboard Specific UI Components below
 
 const DashboardPage: React.FC = () => {
+  const liveLtp = useLiveLtp();
   const [positions, setPositions] = useState<any[]>([]);
   const [trades, setTrades] = useState<any[]>([]);
   const [strategyStatus, setStrategyStatus] = useState<StrategyStatus | null>(null);
   const [wallet, setWallet] = useState<any>(null);
   const [stats, setStats] = useState<any>(null);
-  const [executionHealth, setExecutionHealth] = useState<any>(null);
   const [signalActivity, setSignalActivity] = useState<SignalActivity | null>(null);
-  const [operationalState, setOperationalState] = useState<OperationalState | null>(null);
   const [expandedSym, setExpandedSym] = useState<string | null>(null);
   const [tradeHistoryDay, setTradeHistoryDay] = useState<string>(() => localCalendarDateISO());
   const [tradesMeta, setTradesMeta] = useState<{ total_count: number; limit: number; day: string | null } | null>(
@@ -200,9 +231,7 @@ const DashboardPage: React.FC = () => {
       );
       setWallet(dash.wallet);
       setStats(dash.stats);
-      setExecutionHealth(dash.execution_health);
       setSignalActivity(dash.signal_activity ?? null);
-      setOperationalState(dash.operational_state ?? null);
 
       const { data: strat } = await axios.get('/api/strategy_status');
       setStrategyStatus(strat);
@@ -218,60 +247,6 @@ const DashboardPage: React.FC = () => {
 
   return (
     <div className="dashboard-content pt-4">
-      <header className="terminal-header">
-        <div className="brand">
-          <div className="brand-text">
-            <TerminalIcon size={18} className="icon-pulse" />
-            <h1>DELTA_BOT</h1>
-            <NavLink to="/operational" className="dashboard-ops-link" title="Gates, blockers, signal timeline">
-              OPERATIONAL →
-            </NavLink>
-            <div className="system-status">
-              <span className="dot online"></span>
-              <span className="status-online">ONLINE_ v2.0</span>
-              <span className="status-latency">12ms</span>
-            </div>
-          </div>
-        </div>
-        <div className="session-stats">
-          <div className="mini-stat">
-            <label>WIN_RATE</label>
-            <span className="value">{stats?.win_rate}%</span>
-          </div>
-          <div className="mini-stat">
-            <label>TOTAL_PNL</label>
-            <span className={`value ${(stats?.total_pnl_usd ?? 0) >= 0 ? 'pos' : 'neg'}`}>
-              ₹{stats?.total_pnl_inr?.toLocaleString() ?? '0'}
-            </span>
-          </div>
-          {wallet && (
-            <div className="mini-stat">
-              <label>TOTAL_EQUITY</label>
-              <span className="value">
-                {wallet.paper_mode ? '📄 ' : ''}
-                {wallet.total_equity_inr != null 
-                  ? `₹${Math.round(wallet.total_equity_inr).toLocaleString()}` 
-                  : wallet.available_usd != null 
-                    ? `$${wallet.available_usd.toFixed(2)}` 
-                    : '--'}
-              </span>
-            </div>
-          )}
-          <div className="mini-stat">
-            <label>EXECUTION</label>
-            <span className={`value ${executionHealth?.healthy ? 'pos' : executionHealth ? 'neg' : ''}`}>
-              {executionHealth?.healthy ? 'HEALTHY' : executionHealth?.category?.toUpperCase() || 'UNKNOWN'}
-            </span>
-          </div>
-          <div className="mini-stat">
-            <label>AUTO_ENTRY</label>
-            <span className={`value ${operationalState?.auto_entry_allowed ? 'pos' : operationalState ? 'neg' : ''}`}>
-              {operationalState == null ? '—' : operationalState.auto_entry_allowed ? 'ALLOWED' : 'BLOCKED'}
-            </span>
-          </div>
-        </div>
-      </header>
-
       <main className="terminal-grid">
         <div className="grid-left">
           {strategyStatus && (
@@ -320,9 +295,11 @@ const DashboardPage: React.FC = () => {
                           <td><span className={`dir-badge ${sym.h1_dir || 'neutral'}`}>{sym.h1_dir?.toUpperCase() || '---'}</span></td>
                           <td><span className={`dir-badge ${sym.m15_dir || 'neutral'}`}>{sym.m15_dir?.toUpperCase() || '---'}</span></td>
                           <td>
-                            <span className="font-mono" style={{ color: (sym.adx ?? 0) > 20 ? 'var(--primary)' : 'var(--text-muted)' }}>
-                              {(sym.adx ?? 0).toFixed(1)}
-                            </span>
+                            <FlashValue value={sym.adx}>
+                              <span className="font-mono" style={{ color: (sym.adx ?? 0) > 20 ? 'var(--primary)' : 'var(--text-muted)' }}>
+                                {formatDisplayDecimal(sym.adx ?? 0)}
+                              </span>
+                            </FlashValue>
                           </td>
                           <td><span className="text-dim">--</span></td>
                           <td><span className={`side-badge ${sym.signal ? 'long' : 'none'}`}>{sym.signal?.toUpperCase() || 'NONE'}</span></td>
@@ -366,7 +343,7 @@ const DashboardPage: React.FC = () => {
                     </div>
                     <div className="signal-activity-meta font-mono text-muted">
                       {signalActivity.last_signal.strategy} · {signalActivity.last_signal.source} · entry{' '}
-                      {signalActivity.last_signal.entry_price}
+                      {formatQuotePrice(signalActivity.last_signal.entry_price)}
                     </div>
                     <div className="signal-activity-time text-muted">
                       {formatSignalActivityTimestamp(signalActivity.last_signal.created_at)}
@@ -431,10 +408,18 @@ const DashboardPage: React.FC = () => {
                     <th>ENTRY</th>
                     <th>OPENED</th>
                     <th>LTP</th>
-                    <th>SIZE</th>
+                    <th
+                      title="Order size in exchange contracts (not base coins). Notional ≈ contracts × contract_value × price."
+                    >
+                      CONTRACTS
+                    </th>
                     <th>LEVERAGE</th>
                     <th>PNL_UNREALIZED (INR)</th>
-                    <th>PNL_%</th>
+                    <th
+                      title="Return on initial margin (ROE), not underlying price change %. ≈ (unrealized PnL USD) ÷ (initial margin USD) × 100."
+                    >
+                      ROE%
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -446,7 +431,7 @@ const DashboardPage: React.FC = () => {
                           {sideBadgeMeta(p.side).label}
                         </span>
                       </td>
-                      <td>{p.entry_price}</td>
+                      <td className="font-mono">{formatQuotePrice(p.entry_price)}</td>
                       <td className="text-muted">
                         {p.opened_at
                           ? new Date(p.opened_at).toLocaleString(undefined, {
@@ -455,14 +440,28 @@ const DashboardPage: React.FC = () => {
                             })
                           : "--"}
                       </td>
-                      <td>{p.mark_price}</td>
-                      <td>{p.size}</td>
-                      <td className="font-mono text-zinc-400">{p.leverage}x</td>
-                      <td className={(p.unrealized_pnl_inr || 0) >= 0 ? 'pos' : 'neg'}>
-                        ₹{(p.unrealized_pnl_inr || 0).toLocaleString()}
+                      <td className="font-mono">
+                        <FlashValue value={liveLtp[p.symbol] ?? p.mark_price}>
+                          {formatQuotePrice(liveLtp[p.symbol] ?? p.mark_price)}
+                        </FlashValue>
                       </td>
-                      <td className={(p.unrealized_pnl_pct || 0) >= 0 ? 'pos' : 'neg'}>
-                        {(p.unrealized_pnl_pct || 0).toFixed(2)}%
+                      <td className="font-mono">{formatDisplayDecimal(p.size)}</td>
+                      <td className="font-mono text-zinc-400">{p.leverage}x</td>
+                      <td
+                        className={(p.unrealized_pnl_inr || 0) >= 0 ? 'pos' : 'neg'}
+                        title={
+                          p.unrealized_pnl != null
+                            ? `Unrealized ≈ ${formatUsd(p.unrealized_pnl)} USD (display INR uses a fixed USD/INR for the dashboard).`
+                            : undefined
+                        }
+                      >
+                        {formatInr(p.unrealized_pnl_inr || 0)}
+                      </td>
+                      <td
+                        className={(p.unrealized_pnl_pct || 0) >= 0 ? 'pos' : 'neg'}
+                        title="Return on equity vs posted initial margin (leverage magnifies this vs spot %)."
+                      >
+                        {formatDisplayDecimal(p.unrealized_pnl_pct || 0)}%
                       </td>
                     </tr>
                   )) : (
@@ -521,6 +520,7 @@ const DashboardPage: React.FC = () => {
                   <tr>
                     <th>SYMBOL</th>
                     <th>SIDE</th>
+                    <th>SIZE</th>
                     <th>ENTRY</th>
                     <th>EXIT</th>
                     <th>PNL_REALIZED</th>
@@ -536,10 +536,14 @@ const DashboardPage: React.FC = () => {
                           {sideBadgeMeta(t.side).label}
                         </span>
                       </td>
-                      <td>{t.entry_price}</td>
-                      <td>{t.exit_price}</td>
+                      <td className="font-mono" title="Contracts / net quantity for the closed leg">
+                        {formatDisplayDecimal(t.size)}
+                      </td>
+                      <td className="font-mono">{formatQuotePrice(t.entry_price)}</td>
+                      <td className="font-mono">{formatQuotePrice(t.exit_price)}</td>
                       <td className={(t.pnl_inr || 0) >= 0 ? 'pos' : 'neg'}>
-                        {t.pnl_inr >= 0 ? '+' : ''}₹{(t.pnl_inr || 0).toLocaleString()}
+                        {t.pnl_inr >= 0 ? '+' : ''}
+                        {formatInr(t.pnl_inr || 0)}
                       </td>
                       <td className="text-muted">
                         {t.timestamp
@@ -552,7 +556,7 @@ const DashboardPage: React.FC = () => {
                     </tr>
                   )) : (
                     <tr>
-                      <td colSpan={6} className="text-center text-muted table-empty-row">
+                      <td colSpan={7} className="text-center text-muted table-empty-row">
                         NO_TRADES_IN_HISTORY
                       </td>
                     </tr>
@@ -574,42 +578,82 @@ const DashboardPage: React.FC = () => {
             </div>
             <div className="wallet-grid">
               <div className="wallet-item">
-                <label>TOTAL EQUITY</label>
+                <label title="Ledger cash from realized fills; does not include mark-to-market on open positions.">
+                  CASH BALANCE (USD)
+                </label>
                 <div className="wallet-value">
-                  {wallet?.total_equity_inr != null ? `₹${wallet.total_equity_inr.toLocaleString()}` : '--'}
+                  {wallet?.cash_balance_usd != null ? formatUsd(wallet.cash_balance_usd) : '--'}
                 </div>
               </div>
               <div className="wallet-item">
-                <label>BLOCKED MARGIN (USD)</label>
+                <label title="Ledger cash from realized fills; does not include mark-to-market on open positions.">
+                  CASH BALANCE (INR)
+                </label>
                 <div className="wallet-value">
-                  {wallet?.blocked_margin_usd != null && wallet.blocked_margin_usd > 0
-                    ? `$${Number(wallet.blocked_margin_usd).toFixed(2)}`
-                    : wallet?.blocked_margin_usd != null
-                      ? '$0.00'
-                      : '--'}
+                  {wallet?.cash_balance_inr != null ? formatInr(wallet.cash_balance_inr) : '--'}
                 </div>
               </div>
               <div className="wallet-item">
-                <label>BLOCKED MARGIN (INR)</label>
+                <label title="Unrealized PnL on open positions (included in total equity, not in free cash).">
+                  UNREALIZED (USD)
+                </label>
+                <div className={walletSignedValueClassName(wallet?.unrealized_pnl_usd)}>
+                  {wallet?.unrealized_pnl_usd != null ? formatUsd(wallet.unrealized_pnl_usd) : '--'}
+                </div>
+              </div>
+              <div className="wallet-item">
+                <label title="Unrealized PnL on open positions (included in total equity, not in free cash).">
+                  UNREALIZED (INR)
+                </label>
+                <div className={walletSignedValueClassName(wallet?.unrealized_pnl_inr)}>
+                  {wallet?.unrealized_pnl_inr != null ? formatInr(wallet.unrealized_pnl_inr) : '--'}
+                </div>
+              </div>
+              <div className="wallet-item">
+                <label title="Cash balance plus unrealized PnL on open positions.">TOTAL EQUITY (USD)</label>
                 <div className="wallet-value">
-                  {wallet?.blocked_margin_inr != null && wallet.blocked_margin_inr > 0
-                    ? `₹${Number(wallet.blocked_margin_inr).toLocaleString()}`
-                    : wallet?.blocked_margin_inr != null
-                      ? '₹0'
-                      : '--'}
+                  {wallet?.total_equity_usd != null ? formatUsd(wallet.total_equity_usd) : '--'}
                 </div>
               </div>
               <div className="wallet-item">
-                <label>SPENDABLE (USD)</label>
-                <div className="wallet-value pos">
-                  {wallet?.available_usd != null ? `$${wallet.available_usd.toFixed(2)}` : '--'}
+                <label title="Cash balance plus unrealized PnL on open positions.">TOTAL EQUITY (INR)</label>
+                <div className="wallet-value">
+                  {wallet?.total_equity_inr != null ? formatInr(wallet.total_equity_inr) : '--'}
                 </div>
               </div>
               <div className="wallet-item">
-                <label>SPENDABLE (INR)</label>
-                <div className="wallet-value pos">
-                  {wallet?.available_inr != null ? `₹${wallet.available_inr.toLocaleString()}` : '--'}
+                <label title="Initial margin reserved for open positions.">BLOCKED MARGIN (USD)</label>
+                <div className="wallet-value">
+                  {wallet?.blocked_margin_usd != null ? formatUsd(wallet.blocked_margin_usd) : '--'}
                 </div>
+              </div>
+              <div className="wallet-item">
+                <label title="Initial margin reserved for open positions.">BLOCKED MARGIN (INR)</label>
+                <div className="wallet-value">
+                  {wallet?.blocked_margin_inr != null ? formatInr(wallet.blocked_margin_inr) : '--'}
+                </div>
+              </div>
+              <div className="wallet-item">
+                <label title="Cash balance minus blocked margin only. Unrealized PnL is not added — so equity minus blocked is not free cash unless unrealized is zero.">
+                  FREE CASH (USD)
+                </label>
+                <div className={walletCashValueClassName(wallet?.available_usd)}>
+                  {wallet?.available_usd != null ? formatUsd(wallet.available_usd) : '--'}
+                </div>
+              </div>
+              <div className="wallet-item">
+                <label title="Cash balance minus blocked margin only. Unrealized PnL is not added — so equity minus blocked is not free cash unless unrealized is zero.">
+                  FREE CASH (INR)
+                </label>
+                <div className={walletCashValueClassName(wallet?.available_inr)}>
+                  {wallet?.available_inr != null ? formatInr(wallet.available_inr) : '--'}
+                </div>
+              </div>
+              <div className="wallet-item wallet-item-span">
+                <p className="wallet-reconcile-hint">
+                  Reconcile: total equity = cash + unrealized. Free cash = cash − blocked margin (not equity −
+                  blocked).
+                </p>
               </div>
               <div className="wallet-item">
                 <label>LAST_SYNC</label>
@@ -620,6 +664,12 @@ const DashboardPage: React.FC = () => {
             </div>
             {wallet?.stale && (
               <div className="wallet-stale">⚠ Wallet data sync failed — check bot status</div>
+            )}
+            {wallet?.ledger_margin_exceeds_cash && (
+              <div className="wallet-stale">
+                Blocked margin still exceeds ledger cash after an automatic position recompute — check open fills,
+                session leverage, and contract size; the next exchange fill also recomputes margin.
+              </div>
             )}
           </section>
 
@@ -647,31 +697,23 @@ const DashboardPage: React.FC = () => {
               <div className="pnl-item">
                 <label>DAILY_EST</label>
                 <div className={`value ${(stats?.daily_pnl ?? 0) >= 0 ? 'pos' : 'neg'}`}>
-                  +${stats?.daily_pnl?.toFixed(2) ?? '9.86'}
+                  {stats?.daily_pnl != null
+                    ? `${stats.daily_pnl >= 0 ? '+' : ''}${formatUsd(stats.daily_pnl)}`
+                    : `+${formatUsd(9.86)}`}
                 </div>
               </div>
               <div className="pnl-item">
                 <label>WEEKLY_EST</label>
                 <div className={`value ${(stats?.weekly_pnl ?? 0) >= 0 ? 'pos' : 'neg'}`}>
-                  +${stats?.weekly_pnl?.toFixed(2) ?? '72.86'}
+                  {stats?.weekly_pnl != null
+                    ? `${stats.weekly_pnl >= 0 ? '+' : ''}${formatUsd(stats.weekly_pnl)}`
+                    : `+${formatUsd(72.86)}`}
                 </div>
               </div>
             </div>
           </section>
         </div>
       </main>
-
-      <footer className="terminal-footer">
-        <div className="command-line">
-          <span className="prompt">root@delta-bot:v2.0#</span>
-          <span className="cursor-blink">Awaiting input_</span>
-        </div>
-        <div className="system-metrics">
-          <span>MODE: DRY_RUN</span>
-          <span>SESSIONS: ACTIVE</span>
-          <span>LOAD: 0.24ms</span>
-        </div>
-      </footer>
     </div>
   );
 }

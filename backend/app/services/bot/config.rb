@@ -66,7 +66,7 @@ module Bot
         },
         "adx" => { "period" => 14, "threshold" => 20 },
         "filters" => { "relax_in_dry_run" => true },
-        "trailing_stop_pct" => 0.2,
+        "trailing_stop_pct" => 1.5,
         "timeframes" => { "trend" => "1h", "confirm" => "15m", "entry" => "5m" },
         "candles_lookback" => 100,
         "min_candles_required" => 30
@@ -110,7 +110,8 @@ module Bot
 
     def self.runtime_raw
       raw = Marshal.load(Marshal.dump(DEFAULTS))
-      deep_merge_runtime_overlay!(raw, bot_yml_hash)
+      overlay = bot_yml_hash
+      deep_merge_runtime_overlay!(raw, overlay)
 
       settings_by_key = Setting.where(key: RUNTIME_SETTING_KEYS).index_by(&:key)
 
@@ -150,9 +151,7 @@ module Bot
       apply_setting!(raw, "logging", "level", key: "logging.level", settings_by_key: settings_by_key)
       apply_setting!(raw, "logging", "file", key: "logging.file", settings_by_key: settings_by_key)
 
-      raw["symbols"] = SymbolConfig.where(enabled: true).order(:symbol).map do |symbol|
-        { "symbol" => symbol.symbol, "leverage" => symbol.leverage }
-      end
+      raw["symbols"] = resolve_runtime_symbols(overlay)
 
       apply_telegram_environment_overrides!(raw)
 
@@ -160,7 +159,7 @@ module Bot
     end
 
     # Deep-merge only keys that already exist on `base` (typically DEFAULTS-shaped).
-    # Ignores YAML-only keys such as `symbols`; watchlist always comes from `SymbolConfig` above.
+    # `symbols` is not in DEFAULTS — watchlist is set in +resolve_runtime_symbols+ (DB first, then bot.yml).
     def self.deep_merge_runtime_overlay!(base, overlay)
       return base if overlay.blank? || !overlay.is_a?(Hash)
 
@@ -183,6 +182,31 @@ module Bot
       YAML.safe_load(File.read(path), permitted_classes: [], aliases: true)
     rescue StandardError
       nil
+    end
+
+    def self.resolve_runtime_symbols(overlay)
+      db = SymbolConfig.where(enabled: true).order(:symbol).map do |row|
+        { "symbol" => row.symbol, "leverage" => row.leverage }
+      end
+      return db if db.any?
+
+      normalized_symbols_from_yaml(overlay)
+    end
+
+    def self.normalized_symbols_from_yaml(overlay)
+      return [] unless overlay.is_a?(Hash)
+
+      list = overlay["symbols"]
+      return [] unless list.is_a?(Array)
+
+      list.filter_map do |entry|
+        next unless entry.is_a?(Hash)
+
+        sym = (entry["symbol"] || entry[:symbol]).to_s.strip
+        next if sym.empty?
+
+        { "symbol" => sym, "leverage" => (entry["leverage"] || entry[:leverage]).to_i }
+      end
     end
 
     def self.apply_telegram_environment_overrides!(raw)
@@ -392,7 +416,10 @@ module Bot
       # Skip validation for symbols if they are already in the DB and validated there
       # But we still check names and leverage ranges for safety
       if symbols.empty?
-        error("watchlist must not be empty (add symbols via UI or bot.yml)")
+        error(
+          "watchlist must not be empty — enable at least one SymbolConfig in the DB " \
+          "or add symbols to config/bot.yml"
+        )
       end
       
       symbols.each do |s|

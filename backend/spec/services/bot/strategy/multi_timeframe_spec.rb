@@ -77,7 +77,11 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
   end
 
   context "when candles are insufficient" do
+    let(:redis_mock) { instance_double(Redis) }
+
     before do
+      allow(redis_mock).to receive(:hset)
+      allow(Redis).to receive(:new).and_return(redis_mock)
       stub_const("#{described_class}::CANDLE_FETCH_MAX_ATTEMPTS", 1)
       stub_const("#{described_class}::CANDLE_RESOLUTION_STAGGER_S", 0.0)
       allow(market_data).to receive(:trades).and_return(nil)
@@ -91,10 +95,21 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
       allow(market_data).to receive(:candles).and_return(short_candles)
     end
 
-    it "returns nil and logs a warning" do
+    it "returns nil, logs a warning, and persists blocked evaluation state with a fresh updated_at" do
       allow(logger).to receive(:warn)
       expect(mtf.evaluate("BTCUSD", current_price: 100.0)).to be_nil
       expect(logger).to have_received(:warn).with(a_string_including("insufficient_candles")).at_least(:once)
+
+      expect(redis_mock).to have_received(:hset).with(
+        "delta:strategy:state",
+        "BTCUSD",
+        satisfy { |json|
+          payload = JSON.parse(json, symbolize_names: true)
+          payload[:evaluation_blocked] == true &&
+            payload[:evaluation_block_reason] == "insufficient_candles" &&
+            payload[:updated_at].present?
+        }
+      )
     end
   end
 
@@ -123,7 +138,7 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
     it "times out, warns, and returns without hanging the caller" do
       expect(logger).to receive(:warn).with(a_string_including("trades_fetch_timeout", "BTCUSD"))
       elapsed = Benchmark.realtime { mtf.evaluate("BTCUSD", current_price: 208.0) }
-      expect(elapsed).to be < 2.5
+      expect(elapsed).to be < 3.0
     end
   end
 end

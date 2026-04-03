@@ -12,8 +12,12 @@ module Trading
       )
 
       class << self
-        # @param fills [Array<Fill>] orders must be loaded for #signed_quantity
-        def from_fills(fills)
+        # @param fills [Array<Fill>] +Fill#signed_quantity+ reads +order.side+ (one query per fill if not preloaded).
+        # @param lot_multiplier [Numeric] contracts × multiplier = base exposure (same as PositionLotSize)
+        def from_fills(fills, lot_multiplier: 1)
+          lot = lot_multiplier.to_d
+          lot = 1.to_d if lot <= 0
+
           q = 0.to_d
           avg = 0.to_d
           realized = 0.to_d
@@ -34,7 +38,7 @@ module Trading
               next
             end
 
-            r, q, avg = reduce_or_flip(q, avg, dq, price)
+            r, q, avg = reduce_or_flip(q, avg, dq, price, lot)
             realized += r
           end
 
@@ -45,9 +49,9 @@ module Trading
           )
         end
 
-        def realized_delta_for_append(prior_fills, new_fill)
-          before = from_fills(prior_fills).cumulative_realized_pnl
-          after = from_fills(prior_fills + [new_fill]).cumulative_realized_pnl
+        def realized_delta_for_append(prior_fills, new_fill, lot_multiplier: 1)
+          before = from_fills(prior_fills, lot_multiplier: lot_multiplier).cumulative_realized_pnl
+          after = from_fills(prior_fills + [new_fill], lot_multiplier: lot_multiplier).cumulative_realized_pnl
           after - before
         end
 
@@ -68,12 +72,12 @@ module Trading
         end
 
         # @return [Array<RealizedPnL, new_q, new_avg>]
-        def reduce_or_flip(q, avg, dq, price)
+        def reduce_or_flip(q, avg, dq, price, lot_mult)
           realized = 0.to_d
 
           if q.positive? && dq.negative?
             close_amt = [q, dq.abs].min
-            realized = (price - avg) * close_amt
+            realized = (price - avg) * close_amt * lot_mult
             new_q = q + dq
             new_avg = if new_q.zero?
                         0.to_d
@@ -87,7 +91,7 @@ module Trading
 
           if q.negative? && dq.positive?
             close_amt = [q.abs, dq].min
-            realized = (avg - price) * close_amt
+            realized = (avg - price) * close_amt * lot_mult
             new_q = q + dq
             new_avg = if new_q.zero?
                         0.to_d

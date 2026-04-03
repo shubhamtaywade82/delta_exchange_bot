@@ -55,3 +55,27 @@ RSpec.describe Bot::Notifications::Logger do
     lines.each { |line| expect { JSON.parse(line) }.not_to raise_error }
   end
 end
+
+RSpec.describe Bot::Notifications::StrategySessionLogger do
+  let(:log_file) { File.join(Dir.tmpdir, "test_strategy_session_#{Process.pid}_#{rand(9999)}.log") }
+  let(:rails_logger) { instance_spy(ActiveSupport::Logger) }
+
+  subject(:logger) do
+    described_class.new(file: log_file, level: "info", rails_logger: rails_logger)
+  end
+
+  after do
+    logger.close rescue nil
+    File.delete(log_file) if File.exist?(log_file)
+  end
+
+  it "writes JSON to the bot log and mirrors a plain line to the Rails logger" do
+    logger.info("evaluating_symbol", symbol: "ETHUSD", price: 1.0)
+
+    entry = JSON.parse(File.readlines(log_file).first)
+    expect(entry["event"]).to eq("evaluating_symbol")
+    expect(entry["symbol"]).to eq("ETHUSD")
+
+    expect(rails_logger).to have_received(:info).with(a_string_including("evaluating_symbol", "ETHUSD"))
+  end
+end

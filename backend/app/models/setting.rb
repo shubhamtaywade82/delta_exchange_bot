@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class Setting < ApplicationRecord
   VALUE_TYPES = %w[string integer float boolean].freeze
   DEFAULT_SOURCE = "unknown"
@@ -18,17 +20,19 @@ class Setting < ApplicationRecord
 
     setting.value = new_value
     setting.value_type = new_type
-    setting.save!
-    setting.setting_changes.create!(
-      key: key,
-      old_value: old_value,
-      new_value: new_value,
-      old_value_type: old_type,
-      new_value_type: new_type,
-      source: source,
-      reason: reason,
-      metadata: metadata || {}
-    )
+    Setting.transaction do
+      setting.save!
+      setting.setting_changes.create!(
+        key: key,
+        old_value: old_value,
+        new_value: new_value,
+        old_value_type: old_type,
+        new_value_type: new_type,
+        source: source,
+        reason: reason,
+        metadata: metadata || {}
+      )
+    end
     Trading::RuntimeConfig.refresh!(key)
     trigger_ai_refinement_for_runtime_change(source: source, key: key)
     setting

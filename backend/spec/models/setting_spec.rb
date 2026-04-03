@@ -1,9 +1,24 @@
+# frozen_string_literal: true
+
 require "rails_helper"
 
 RSpec.describe Setting, type: :model do
   describe ".apply!" do
     before do
       allow(Trading::Learning::AiRefinementTrigger).to receive(:call)
+    end
+
+    it "rolls back the setting write when the audit row cannot be created" do
+      described_class.create!(key: "txn.rollback", value: "original", value_type: "string")
+
+      invalid = SettingChange.new.tap { |c| c.errors.add(:base, "simulated failure") }
+      allow_any_instance_of(SettingChange).to receive(:save!).and_raise(ActiveRecord::RecordInvalid.new(invalid))
+
+      expect do
+        described_class.apply!(key: "txn.rollback", value: "updated", value_type: "string", source: "spec")
+      end.to raise_error(ActiveRecord::RecordInvalid)
+
+      expect(described_class.find_by(key: "txn.rollback").value).to eq("original")
     end
 
     it "persists setting and writes audit row" do

@@ -3,7 +3,7 @@
 module Trading
   module Dashboard
     class Snapshot
-      USD_INR_FOR_DISPLAY = 85.0
+      USD_INR_FALLBACK = 85.0
       BROKER_TRADES_LIMIT_DEFAULT = 500
       BROKER_TRADES_LIMIT_MAX = 2000
 
@@ -17,19 +17,40 @@ module Trading
         @trades_limit_raw = trades_limit
       end
 
+      def display_usd_inr_rate
+        rate = Bot::Config.load.usd_to_inr_rate.to_f
+        return rate if rate.positive?
+
+        USD_INR_FALLBACK
+      end
+
       def to_h
-        active_positions = Position.active.order(:symbol).to_a
+        running_session = resolve_running_session
+        active_positions = dashboard_active_positions(running_session)
         portfolio = Trading::Risk::PortfolioSnapshot.from_positions(active_positions)
         wallet = load_wallet_for_dashboard(portfolio: portfolio, positions: active_positions)
-        stats_equity_usd = stats_total_equity_usd(wallet, portfolio)
         market = build_market_rows
         trade_totals = Trade.dashboard_pnl_totals
-        total_pnl_usd = (trade_totals[:total_realized] + portfolio.total_pnl).round(2)
-        daily_pnl = trade_totals[:daily_pnl].round(2)
-        weekly_pnl = trade_totals[:weekly_pnl].round(2)
+        inr_rate = display_usd_inr_rate
+        paper_strict_realized =
+          paper_session?(running_session) ? paper_session_realized_usd_strict(running_session) : nil
+        realized_display_usd = dashboard_realized_display_usd(
+          running_session,
+          trade_totals,
+          strict_usd: paper_strict_realized
+        )
+        ledger_equity_usd = dashboard_ledger_equity_usd(
+          wallet: wallet,
+          portfolio: portfolio,
+          running_session: running_session,
+          realized_pnl_usd: paper_strict_realized || realized_display_usd
+        )
+        kpi_totals = dashboard_kpi_trade_totals(running_session, trade_totals)
+        daily_pnl = kpi_totals[:daily_pnl].round(2)
+        weekly_pnl = kpi_totals[:weekly_pnl].round(2)
         execution_health = build_execution_health
-        trade_count = trade_totals[:trade_count]
-        win_rate = trade_count.positive? ? (trade_totals[:win_count].to_f / trade_count * 100).round(1) : 0
+        trade_count = kpi_totals[:trade_count]
+        win_rate = trade_count.positive? ? (kpi_totals[:win_count].to_f / trade_count * 100).round(1) : 0
         equity_curve = equity_curve_from_trades
         trades_scope = broker_settled_trades_scope.where(closed_at: trades_day_range)
         trades_total = trades_scope.count
@@ -37,18 +58,17 @@ module Trading
         trade_rows = trades_scope.order(closed_at: :desc).limit(trades_limit)
         trade_calendar_days = Trade.broker_settled_calendar_days.map { |d| format_trade_calendar_day(d) }
         signal_activity = build_signal_activity
-        running_session = resolve_running_session
         operational_state = Trading::Risk::EntryGatesSummary.call(session: running_session, portfolio: portfolio).merge(
-          recent_signals: build_recent_signals(trading_session: running_session, limit: 30)
+          recent_signals: build_recent_signals(limit: 30)
         )
 
         {
-          positions: active_positions.map { |p| position_payload(p) },
+          positions: active_positions.map { |p| position_payload(p, inr_rate: inr_rate) },
           positions_meta: {
             as_of_date: calendar_day_string,
             count: active_positions.size
           },
-          trades: trade_rows.map { |t| trade_payload(t) },
+          trades: trade_rows.map { |t| trade_payload(t, inr_rate: inr_rate) },
           trades_calendar_days: trade_calendar_days,
           trades_meta: {
             total_count: trades_total,
@@ -57,10 +77,10 @@ module Trading
           },
           wallet: wallet,
           stats: {
-            total_pnl_usd: total_pnl_usd,
-            total_pnl_inr: (total_pnl_usd * USD_INR_FOR_DISPLAY).round(0),
-            total_equity_usd: stats_equity_usd,
-            total_equity_inr: (stats_equity_usd * USD_INR_FOR_DISPLAY).round(0),
+            total_pnl_usd: realized_display_usd,
+            total_pnl_inr: (realized_display_usd * inr_rate).round(0),
+            total_equity_usd: ledger_equity_usd,
+            total_equity_inr: (ledger_equity_usd * inr_rate).round(0),
             win_rate: win_rate,
             daily_pnl: daily_pnl,
             weekly_pnl: weekly_pnl,
@@ -74,6 +94,152 @@ module Trading
       end
 
       private
+
+      # Strict paper realized: ledger, balance delta vs seed, then session-scoped +Trade+ rows only.
+      # Used for headline equity (synthetic seed + realized) so wallet cash stays authoritative when strict is ~0.
+      def paper_session_realized_usd_strict(running_session)
+        pid = running_session.portfolio_id
+        if PortfolioLedgerEntry.where(portfolio_id: pid).exists?
+          return PortfolioLedgerEntry.where(portfolio_id: pid).sum(:realized_pnl_delta).to_f.round(2)
+        end
+
+        port = Portfolio.find(pid)
+        seed = portfolio_session_seed_usd(running_session).to_d
+        delta_balance = port.balance.to_d - seed
+        return delta_balance.round(2).to_f if delta_balance.abs >= BigDecimal("0.005")
+
+        Trade.sum_effective_pnl_usd(paper_session_broker_trades_scope(running_session)).round(2)
+      end
+
+      # Status-bar TOTAL_PNL: same as strict when that is non-zero; else today’s broker-settled sum so
+      # KPIs align with the default TRADE_HISTORY day when trades carry another session’s +portfolio_id+.
+      def dashboard_realized_display_usd(running_session, trade_totals, strict_usd:)
+        return trade_totals[:total_realized].round(2) unless paper_session?(running_session)
+
+        strict = strict_usd
+        return strict if strict.abs >= BigDecimal("0.005")
+
+        day_sum = Trade.sum_effective_pnl_usd(broker_settled_trades_today_scope)
+        return day_sum.round(2) if day_sum.abs >= BigDecimal("0.005")
+
+        strict
+      end
+
+      def paper_session_broker_trades_scope(running_session)
+        pid = running_session.portfolio_id
+        broker_settled_trades_scope.where(
+          "portfolio_id = ? OR (portfolio_id IS NULL AND closed_at >= ?)",
+          pid,
+          session_started_at(running_session)
+        )
+      end
+
+      def dashboard_kpi_trade_totals(running_session, global_totals)
+        return global_totals unless paper_session?(running_session)
+
+        scoped = paper_session_broker_trades_scope(running_session)
+        scoped_totals = Trade.dashboard_pnl_totals_for_scope(scoped)
+        return scoped_totals if scoped_totals[:trade_count].positive?
+
+        day_totals = Trade.dashboard_pnl_totals_for_scope(broker_settled_trades_today_scope)
+        return day_totals if day_totals[:trade_count].positive?
+
+        scoped_totals
+      end
+
+      def paper_session?(running_session)
+        Trading::PaperTrading.enabled? && running_session&.portfolio_id.present?
+      end
+
+      def session_started_at(session)
+        session.started_at || session.created_at || Time.zone.at(0)
+      end
+
+      def portfolio_session_seed_usd(session)
+        cap = session.capital.to_d
+        return cap if cap.positive?
+
+        BigDecimal("20000")
+      end
+
+      # Ledger headline (no unrealized): live / no session — wallet math as before. Paper + session —
+      # ledger-backed cash when entries exist; else synthetic +seed + realized+ when ledger cash never moved
+      # but +Trade+ rows did; else wallet cash / (total − unrealized).
+      def dashboard_ledger_equity_usd(wallet:, portfolio:, running_session:, realized_pnl_usd:)
+        w = wallet.stringify_keys
+
+        if paper_session?(running_session)
+          return paper_headline_equity_usd(
+            wallet: w,
+            portfolio: portfolio,
+            running_session: running_session,
+            realized_pnl_usd: realized_pnl_usd
+          )
+        end
+
+        if w["cash_balance_usd"].present?
+          return w["cash_balance_usd"].to_f.round(2)
+        end
+
+        if w["total_equity_usd"].present?
+          unrealized =
+            if w.key?("unrealized_pnl_usd") && !w["unrealized_pnl_usd"].nil?
+              w["unrealized_pnl_usd"].to_f
+            else
+              portfolio.total_pnl.to_f
+            end
+          return (w["total_equity_usd"].to_f - unrealized).round(2)
+        end
+
+        if running_session&.portfolio_id.present?
+          return running_session.portfolio.balance.to_f.round(2)
+        end
+
+        cfg = Bot::Config.load
+        initial_usd = (cfg.simulated_capital_inr.to_f / cfg.usd_to_inr_rate).round(2)
+        (initial_usd + realized_pnl_usd).round(2)
+      end
+
+      def paper_headline_equity_usd(wallet:, portfolio:, running_session:, realized_pnl_usd:)
+        pid = running_session.portfolio_id
+        seed = portfolio_session_seed_usd(running_session).to_d
+        ledger_active = PortfolioLedgerEntry.where(portfolio_id: pid).exists?
+
+        if ledger_active
+          return wallet["cash_balance_usd"].to_f.round(2) if wallet["cash_balance_usd"].present?
+
+          return running_session.portfolio.balance.to_f.round(2)
+        end
+
+        # Trade-derived realized moved the session book but wallet cash still shows seed (no ledger rows).
+        if realized_pnl_usd.abs >= BigDecimal("0.005")
+          return (seed + realized_pnl_usd.to_d).round(2).to_f
+        end
+
+        if wallet["cash_balance_usd"].present?
+          return wallet["cash_balance_usd"].to_f.round(2)
+        end
+
+        if wallet["total_equity_usd"].present?
+          unrealized =
+            if wallet.key?("unrealized_pnl_usd") && !wallet["unrealized_pnl_usd"].nil?
+              wallet["unrealized_pnl_usd"].to_f
+            else
+              portfolio.total_pnl.to_f
+            end
+          return (wallet["total_equity_usd"].to_f - unrealized).round(2)
+        end
+
+        (seed + realized_pnl_usd.to_d).round(2).to_f
+      end
+
+      def dashboard_active_positions(running_session)
+        scope = Position.active.order(:symbol)
+        if Trading::PaperTrading.enabled? && running_session&.portfolio_id.present?
+          scope = scope.where(portfolio_id: running_session.portfolio_id)
+        end
+        scope.to_a
+      end
 
       def format_trade_calendar_day(value)
         return value.strftime("%Y-%m-%d") if value.respond_to?(:strftime)
@@ -93,9 +259,10 @@ module Trading
 
       def equity_curve_from_trades
         curve_dates = (0..6).to_a.reverse.map { |days_ago| days_ago.days.ago.in_time_zone.to_date }
-        rows = Trade.where.not(closed_at: nil).where("closed_at::date IN (?)", curve_dates).pluck(:closed_at, :pnl_usd)
         by_date = Hash.new(0.0)
-        rows.each { |closed_at, pnl| by_date[closed_at.in_time_zone.to_date] += pnl.to_f }
+        Trade.where.not(closed_at: nil).where("closed_at::date IN (?)", curve_dates).find_each do |t|
+          by_date[t.closed_at.in_time_zone.to_date] += t.effective_pnl_usd.to_f
+        end
         curve_dates.map { |date| by_date[date].round(2) }
       end
 
@@ -109,18 +276,32 @@ module Trading
       end
 
       def default_wallet_hash(portfolio, positions: nil)
-        {
+        equity_usd = 1000.0 + portfolio.total_pnl.to_f
+        base = {
           "balance" => 1000.0,
-          "equity" => 1000.0 + portfolio.total_pnl.to_f
+          "equity" => equity_usd
         }
-      end
+        return base unless Trading::PaperTrading.enabled?
 
-      def stats_total_equity_usd(wallet, portfolio)
-        if wallet["total_equity_usd"].present?
-          wallet["total_equity_usd"].to_f.round(2)
-        else
-          (wallet["balance"].to_f + portfolio.total_pnl.to_f).round(2)
-        end
+        cfg = Bot::Config.load
+        unreal = portfolio.total_pnl.to_f
+        cash = (equity_usd - unreal).round(2)
+        base.merge(
+          "cash_balance_usd" => cash,
+          "cash_balance_inr" => (cash * cfg.usd_to_inr_rate).round(0),
+          "unrealized_pnl_usd" => unreal.round(2),
+          "unrealized_pnl_inr" => (unreal * cfg.usd_to_inr_rate).round(0),
+          "total_equity_usd" => equity_usd.round(2),
+          "total_equity_inr" => (equity_usd * cfg.usd_to_inr_rate).round(0),
+          "available_usd" => cash,
+          "available_inr" => (cash * cfg.usd_to_inr_rate).round(0),
+          "blocked_margin_usd" => 0.0,
+          "blocked_margin_inr" => 0,
+          "capital_inr" => cfg.simulated_capital_inr.round(0),
+          "paper_mode" => true,
+          "updated_at" => Time.current.iso8601,
+          "stale" => true
+        )
       end
 
       def calendar_day_string
@@ -135,6 +316,10 @@ module Trading
       def broker_settled_trades_scope
         Trade.where.not(symbol: [nil, ""])
              .where.not(closed_at: nil)
+      end
+
+      def broker_settled_trades_today_scope
+        broker_settled_trades_scope.where(closed_at: Time.zone.today.all_day)
       end
 
       def trades_day_value
@@ -161,22 +346,24 @@ module Trading
         [limit, BROKER_TRADES_LIMIT_MAX].min
       end
 
-      def trade_payload(trade)
+      def trade_payload(trade, inr_rate:)
+        pnl_usd = trade.effective_pnl_usd.to_f
         {
           symbol: trade.symbol,
           side: trade.side,
+          size: trade.size&.to_f,
           entry_price: trade.entry_price,
           exit_price: trade.exit_price,
-          pnl_usd: trade.pnl_usd,
-          pnl_inr: (trade.pnl_usd.to_f * USD_INR_FOR_DISPLAY).round(0),
+          pnl_usd: pnl_usd,
+          pnl_inr: (pnl_usd * inr_rate).round(0),
           timestamp: trade.closed_at
         }
       end
 
-      def position_payload(position)
-        entry_price = position.entry_price.to_f
-        mark = Rails.cache.read("ltp:#{position.symbol}")&.to_f || entry_price
-        unrealized_usd = unrealized_pnl_usd(position: position, mark: mark, entry: entry_price).round(2)
+      def position_payload(position, inr_rate:)
+        entry_price = round_price_for_json(position.entry_price)
+        mark = round_price_for_json(Rails.cache.read("ltp:#{position.symbol}")) || entry_price
+        unrealized_usd = unrealized_pnl_usd(position: position, mark: mark).round(2)
         opened_at = position.entry_time || position.created_at
 
         {
@@ -187,7 +374,7 @@ module Trading
           mark_price: mark,
           opened_at: opened_at&.iso8601,
           unrealized_pnl: unrealized_usd,
-          unrealized_pnl_inr: (unrealized_usd * USD_INR_FOR_DISPLAY).round(0),
+          unrealized_pnl_inr: (unrealized_usd * inr_rate).round(0),
           unrealized_pnl_pct: unrealized_pnl_pct(position, unrealized_usd),
           leverage: position.leverage,
           status: position.status
@@ -215,22 +402,61 @@ module Trading
         (lots * lot * entry) / lev
       end
 
-      def unrealized_pnl_usd(position:, mark:, entry:)
-        direction = position.side.in?(%w[sell short]) ? -1.0 : 1.0
-        lots = position.size.to_f.abs
-        lot = Trading::Risk::PositionLotSize.multiplier_for(position).to_f
-        qty = lots * lot
-        (mark.to_f - entry.to_f) * qty * direction
+      def round_price_for_json(value)
+        d = value&.to_d
+        return nil if d.nil?
+
+        d.round(8).to_f
+      end
+
+      def unrealized_pnl_usd(position:, mark:)
+        m = mark
+        m = position.entry_price if m.nil? || m.to_f.zero?
+        Trading::Risk::PositionRisk.call(position: position, mark_price: m).unrealized_pnl.to_f
       end
 
       def build_market_rows
-        SymbolConfig.where(enabled: true).map do |config|
+        # Use unified watchlist from Bot::Config (merges DB + bot.yml)
+        Bot::Config.load.symbols.map do |s|
+          config = SymbolConfig.find_or_initialize_by(symbol: s[:symbol])
           {
-            symbol: config.symbol,
-            price: Rails.cache.read("ltp:#{config.symbol}")&.to_f || 0.0,
-            leverage: config.leverage
+            symbol: s[:symbol],
+            price: resolve_dashboard_mark_price(config),
+            leverage: config.leverage || s[:leverage]
           }
         end
+      end
+
+      # Live path: Rails.cache ltp:SYMBOL (WsClient / Runner, 30s TTL). Same-process dev MemoryStore
+      # misses cross-process; PriceStore uses Redis.current (aligned with cache DB in development).
+      # Then paper broker Redis LTP, then catalog sync columns when REST/catalog last ran.
+      def resolve_dashboard_mark_price(config)
+        sym = config.symbol
+        raw_ltp = Rails.cache.read("ltp:#{sym}")
+        p = raw_ltp.nil? ? 0.0 : raw_ltp.to_f
+        return round_market_price(p) if p.positive?
+
+        raw_ps = Bot::Feed::PriceStore.new.get(sym)
+        p = raw_ps.nil? ? 0.0 : raw_ps.to_f
+        return round_market_price(p) if p.positive?
+
+        if config.product_id.present?
+          pr = ::PaperTrading::RedisStore.get_ltp(config.product_id)
+          p = pr&.to_f
+          return round_market_price(p) if p&.positive?
+        end
+
+        p = config.last_mark_price&.to_f
+        return round_market_price(p) if p&.positive?
+
+        p = config.last_close_price&.to_f
+        return round_market_price(p) if p&.positive?
+
+        0.0
+      end
+
+      def round_market_price(value)
+        value.to_d.round(8).to_f
       end
 
       def build_signal_activity
@@ -248,10 +474,10 @@ module Trading
                       .first
       end
 
-      def build_recent_signals(trading_session:, limit:)
-        scope = GeneratedSignal.order(created_at: :desc)
-        scope = scope.where(trading_session_id: trading_session.id) if trading_session
-        scope.limit(limit).map { |r| signal_activity_payload(r) }
+      # Cross-session: restarting the runner creates a new TradingSession; filtering only the
+      # current session made the operational timeline look empty while the bot was still trading.
+      def build_recent_signals(limit:)
+        GeneratedSignal.order(created_at: :desc).limit(limit).map { |r| signal_activity_payload(r) }
       end
 
       def signal_activity_payload(record)

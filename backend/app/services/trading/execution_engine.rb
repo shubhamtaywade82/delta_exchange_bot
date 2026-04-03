@@ -39,6 +39,7 @@ module Trading
 
       position = find_or_create_position!
       order_attrs = OrderBuilder.build(@signal, session: @session, position: position)
+      validate_margin_affordability!(order_attrs, position)
       order = OrdersRepository.create!(order_attrs)
 
       result = place_order(order)
@@ -72,6 +73,34 @@ module Trading
 
       @session.save!
       @session.reload
+    end
+
+    def validate_margin_affordability!(order_attrs, position)
+      return unless PaperTrading.enabled?
+      return if PaperRiskOverride.active?
+
+      fill_price = resolve_intended_fill_price(order_attrs)
+      Trading::Risk::MarginAffordability.verify!(
+        portfolio: @session.portfolio,
+        symbol: order_attrs[:symbol].to_s,
+        order_side: order_attrs[:side].to_s,
+        order_size: order_attrs[:size],
+        fill_price: fill_price,
+        position: position,
+        session: @session
+      )
+    end
+
+    def resolve_intended_fill_price(order_attrs)
+      px = order_attrs[:price].to_f
+      return px if px.positive?
+
+      mark = Rails.cache.read("ltp:#{order_attrs[:symbol]}")&.to_f
+      unless mark&.positive?
+        raise RiskManager::RiskError, "execution needs order price or cached ltp:#{order_attrs[:symbol]}"
+      end
+
+      mark
     end
 
     def validate_risk_and_portfolio_guard!

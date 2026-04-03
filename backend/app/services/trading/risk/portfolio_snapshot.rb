@@ -2,7 +2,8 @@
 
 module Trading
   module Risk
-    # PortfolioSnapshot derives aggregate PnL and exposure from live positions and cached marks.
+    # PortfolioSnapshot derives open-book exposure and mark-to-market PnL from active positions.
+    # +total_pnl+ is unrealized only; settled realized lives on +Trade+ rows and the portfolio ledger.
     class PortfolioSnapshot
       Result = Struct.new(:total_pnl, :total_exposure, keyword_init: true)
 
@@ -21,7 +22,6 @@ module Trading
           PositionRisk.call(position: position, mark_price: mark).unrealized_pnl
         end
 
-        total_realized = list.sum { |position| position.pnl_usd.to_d }
         total_exposure = list.sum do |position|
           mark = Rails.cache.read("ltp:#{position.symbol}")&.to_d || position.entry_price.to_d
           lots = position.size.to_d.abs
@@ -29,7 +29,7 @@ module Trading
           lots * lot * mark
         end
 
-        Result.new(total_pnl: total_realized + total_unrealized, total_exposure: total_exposure)
+        Result.new(total_pnl: total_unrealized, total_exposure: total_exposure)
       end
     end
   end
