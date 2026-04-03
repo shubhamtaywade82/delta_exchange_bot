@@ -5,8 +5,11 @@ module Trading
   # liquidation threshold. Distinct from +Trading::Risk::LiquidationGuard+, which classifies margin ratio.
   class NearLiquidationExit
     BUFFER_PCT = 0.10
+    COOLDOWN_TTL = 30.seconds
 
     def self.check_all(client:)
+      return if PaperTrading.enabled?
+
       # Intentionally all active rows (runner may watch multiple portfolios / sessions).
       Position.active.find_each do |position|
         new(position, client).check!
@@ -20,8 +23,10 @@ module Trading
 
     def check!
       return unless @position.liquidation_price.present?
+      return if Rails.cache.read(cooldown_cache_key)
 
-      current_price = Rails.cache.read("ltp:#{@position.symbol}")&.to_f
+      mark = MarkPrice.for_synthetic_exit(@position, fallback_entry_price: false)
+      current_price = mark&.to_f
       return unless current_price&.positive?
 
       return unless distance_to_liquidation(current_price) < BUFFER_PCT
@@ -30,10 +35,15 @@ module Trading
         "[NearLiquidationExit] Emergency exit: #{@position.symbol} price=#{current_price} " \
         "liq=#{@position.liquidation_price} distance=#{(distance_to_liquidation(current_price) * 100).round(2)}%"
       )
+      Rails.cache.write(cooldown_cache_key, 1, expires_in: COOLDOWN_TTL)
       EmergencyShutdown.force_exit_position(@position, @client)
     end
 
     private
+
+    def cooldown_cache_key
+      "near_liquidation_exit_attempt:#{@position.id}"
+    end
 
     def distance_to_liquidation(current_price)
       liq = @position.liquidation_price.to_f

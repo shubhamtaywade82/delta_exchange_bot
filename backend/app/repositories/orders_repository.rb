@@ -66,12 +66,12 @@ module OrdersRepository
       pos
     end
 
-    notify_trade_closed_telegram(trade, reason)
+    notify_trade_closed_telegram(trade, reason, position_id: position&.id)
     position&.portfolio&.sync_margin_from_positions!
     position
   end
 
-  def self.notify_trade_closed_telegram(trade, reason)
+  def self.notify_trade_closed_telegram(trade, reason, position_id: nil)
     return unless trade
 
     Trading::TelegramNotifications.deliver do |n|
@@ -81,7 +81,8 @@ module OrdersRepository
         pnl_usd: trade.pnl_usd.to_f,
         pnl_inr: trade.pnl_inr.to_f,
         duration_seconds: trade.duration_seconds.to_i,
-        reason: reason.to_s
+        reason: reason.to_s,
+        position_id: position_id
       )
     end
   end

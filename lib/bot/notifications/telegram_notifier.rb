@@ -77,19 +77,20 @@ module Bot
         )
       end
 
-      def notify_trade_closed(symbol:, exit_price:, pnl_usd:, pnl_inr:, duration_seconds:, reason:)
+      def notify_trade_closed(symbol:, exit_price:, pnl_usd:, pnl_inr:, duration_seconds:, reason:, position_id: nil)
         return unless enabled_for?(:positions)
 
         sign  = pnl_usd >= 0 ? "+" : ""
         emoji = pnl_usd >= 0 ? "🟢" : "🔴"
         hours = duration_seconds / 3600
         mins  = (duration_seconds % 3600) / 60
+        tail = position_id.present? ? "\n<code>position_id=#{position_id}</code>" : ""
         send_message(
           "#{emoji} <b>POSITION CLOSED</b>\n" \
           "#{symbol} — #{reason}\n" \
           "Exit: $#{format('%.2f', exit_price)}\n" \
           "PnL: #{sign}$#{format('%.2f', pnl_usd)} (#{sign}₹#{pnl_inr.round(0)})\n" \
-          "Duration: #{hours}h #{mins}m"
+          "Duration: #{hours}h #{mins}m#{tail}"
         )
       end
 

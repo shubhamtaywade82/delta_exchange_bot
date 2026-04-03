@@ -8,6 +8,15 @@ RSpec.describe Trading::NearLiquidationExit do
 
   before do
     allow(Trading::EmergencyShutdown).to receive(:force_exit_position)
+    allow(Trading::PaperTrading).to receive(:enabled?).and_return(false)
+  end
+
+  describe ".check_all" do
+    it "does not scan positions when paper trading is enabled" do
+      allow(Trading::PaperTrading).to receive(:enabled?).and_return(true)
+      expect(Position).not_to receive(:active)
+      described_class.check_all(client: client)
+    end
   end
 
   describe "#check!" do
@@ -111,6 +120,27 @@ RSpec.describe Trading::NearLiquidationExit do
       described_class.new(position, client).check!
 
       expect(Trading::EmergencyShutdown).to have_received(:force_exit_position).with(position, client)
+    end
+
+    it "does not call force_exit twice within the cooldown window" do
+      position = create(
+        :position,
+        portfolio: session.portfolio,
+        symbol: "BTCUSD",
+        side: "long",
+        status: "filled",
+        liquidation_price: 90_000.0,
+        entry_price: 100_000.0,
+        size: 1.0,
+        leverage: 10
+      )
+      Rails.cache.write("ltp:BTCUSD", 99_000.0)
+      Rails.cache.delete("near_liquidation_exit_attempt:#{position.id}")
+
+      described_class.new(position, client).check!
+      described_class.new(position, client).check!
+
+      expect(Trading::EmergencyShutdown).to have_received(:force_exit_position).once
     end
   end
 end

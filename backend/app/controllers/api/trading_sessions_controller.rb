@@ -32,9 +32,11 @@ module Api
 
     def destroy
       session = TradingSession.find(params[:id])
-      session.update!(status: "stopped", stopped_at: Time.current)
-
-      run_emergency_shutdown_if_possible(session)
+      was_running = session.running?
+      if was_running
+        session.update!(status: "stopped", stopped_at: Time.current)
+        run_emergency_shutdown_if_possible(session)
+      end
 
       head :ok
     rescue ActiveRecord::RecordNotFound

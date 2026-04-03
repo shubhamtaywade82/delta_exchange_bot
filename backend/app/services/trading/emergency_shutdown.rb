@@ -76,7 +76,7 @@ module Trading
     end
 
     def self.latest_mark_price_for(position)
-      Rails.cache.read("ltp:#{position.symbol}")&.to_d || position.entry_price.to_d
+      MarkPrice.for_synthetic_exit(position)
     end
   end
 end
