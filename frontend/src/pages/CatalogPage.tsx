@@ -4,6 +4,7 @@ import {
   Search, 
   Loader2
 } from 'lucide-react';
+import ProductDetailPanel from '../components/ProductDetailPanel';
 
 interface Product {
   id: number;
@@ -29,6 +30,8 @@ const CatalogPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('ALL');
   const [leverages, setLeverages] = useState<Record<string, number>>({});
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [analysisData, setAnalysisData] = useState<any[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -37,12 +40,14 @@ const CatalogPage: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [resP, resW] = await Promise.all([
+      const [resP, resW, resA] = await Promise.all([
         axios.get('/api/products'),
-        axios.get('/api/symbol_configs')
+        axios.get('/api/symbol_configs'),
+        axios.get('/api/analysis_dashboard')
       ]);
       setProducts(resP.data);
       setWatchlist(resW.data);
+      setAnalysisData(resA.data.symbols || []);
       
       // Initialize leverage inputs from watchlist or default to 10
       const initialLevs: Record<string, number> = {};
@@ -88,7 +93,10 @@ const CatalogPage: React.FC = () => {
   const filtered = products.filter(p => {
     const matchesSearch = p.symbol.toLowerCase().includes(search.toLowerCase());
     const matchesCat = category === 'ALL' || p.symbol.includes(category);
-    return matchesSearch && matchesCat;
+    
+    // If there is a search query, show all matches regardless of category.
+    // Otherwise, filter by category.
+    return search ? matchesSearch : matchesCat;
   });
 
   if (loading) return (
@@ -142,7 +150,11 @@ const CatalogPage: React.FC = () => {
           const isWatch = entry?.enabled;
           
           return (
-            <div key={p.symbol} className={`terminal-section product-card ${isWatch ? 'active-glow' : ''}`}>
+            <div 
+              key={p.symbol} 
+              className={`terminal-section product-card ${isWatch ? 'active-glow' : ''}`}
+              onClick={() => setSelectedSymbol(p.symbol)}
+            >
               <div className="product-info">
                 <span className="sym">{p.symbol}</span>
                 <span className="desc">{p.description}</span>
@@ -161,7 +173,7 @@ const CatalogPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="card-actions">
+              <div className="card-actions" onClick={e => e.stopPropagation()}>
                 <div className="leverage-input-group">
                   <label>RISK_LEVERAGE</label>
                   <div className="flex items-center gap-2">
@@ -177,7 +189,10 @@ const CatalogPage: React.FC = () => {
 
                 <button 
                   className={isWatch ? 'btn-remove' : 'btn-add'}
-                  onClick={() => toggleWatch(p.symbol)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleWatch(p.symbol);
+                  }}
                 >
                   {isWatch ? 'DISABLE' : 'ENABLE'}
                 </button>
@@ -186,6 +201,22 @@ const CatalogPage: React.FC = () => {
           );
         })}
       </div>
+
+      {selectedSymbol && (() => {
+        const product = products.find(p => p.symbol === selectedSymbol);
+        const analysis = analysisData.find(a => a.symbol === selectedSymbol);
+        if (!product) return null;
+        return (
+          <ProductDetailPanel
+            symbol={product.symbol}
+            description={product.description}
+            contractType={product.contract_type}
+            analysis={analysis?.ai_smc}
+            updatedAt={analysis?.updated_at}
+            onClose={() => setSelectedSymbol(null)}
+          />
+        );
+      })()}
       
       {filtered.length > 100 && (
         <div className="text-center py-8 text-muted font-mono text-xs border-t border-glass">
