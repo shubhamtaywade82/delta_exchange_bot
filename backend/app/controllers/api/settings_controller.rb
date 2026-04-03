@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class Api::SettingsController < ApplicationController
   def index
     settings = Setting.order(:key).map do |setting|
@@ -30,7 +32,7 @@ class Api::SettingsController < ApplicationController
       typed_value: setting.typed_value
     }
   rescue ActiveRecord::RecordInvalid => e
-    render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
+    render json: { errors: e.record.errors.full_messages }, status: :unprocessable_content
   end
 
   def changes
@@ -69,7 +71,7 @@ class Api::SettingsController < ApplicationController
   end
 
   def limit_param
-    limit = params[:limit].to_i
+    limit = params.permit(:limit)[:limit].to_i
     return 50 if limit <= 0
 
     [limit, 200].min

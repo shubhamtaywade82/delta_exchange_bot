@@ -35,6 +35,7 @@ namespace :paper_wallet do
     end
     wallet.deposit!(BigDecimal(amount), meta: { "source" => "rake" })
     wallet.refresh_snapshot!(ltp_map: {})
+    Trading::PaperWalletPublisher.push_dashboard_redis_after_wallet_refresh!(wallet)
     puts "Deposited #{amount} INR into wallet #{wallet.id}. balance_inr=#{wallet.balance_inr} available_inr=#{wallet.available_inr}"
   end
 end

@@ -12,7 +12,7 @@ module Trading
       )
 
       class << self
-        # @param fills [Array<Fill>] orders must be loaded for #signed_quantity
+        # @param fills [Array<Fill>] +Fill#signed_quantity+ reads +order.side+ (one query per fill if not preloaded).
         # @param lot_multiplier [Numeric] contracts × multiplier = base exposure (same as PositionLotSize)
         def from_fills(fills, lot_multiplier: 1)
           lot = lot_multiplier.to_d

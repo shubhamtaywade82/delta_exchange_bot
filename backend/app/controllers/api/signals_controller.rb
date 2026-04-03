@@ -17,7 +17,7 @@ module Api
     end
 
     def limit_param
-      requested = params[:limit].to_i
+      requested = params.permit(:limit)[:limit].to_i
       return DEFAULT_LIMIT if requested <= 0
 
       [requested, MAX_LIMIT].min

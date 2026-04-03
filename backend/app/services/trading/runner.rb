@@ -78,14 +78,14 @@ module Trading
       @ws_thread = Thread.new do
         # WsClient still useful for real-time LTP/PnL in UI via PriceStore
         MarketData::WsClient.new(client: @client, symbols: symbols, testnet: testnet).start
-      rescue => e
-        Rails.logger.error("[Runner] WS thread crashed: #{e.message}")
+      rescue StandardError => e
+        Rails.logger.error("[Runner] WS thread crashed: #{e.class}: #{e.message}")
       end
     end
 
     def run_loop
       while running?
-        now = Time.now.to_i
+        now = Time.current.to_i
         if now - @last_strategy_run >= strategy_interval_seconds
           run_strategy
           @last_strategy_run = now
@@ -128,7 +128,12 @@ module Trading
       symbols.each_with_index do |symbol, index|
         sleep(strategy_symbol_stagger_seconds) if index.positive?
 
-        ltp    = Rails.cache.read("ltp:#{symbol}") || fetch_last_price(symbol)
+        ltp = normalized_ltp(symbol)
+        unless ltp
+          Rails.logger.warn("[Runner] Skipping #{symbol}: no positive LTP (cache or REST)")
+          next
+        end
+
         signal = strategy.evaluate(symbol, current_price: ltp)
         if signal
           execute_signal(
@@ -147,8 +152,8 @@ module Trading
         next unless adaptive_signal
 
         execute_signal(**adaptive_signal)
-      rescue => e
-        Rails.logger.error("[Runner] Strategy error for #{symbol}: #{e.message}")
+      rescue StandardError => e
+        Rails.logger.error("[Runner] Strategy error for #{symbol}: #{e.class}: #{e.message}")
       end
 
       elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - pass_started
@@ -243,12 +248,29 @@ module Trading
       )
     end
 
+    def normalized_ltp(symbol)
+      raw = Rails.cache.read("ltp:#{symbol}")
+      candidate = raw.nil? ? nil : raw.to_f
+      candidate = fetch_last_price(symbol) unless candidate&.positive?
+      candidate&.positive? ? candidate : nil
+    end
+
     def fetch_last_price(symbol)
-      # Fallback if WS not populated cache yet
       ticker = @client.market_data.ticker(symbol)
-      ticker["mark_price"]&.to_f || ticker["close"]&.to_f
-    rescue
-      0.0
+      extract_positive_ticker_price(ticker)
+    rescue StandardError => e
+      Rails.logger.warn("[Runner] fetch_last_price failed symbol=#{symbol}: #{e.class}: #{e.message}")
+      nil
+    end
+
+    def extract_positive_ticker_price(ticker)
+      %w[mark_price close].each do |key|
+        next if ticker[key].nil?
+
+        price = ticker[key].to_f
+        return price if price.positive?
+      end
+      nil
     end
 
     def running?

@@ -339,10 +339,10 @@ RSpec.describe "Api::Dashboard", type: :request do
       Rails.cache = previous_cache
     end
 
-    it "returns unprocessable_entity when not in paper mode" do
+    it "returns unprocessable_content when not in paper mode" do
       allow(Trading::PaperTrading).to receive(:enabled?).and_return(false)
       post "/api/dashboard/paper_risk_override", params: { ignore_entry_risk_gates: true }, as: :json
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
     end
 
     it "persists ignore_entry_risk_gates for paper mode" do

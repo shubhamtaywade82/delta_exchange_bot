@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_02_200000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_02_210000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -244,7 +244,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_200000) do
     t.decimal "unrealized_pnl_usd", precision: 20, scale: 8
     t.datetime "updated_at", null: false
     t.index ["needs_reconciliation"], name: "index_positions_on_needs_reconciliation"
-    t.index ["portfolio_id", "symbol"], name: "idx_positions_one_open_net_per_portfolio_symbol", unique: true, where: "((status)::text = ANY (ARRAY[('init'::character varying)::text, ('entry_pending'::character varying)::text, ('partially_filled'::character varying)::text, ('filled'::character varying)::text, ('exit_pending'::character varying)::text, ('open'::character varying)::text]))"
+    t.index ["portfolio_id", "symbol"], name: "idx_positions_one_open_net_per_portfolio_symbol", unique: true, where: "((status)::text = ANY ((ARRAY['init'::character varying, 'entry_pending'::character varying, 'partially_filled'::character varying, 'filled'::character varying, 'exit_pending'::character varying, 'open'::character varying])::text[]))"
     t.index ["portfolio_id"], name: "index_positions_on_portfolio_id"
   end
 
@@ -420,6 +420,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_02_200000) do
     t.string "symbol"
     t.decimal "tick_size", precision: 24, scale: 12
     t.datetime "updated_at", null: false
+    t.index ["enabled"], name: "index_symbol_configs_on_enabled"
   end
 
   create_table "trades", force: :cascade do |t|

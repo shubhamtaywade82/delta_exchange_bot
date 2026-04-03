@@ -22,6 +22,7 @@ module PaperTrading
       wallet.reload
       wallet.refresh_snapshot!(ltp_map: ltp_map)
       PaperTrading::RedisStore.set_wallet_snapshot(wallet.id, wallet.attributes)
+      Trading::PaperWalletPublisher.push_dashboard_redis_after_wallet_refresh!(wallet)
 
       positions.each do |pos|
         pid = pos.paper_product_snapshot.product_id

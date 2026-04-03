@@ -710,8 +710,8 @@ const DashboardPage: React.FC = () => {
             )}
             {wallet?.ledger_margin_exceeds_cash && (
               <div className="wallet-stale">
-                Blocked margin exceeds ledger cash — margin rows are inconsistent with balance (often wrong leverage
-                on open positions). Re-run position reconciliation or let the next fill recompute margin.
+                Blocked margin still exceeds ledger cash after an automatic position recompute — check open fills,
+                session leverage, and contract size; the next exchange fill also recomputes margin.
               </div>
             )}
           </section>
