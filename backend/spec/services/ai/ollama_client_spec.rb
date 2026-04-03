@@ -69,4 +69,42 @@ RSpec.describe Ai::OllamaClient do
       expect(described_class.__send__(:resolved_base_url)).to eq("https://api.example")
     end
   end
+
+  describe "OLLAMA_TIMEOUT_SECONDS / OLLAMA_MAX_RETRIES" do
+    around do |example|
+      saved = %w[OLLAMA_TIMEOUT_SECONDS OLLAMA_MAX_RETRIES].to_h { |k| [k, ENV[k]] }
+      %w[OLLAMA_TIMEOUT_SECONDS OLLAMA_MAX_RETRIES].each { |k| ENV.delete(k) }
+      example.run
+    ensure
+      saved.each { |k, v| v.nil? ? ENV.delete(k) : ENV[k] = v }
+    end
+
+    it "uses OLLAMA_TIMEOUT_SECONDS without reading ai.ollama_timeout_seconds from RuntimeConfig" do
+      ENV["OLLAMA_TIMEOUT_SECONDS"] = "200"
+      expect(Trading::RuntimeConfig).not_to receive(:fetch_integer).with(
+        "ai.ollama_timeout_seconds",
+        anything
+      )
+      expect(described_class.__send__(:read_timeout_seconds)).to eq(200)
+    end
+
+    it "uses RuntimeConfig for timeout when OLLAMA_TIMEOUT_SECONDS is unset" do
+      allow(Trading::RuntimeConfig).to receive(:fetch_integer)
+        .with(
+          "ai.ollama_timeout_seconds",
+          hash_including(default: Ai::OllamaClient::DEFAULT_TIMEOUT_SECONDS, env_key: nil)
+        )
+        .and_return(42)
+      expect(described_class.__send__(:read_timeout_seconds)).to eq(42)
+    end
+
+    it "uses OLLAMA_MAX_RETRIES without reading ai.ollama_max_retries from RuntimeConfig" do
+      ENV["OLLAMA_MAX_RETRIES"] = "0"
+      expect(Trading::RuntimeConfig).not_to receive(:fetch_integer).with(
+        "ai.ollama_max_retries",
+        anything
+      )
+      expect(described_class.__send__(:read_max_retries)).to eq(0)
+    end
+  end
 end

@@ -32,10 +32,10 @@ module Ai
     class << self
       # @param prompt [String]
       # @return [String]
-      def ask(prompt)
+      def ask(prompt, connection_settings: nil)
         raise LoadError, "ollama-client gem is unavailable" unless OLLAMA_GEM_AVAILABLE
 
-        settings = read_connection_settings
+        settings = connection_settings || read_connection_settings
         with_retries(max_retries: settings.max_retries) do
           Timeout.timeout(settings.request_timeout_seconds) do
             build_client(settings).generate(prompt: prompt, model: settings.model_name, strict: false)
@@ -124,18 +124,34 @@ module Ai
           "llama3"
       end
 
+      # ENV wins over DB `settings` rows — matches ops expectation for `.env` and avoids stale seeded `8`
+      # blocking `OLLAMA_TIMEOUT_SECONDS` from taking effect.
       def read_timeout_seconds
+        if (raw = ENV["OLLAMA_TIMEOUT_SECONDS"].to_s.strip).present?
+          v = Integer(raw)
+          return v.positive? ? v : DEFAULT_TIMEOUT_SECONDS
+        end
+
         timeout = Trading::RuntimeConfig.fetch_integer(
           "ai.ollama_timeout_seconds",
           default: DEFAULT_TIMEOUT_SECONDS,
-          env_key: "OLLAMA_TIMEOUT_SECONDS"
+          env_key: nil
         )
         timeout.positive? ? timeout : DEFAULT_TIMEOUT_SECONDS
+      rescue ArgumentError, TypeError
+        DEFAULT_TIMEOUT_SECONDS
       end
 
       def read_max_retries
-        retries = Trading::RuntimeConfig.fetch_integer("ai.ollama_max_retries", default: 2, env_key: "OLLAMA_MAX_RETRIES")
+        if (raw = ENV["OLLAMA_MAX_RETRIES"].to_s.strip).present?
+          v = Integer(raw)
+          return v.negative? ? 0 : v
+        end
+
+        retries = Trading::RuntimeConfig.fetch_integer("ai.ollama_max_retries", default: 2, env_key: nil)
         retries.negative? ? 0 : retries
+      rescue ArgumentError, TypeError
+        2
       end
 
       def read_api_key_string

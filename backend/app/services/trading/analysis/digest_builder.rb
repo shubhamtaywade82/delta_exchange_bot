@@ -8,14 +8,20 @@ module Trading
       STRUCTURE_CONFIRM = "15m"
       STRUCTURE_ENTRY = "5m"
 
-      def self.call(symbol:, market_data:, config:)
-        new(symbol: symbol, market_data: market_data, config: config).build
+      def self.call(symbol:, market_data:, config:, ollama_connection_settings: nil)
+        new(
+          symbol: symbol,
+          market_data: market_data,
+          config: config,
+          ollama_connection_settings: ollama_connection_settings
+        ).build
       end
 
-      def initialize(symbol:, market_data:, config:)
+      def initialize(symbol:, market_data:, config:, ollama_connection_settings: nil)
         @symbol = symbol
         @market_data = market_data
         @config = config
+        @ollama_connection_settings = ollama_connection_settings
       end
 
       def build
@@ -65,7 +71,11 @@ module Trading
           smc_by_timeframe: smc_by_timeframe,
           trade_plan: trade_plan
         }
-        ai_smc = Trading::Analysis::AiSmcSynthesizer.call(symbol: @symbol, payload: ai_payload)
+        ai_smc = Trading::Analysis::AiSmcSynthesizer.call(
+          symbol: @symbol,
+          payload: ai_payload,
+          connection_settings: @ollama_connection_settings
+        )
         ai_smc = stringify_ai_smc(ai_smc) if ai_smc.is_a?(Hash)
 
         {

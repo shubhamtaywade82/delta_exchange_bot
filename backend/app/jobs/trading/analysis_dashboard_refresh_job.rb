@@ -16,6 +16,7 @@ module Trading
       client = RunnerClient.build
       market_data = client.market_data
       symbols = SymbolConfig.where(enabled: true).order(:symbol).pluck(:symbol)
+      ollama_settings = Ai::OllamaClient.read_connection_settings
       rows = []
 
       symbols.each_with_index do |sym, index|
@@ -23,7 +24,8 @@ module Trading
         rows << Trading::Analysis::DigestBuilder.call(
           symbol: sym,
           market_data: market_data,
-          config: config
+          config: config,
+          ollama_connection_settings: ollama_settings
         )
       rescue StandardError => e
         Rails.logger.error("[AnalysisDashboardRefreshJob] #{sym}: #{e.class}: #{e.message}")

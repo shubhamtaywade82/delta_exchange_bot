@@ -50,6 +50,20 @@ RSpec.describe Trading::Analysis::DigestBuilder do
     allow(Trading::Analysis::AiSmcSynthesizer).to receive(:call).and_return(nil)
   end
 
+  it "forwards ollama_connection_settings into AiSmcSynthesizer" do
+    settings = Ai::OllamaClient.read_connection_settings
+    allow(Trading::Analysis::AiSmcSynthesizer).to receive(:call).and_return(nil)
+    described_class.call(
+      symbol: "BTCUSD",
+      market_data: market_data,
+      config: config,
+      ollama_connection_settings: settings
+    )
+    expect(Trading::Analysis::AiSmcSynthesizer).to have_received(:call).with(
+      hash_including(symbol: "BTCUSD", connection_settings: settings)
+    )
+  end
+
   it "returns structure, multi-timeframe SMC, trade plan, and timeframes without error" do
     digest = described_class.call(symbol: "BTCUSD", market_data: market_data, config: config)
 

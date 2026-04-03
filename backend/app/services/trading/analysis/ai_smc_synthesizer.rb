@@ -30,7 +30,7 @@ module Trading
           "checklist" (array of strings, max 6): pass/fail style using INPUT flags only
       TEXT
 
-      def self.call(symbol:, payload:)
+      def self.call(symbol:, payload:, connection_settings: nil)
         prompt = <<~PROMPT
           You are an institutional-style SMC + price-action analyst. INPUT is machine-extracted from OHLCV; it is incomplete versus a full order-flow stack.
 
@@ -48,7 +48,7 @@ module Trading
           Output JSON only.
         PROMPT
 
-        raw = Ai::OllamaClient.ask(prompt)
+        raw = Ai::OllamaClient.ask(prompt, connection_settings: connection_settings)
         parse_model_json(raw)
       rescue Timeout::Error
         Rails.logger.warn(
