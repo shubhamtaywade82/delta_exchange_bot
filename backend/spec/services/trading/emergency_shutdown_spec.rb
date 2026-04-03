@@ -49,6 +49,49 @@ RSpec.describe Trading::EmergencyShutdown do
       described_class.call(session.id, client: client)
       expect(session.reload.status).to eq("stopped")
     end
+
+    context "when another session has open positions" do
+      let(:other_session) { create(:trading_session, strategy: "multi_timeframe", capital: 500.0) }
+
+      it "closes only positions for the target session portfolio" do
+        target_position = Position.create!(
+          portfolio: session.portfolio, symbol: "BTCUSD", side: "long", status: "filled",
+          size: 1.0, entry_price: 50_000.0, leverage: 10, product_id: 84
+        )
+        other_position = Position.create!(
+          portfolio: other_session.portfolio, symbol: "ETHUSD", side: "long", status: "filled",
+          size: 1.0, entry_price: 3000.0, leverage: 10, product_id: 3
+        )
+
+        described_class.call(session.id, client: client)
+
+        expect(target_position.reload.status).to eq("closed")
+        expect(other_position.reload.status).to eq("filled")
+        expect(client).to have_received(:place_order).once
+      end
+
+      it "does not cancel orders belonging to the other session" do
+        other_order = Order.create!(
+          trading_session: other_session, symbol: "ETHUSD", side: "buy",
+          size: 1.0, price: 3000.0, order_type: "limit_order",
+          status: "submitted", idempotency_key: "key-other-1", client_order_id: "cid-other-1",
+          exchange_order_id: "EX-OTHER"
+        )
+        target_order = Order.create!(
+          trading_session: session, symbol: "BTCUSD", side: "buy",
+          size: 1.0, price: 50_000.0, order_type: "limit_order",
+          status: "submitted", idempotency_key: "key-target-1", client_order_id: "cid-target-1",
+          exchange_order_id: "EX-TARGET"
+        )
+
+        described_class.call(session.id, client: client)
+
+        expect(target_order.reload.status).to eq("cancelled")
+        expect(other_order.reload.status).to eq("submitted")
+        expect(client).to have_received(:cancel_order).with("EX-TARGET").once
+        expect(client).not_to have_received(:cancel_order).with("EX-OTHER")
+      end
+    end
   end
 
   describe ".force_exit_position" do

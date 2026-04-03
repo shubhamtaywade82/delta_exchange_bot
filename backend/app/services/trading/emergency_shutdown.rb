@@ -34,10 +34,11 @@ module Trading
     end
 
     def trigger!
+      session = TradingSession.find(@session_id)
       Rails.logger.warn("[EmergencyShutdown] TRIGGERED for session #{@session_id}")
       cancel_open_orders!
-      close_open_positions!
-      mark_session_stopped!
+      close_open_positions_for_portfolio!(session.portfolio_id)
+      session.update!(status: "stopped", stopped_at: Time.current)
     end
 
     private
@@ -55,14 +56,10 @@ module Trading
       end
     end
 
-    def close_open_positions!
-      Position.active.each do |position|
+    def close_open_positions_for_portfolio!(portfolio_id)
+      Position.active.where(portfolio_id: portfolio_id).find_each do |position|
         self.class.force_exit_position(position, @client, reason: "EMERGENCY_SHUTDOWN")
       end
-    end
-
-    def mark_session_stopped!
-      TradingSession.find(@session_id).update!(status: "stopped", stopped_at: Time.current)
     end
 
     def self.latest_mark_price_for(position)

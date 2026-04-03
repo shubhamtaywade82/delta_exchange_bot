@@ -62,7 +62,7 @@ Modules:
 - `Trading::Risk::Engine`
 - `Trading::Risk::Executor`
 
-`Trading::EmergencyShutdown` flattens positions and cancels session orders (operational stop). `ExecutionEngine` checks `PortfolioGuard` before placing any new order.
+`Trading::EmergencyShutdown` flattens **open positions for the session’s portfolio** and cancels that session’s orders (operational stop). `ExecutionEngine` checks `PortfolioGuard` before placing any new order.
 
 
 ## Microstructure execution layer

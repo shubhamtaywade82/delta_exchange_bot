@@ -5,6 +5,23 @@
 
 ---
 
+## Incremental execution (no unnecessary regressions)
+
+Work through items **in priority order**, one PR-sized slice at a time.
+
+1. **Prefer tests-first** when changing behavior: add or extend specs that describe the *intended* contract (especially session/portfolio boundaries) before or alongside the fix.
+2. **Preserve observable behavior** when the audit calls out *bugs* only for multi-tenant/multi-session cases: single-session deployments should keep seeing the same outcomes (e.g. only that session’s positions affected).
+3. **Avoid drive-by refactors**: touch only the files and call-sites required for the current item.
+4. **Document intentional behavior changes** in the commit/PR when a fix corrects unsafe global behavior (call it out so operators know what changed).
+5. **Run** `cd backend && bundle exec rspec` after backend changes.
+
+**Done in repo (track here):**
+
+- [x] **P0 — Emergency shutdown:** `close_open_positions!` scoped to the target session’s `portfolio_id` (was `Position.active` globally). Specs: multi-session positions and orders isolation (`emergency_shutdown_spec`).
+- [x] **P0 — Risk manager:** max concurrent positions, margin utilization, pyramiding existence check, and daily loss cap all use the **session’s portfolio** (`active_positions_for_session_portfolio` + `Trade` scoped by `portfolio_id`). **Semantic change:** rows with `trades.portfolio_id` nil no longer count toward any session’s daily loss cap (fills from `OrderHandler` / `CreditAssigner` set `portfolio_id`). Specs: `risk_manager_spec` (+ cross-portfolio isolation examples).
+
+---
+
 ## Plan
 
 ### Objective
@@ -43,13 +60,13 @@ Turn the 2026-04-03 repo audits into one prioritized, checkable backlog for the 
 
 ## P0 — Safety and correctness
 
-- [ ] **Emergency shutdown:** scope `close_open_positions!` to the target session/portfolio (today `cancel_open_orders!` is session-scoped but positions use global `Position.active`).  
+- [x] **Emergency shutdown:** scope position flattening to the target session’s portfolio (`Position.active.where(portfolio_id: …)`); orders were already session-scoped.  
   - Files: `backend/app/services/trading/emergency_shutdown.rb`  
-  - Tests: multi-session — only target session flattened; orders and positions scoped consistently (`emergency_shutdown_spec`).
+  - Tests: `backend/spec/services/trading/emergency_shutdown_spec.rb` (multi-session positions + orders).
 
-- [ ] **Risk manager scope:** make `check_max_concurrent_positions!`, `check_margin_utilization!`, and related checks consistent with `check_pyramiding!` (global `Position.active` vs session portfolio).  
+- [x] **Risk manager scope:** max concurrent, margin utilization, pyramiding, and daily loss cap aligned on the session’s `portfolio_id`.  
   - Files: `backend/app/services/trading/risk_manager.rb`  
-  - Tests: unrelated portfolios do not affect scoped checks; daily loss cap semantics explicit (`risk_manager_spec` or equivalent).
+  - Tests: `backend/spec/services/trading/risk_manager_spec.rb`
 
 - [ ] **Order fill / position side:** stop assuming raw `buy` = open and `sell` = close; normalize position intent at one boundary.  
   - Files: `backend/app/services/trading/handlers/order_handler.rb`  
