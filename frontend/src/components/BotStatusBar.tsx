@@ -5,7 +5,12 @@ import { formatDisplayDecimal, formatInr, formatUsd } from '../utils/tradingDisp
 
 export interface BotStatusBarProps {
   latencyMs: number | null;
-  stats: { win_rate?: number; total_pnl_usd?: number; total_pnl_inr?: number } | null;
+  stats: {
+    win_rate?: number;
+    total_pnl_usd?: number;
+    total_pnl_inr?: number;
+    total_equity_inr?: number;
+  } | null;
   wallet: {
     paper_mode?: boolean;
     total_equity_inr?: number | null;
@@ -51,19 +56,19 @@ const BotStatusBar: React.FC<BotStatusBarProps> = ({
             {formatInr(stats?.total_pnl_inr ?? 0)}
           </span>
         </div>
-        {wallet && (
-          <div className="mini-stat">
-            <label>TOTAL_EQUITY</label>
-            <span className="value">
-              {wallet.paper_mode ? '📄 ' : ''}
-              {wallet.total_equity_inr != null
+        <div className="mini-stat">
+          <label>TOTAL_EQUITY</label>
+          <span className="value">
+            {wallet?.paper_mode ? '📄 ' : ''}
+            {stats?.total_equity_inr != null
+              ? formatInr(stats.total_equity_inr)
+              : wallet?.total_equity_inr != null
                 ? formatInr(wallet.total_equity_inr)
-                : wallet.available_usd != null
+                : wallet?.available_usd != null
                   ? formatUsd(wallet.available_usd)
                   : '--'}
-            </span>
-          </div>
-        )}
+          </span>
+        </div>
         <div className="mini-stat">
           <label>EXECUTION</label>
           <span className={`value ${executionHealth?.healthy ? 'pos' : executionHealth ? 'neg' : ''}`}>

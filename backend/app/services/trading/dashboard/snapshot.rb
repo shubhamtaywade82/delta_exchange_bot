@@ -22,10 +22,15 @@ module Trading
         active_positions = dashboard_active_positions(running_session)
         portfolio = Trading::Risk::PortfolioSnapshot.from_positions(active_positions)
         wallet = load_wallet_for_dashboard(portfolio: portfolio, positions: active_positions)
-        stats_equity_usd = stats_total_equity_usd(wallet, portfolio)
         market = build_market_rows
         trade_totals = Trade.dashboard_pnl_totals
-        total_pnl_usd = dashboard_total_pnl_usd(running_session, portfolio, trade_totals)
+        realized_pnl_usd = dashboard_realized_pnl_usd(running_session, trade_totals)
+        ledger_equity_usd = dashboard_ledger_equity_usd(
+          wallet: wallet,
+          portfolio: portfolio,
+          running_session: running_session,
+          realized_pnl_usd: realized_pnl_usd
+        )
         daily_pnl = trade_totals[:daily_pnl].round(2)
         weekly_pnl = trade_totals[:weekly_pnl].round(2)
         execution_health = build_execution_health
@@ -57,10 +62,10 @@ module Trading
           },
           wallet: wallet,
           stats: {
-            total_pnl_usd: total_pnl_usd,
-            total_pnl_inr: (total_pnl_usd * USD_INR_FOR_DISPLAY).round(0),
-            total_equity_usd: stats_equity_usd,
-            total_equity_inr: (stats_equity_usd * USD_INR_FOR_DISPLAY).round(0),
+            total_pnl_usd: realized_pnl_usd,
+            total_pnl_inr: (realized_pnl_usd * USD_INR_FOR_DISPLAY).round(0),
+            total_equity_usd: ledger_equity_usd,
+            total_equity_inr: (ledger_equity_usd * USD_INR_FOR_DISPLAY).round(0),
             win_rate: win_rate,
             daily_pnl: daily_pnl,
             weekly_pnl: weekly_pnl,
@@ -75,23 +80,51 @@ module Trading
 
       private
 
-      # Paper wallet is portfolio-scoped; without this, TOTAL_PNL and open PnL mix all +Trade+ rows and every
-      # +Position.active+ row while equity comes from the running session portfolio only.
+      # Settled / ledger realized only (no open-position mark-to-market). Matches portfolio ledger when paper
+      # session is active; otherwise all +Trade+ rows (+effective_pnl_usd+).
+      def dashboard_realized_pnl_usd(running_session, trade_totals)
+        if Trading::PaperTrading.enabled? && running_session&.portfolio_id.present?
+          PortfolioLedgerEntry.where(portfolio_id: running_session.portfolio_id).sum(:realized_pnl_delta).to_f.round(2)
+        else
+          trade_totals[:total_realized].round(2)
+        end
+      end
+
+      # Ledger headline: starting capital + realized only (excludes unrealized). Prefer wallet +cash_balance_usd+
+      # when present; else +total_equity_usd+ minus unrealized; else session +Portfolio#balance+; else config
+      # initial USD + realized.
+      def dashboard_ledger_equity_usd(wallet:, portfolio:, running_session:, realized_pnl_usd:)
+        w = wallet.stringify_keys
+
+        if w["cash_balance_usd"].present?
+          return w["cash_balance_usd"].to_f.round(2)
+        end
+
+        if w["total_equity_usd"].present?
+          unrealized =
+            if w.key?("unrealized_pnl_usd") && !w["unrealized_pnl_usd"].nil?
+              w["unrealized_pnl_usd"].to_f
+            else
+              portfolio.total_pnl.to_f
+            end
+          return (w["total_equity_usd"].to_f - unrealized).round(2)
+        end
+
+        if running_session&.portfolio_id.present?
+          return running_session.portfolio.balance.to_f.round(2)
+        end
+
+        cfg = Bot::Config.load
+        initial_usd = (cfg.simulated_capital_inr.to_f / cfg.usd_to_inr_rate).round(2)
+        (initial_usd + realized_pnl_usd).round(2)
+      end
+
       def dashboard_active_positions(running_session)
         scope = Position.active.order(:symbol)
         if Trading::PaperTrading.enabled? && running_session&.portfolio_id.present?
           scope = scope.where(portfolio_id: running_session.portfolio_id)
         end
         scope.to_a
-      end
-
-      def dashboard_total_pnl_usd(running_session, portfolio, trade_totals)
-        if Trading::PaperTrading.enabled? && running_session&.portfolio_id.present?
-          realized = PortfolioLedgerEntry.where(portfolio_id: running_session.portfolio_id).sum(:realized_pnl_delta).to_f
-          (realized + portfolio.total_pnl.to_f).round(2)
-        else
-          (trade_totals[:total_realized] + portfolio.total_pnl.to_f).round(2)
-        end
       end
 
       def format_trade_calendar_day(value)
@@ -155,14 +188,6 @@ module Trading
           "updated_at" => Time.current.iso8601,
           "stale" => true
         )
-      end
-
-      def stats_total_equity_usd(wallet, portfolio)
-        if wallet["total_equity_usd"].present?
-          wallet["total_equity_usd"].to_f.round(2)
-        else
-          (wallet["balance"].to_f + portfolio.total_pnl.to_f).round(2)
-        end
       end
 
       def calendar_day_string

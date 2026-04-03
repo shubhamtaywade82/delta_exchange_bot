@@ -87,6 +87,23 @@ RSpec.describe Trading::Dashboard::Snapshot do
 
         expect(payload[:stats][:total_pnl_usd]).to eq(-2.5)
       end
+
+      it "reports headline total_equity from ledger cash (excludes unrealized in stats)" do
+        session = create(:trading_session, status: "running")
+        allow(Trading::PaperWalletPublisher).to receive(:wallet_snapshot!).and_return(
+          "total_equity_usd" => 200.0,
+          "total_equity_inr" => 17_000,
+          "unrealized_pnl_usd" => 50.0,
+          "paper_mode" => true,
+          "updated_at" => Time.current.iso8601,
+          "stale" => false
+        )
+
+        payload = described_class.call(calendar_day: nil, trades_day: nil, trades_limit: nil)
+
+        expect(payload[:stats][:total_equity_usd]).to eq(150.0)
+        expect(payload[:stats][:total_equity_inr]).to eq(12_750)
+      end
     end
   end
 end
