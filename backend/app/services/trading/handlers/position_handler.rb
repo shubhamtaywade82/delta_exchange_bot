@@ -16,8 +16,13 @@ module Trading
           status:  @event.status,
           pnl:     @event.unrealized_pnl
         })
-      rescue => e
-        Rails.logger.error("[PositionHandler] Broadcast failed for #{@event.symbol}: #{e.message}")
+      rescue StandardError => e
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "PositionHandler",
+          operation: "broadcast_position_update",
+          error:     e,
+          symbol:    @event.symbol
+        )
       end
     end
   end

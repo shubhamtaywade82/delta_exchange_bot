@@ -147,7 +147,12 @@ module Trading
 
       PaperWalletPublisher.publish!
     rescue StandardError => e
-      Rails.logger.warn("[FillProcessor] PaperWalletPublisher failed: #{e.message}")
+      HotPathErrorPolicy.log_swallowed_error(
+        component: "FillProcessor",
+        operation: "publish_paper_wallet_after_fill",
+        error:     e,
+        log_level: :warn
+      )
     end
   end
 end
