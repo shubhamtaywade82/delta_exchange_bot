@@ -109,7 +109,10 @@ module Ai
         begin
           attempts += 1
           yield
-        rescue StandardError
+        rescue StandardError => e
+          raise if e.is_a?(::Timeout::Error)
+          raise if defined?(Ollama::TimeoutError) && e.is_a?(Ollama::TimeoutError)
+
           raise if attempts > max_retries
 
           sleep(0.2 * attempts)

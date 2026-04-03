@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "timeout"
+
 module Trading
   module Analysis
     # Sends full SMC JSON to Ollama; expects one JSON object with narrative + trading recommendation.
@@ -50,15 +52,25 @@ module Trading
 
         raw = Ai::OllamaClient.ask(prompt, connection_settings: connection_settings)
         parse_model_json(raw)
-      rescue Timeout::Error
-        Rails.logger.warn(
-          "[AiSmcSynthesizer] #{symbol}: Ollama timed out (increase ai.ollama_timeout_seconds or " \
-          "OLLAMA_TIMEOUT_SECONDS; ensure `ollama serve` is running and the model is pulled)."
-        )
+      rescue ::Timeout::Error
+        log_ollama_timeout_hint(symbol)
         nil
       rescue StandardError => e
+        if defined?(Ollama::TimeoutError) && e.is_a?(Ollama::TimeoutError)
+          log_ollama_timeout_hint(symbol)
+          return nil
+        end
+
         Rails.logger.warn("[AiSmcSynthesizer] #{symbol}: #{e.message}")
         nil
+      end
+
+      def self.log_ollama_timeout_hint(symbol)
+        Rails.logger.warn(
+          "[AiSmcSynthesizer] #{symbol}: Ollama timed out (Ruby Timeout or HTTP read timeout). " \
+          "Raise OLLAMA_TIMEOUT_SECONDS or settings key ai.ollama_timeout_seconds; " \
+          "ensure `ollama serve` is up and the model is pulled (first run is slow on CPU)."
+        )
       end
 
       def self.parse_model_json(raw)
