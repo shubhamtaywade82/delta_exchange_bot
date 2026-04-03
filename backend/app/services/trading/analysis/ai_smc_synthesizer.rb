@@ -58,10 +58,9 @@ module Trading
       rescue StandardError => e
         if defined?(Ollama::TimeoutError) && e.is_a?(Ollama::TimeoutError)
           log_ollama_timeout_hint(symbol)
-          return nil
+        else
+          Rails.logger.warn("[AiSmcSynthesizer] #{symbol}: #{e.message}")
         end
-
-        Rails.logger.warn("[AiSmcSynthesizer] #{symbol}: #{e.message}")
         nil
       end
 
