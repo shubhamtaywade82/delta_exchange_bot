@@ -52,6 +52,21 @@ RSpec.describe Bot::Notifications::TelegramNotifier do
       )
     end
 
+    it "appends position_id to POSITION CLOSED when provided" do
+      expect(bot_double.api).to receive(:send_message).with(
+        hash_including(text: a_string_including("POSITION CLOSED", "position_id=42"))
+      )
+      notifier.notify_trade_closed(
+        symbol: "BTCUSD",
+        exit_price: 50_000.0,
+        pnl_usd: 0.0,
+        pnl_inr: 0.0,
+        duration_seconds: 0,
+        reason: "TEST",
+        position_id: 42
+      )
+    end
+
     it "logs a single-line error to Rails-style loggers when the API fails" do
       rails_logger = instance_double(ActiveSupport::Logger)
       notifier = described_class.new(enabled: true, token: "token", chat_id: "123", logger: rails_logger)

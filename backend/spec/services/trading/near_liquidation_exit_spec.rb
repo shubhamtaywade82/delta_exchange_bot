@@ -47,18 +47,21 @@ RSpec.describe Trading::NearLiquidationExit do
       expect(Trading::EmergencyShutdown).not_to have_received(:force_exit_position)
     end
 
-    it "does nothing when LTP is missing or non-positive" do
+    it "does nothing when no live mark is available (no cache, store, or catalog row)" do
       position = create(
         :position,
         portfolio: session.portfolio,
-        symbol: "BTCUSD",
+        symbol: "ZZZBOT",
         side: "long",
         status: "filled",
         liquidation_price: 90_000.0,
         entry_price: 100_000.0,
         size: 1.0,
-        leverage: 10
+        leverage: 10,
+        product_id: nil
       )
+      SymbolConfig.where(symbol: "ZZZBOT").delete_all
+      Redis.current.keys("#{Bot::Feed::PriceStore::REDIS_KEY_PREFIX}ZZZBOT").each { |k| Redis.current.del(k) }
 
       described_class.new(position, client).check!
 
