@@ -19,6 +19,7 @@ RSpec.describe Trading::Handlers::OrderHandler do
     allow(Finance::UsdInrRate).to receive(:current).and_return(BigDecimal("83"))
     allow(Trading::EventBus).to receive(:publish)
     allow(OrdersRepository).to receive(:update_from_fill).and_return(order)
+    allow(Rails.error).to receive(:report)
   end
 
   describe "#call" do

@@ -15,8 +15,13 @@ module Trading
         PositionsRepository.apply_fill_from_order!(order)
         create_trade_if_closing(order, closing_entry)
         EventBus.publish(:position_updated, build_position_event(order))
-      rescue => e
-        Rails.logger.error("[OrderHandler] Error processing fill #{@event.exchange_order_id}: #{e.message}")
+      rescue StandardError => e
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "OrderHandler",
+          operation: "process_fill",
+          error:     e,
+          exchange_order_id: @event.exchange_order_id
+        )
       end
 
       private

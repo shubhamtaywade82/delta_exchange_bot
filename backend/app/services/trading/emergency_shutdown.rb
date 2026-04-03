@@ -24,8 +24,15 @@ module Trading
         reason: reason,
         mark_price: latest_mark_price_for(position)
       )
-    rescue => e
-      Rails.logger.error("[EmergencyShutdown] force_exit_position failed for #{position.symbol}: #{e.message}")
+    rescue StandardError => e
+      HotPathErrorPolicy.log_swallowed_error(
+        component: "EmergencyShutdown",
+        operation: "force_exit_position",
+        error:     e,
+        symbol:    position&.symbol,
+        position_id: position&.id,
+        reason:    reason
+      )
     end
 
     def initialize(session_id, client)
@@ -51,8 +58,14 @@ module Trading
           @client.cancel_order(order.exchange_order_id)
         end
         order.update!(status: "cancelled")
-      rescue => e
-        Rails.logger.error("[EmergencyShutdown] cancel_order failed for order #{order.id}: #{e.message}")
+      rescue StandardError => e
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "EmergencyShutdown",
+          operation: "cancel_open_order",
+          error:     e,
+          order_id:  order.id,
+          session_id: @session_id
+        )
       end
     end
 

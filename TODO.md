@@ -22,6 +22,7 @@ Work through items **in priority order**, one PR-sized slice at a time.
 - [x] **P0 — Order fill / position intent:** `PositionsRepository` now infers **open vs close** from order side + existing net side (sell closes long, buy closes short; opposite opens). Fills are **portfolio-scoped** (`open_for`, `close!`, `upsert_from_order`). `OrderHandler` snapshots the open position **before** close so `Trade` rows are created correctly. **Note:** the live WS path still runs through `FillProcessor` / `PositionRecalculator`; `OrderHandler` remains the contract for `:order_filled` if published. Specs: `spec/repositories/positions_repository_spec.rb`, `spec/services/trading/handlers/order_handler_spec.rb`.
 - [x] **P1 — Near-liquidation naming + CI script:** runner mark-price emergency exit renamed to `Trading::NearLiquidationExit` (file `near_liquidation_exit.rb`); `Trading::Risk::LiquidationGuard` unchanged (margin ratio). Specs: `near_liquidation_exit_spec.rb`. `backend/bin/ci` now runs `bundle exec rspec` after lint/security (`config/ci.rb` header documents scope).
 - [x] **P1 — `Position.active_for_portfolio`:** named scope on `Position`; portfolio-scoped queries updated in `PositionsRepository`, `EmergencyShutdown`, `RiskManager`, `PaperWalletPublisher`, `MarginAffordability`. `NearLiquidationExit` keeps a global scan (commented) and uses `find_each` for batching. Spec: `position_spec` (`active_for_portfolio`). Remaining `Position.active` uses are intentional cross-session/portfolio scans or dashboard-wide views — migrate in a later pass if needed.
+- [x] **P0 — Hot-path error policy (baseline):** `Trading::HotPathErrorPolicy.log_swallowed_error` — explicit `StandardError` rescues, structured log line (`component`, `operation`, class, message, context), `Rails.error.report(..., handled: true)` with string-key context; reporter failures logged and swallowed. Wired in `EmergencyShutdown` (`force_exit_position`, `cancel_open_order`) and `OrderHandler` (`process_fill`). Spec: `hot_path_error_policy_spec.rb`. **Policy:** these paths still swallow errors so one bad order/position does not abort the whole shutdown or fill handler; fail-loud / reconcile is a future slice for other services.
 
 ---
 
@@ -34,7 +35,7 @@ Turn the 2026-04-03 repo audits into one prioritized, checkable backlog for the 
 ### Sequencing (suggested)
 
 1. **Safety first (P0):** session/portfolio scoping for emergency shutdown and risk checks; order fill / side normalization; align with regression tests before refactors that touch money paths.
-2. **Architecture clarity (P1):** ~~duplicate `LiquidationGuard` naming~~ (addressed: `NearLiquidationExit` vs `Risk::LiquidationGuard`); error policy for hot paths; explicit `Position.active` scopes; `ollama-client` provisioning.
+2. **Architecture clarity (P1):** ~~duplicate `LiquidationGuard` naming~~ (addressed: `NearLiquidationExit` vs `Risk::LiquidationGuard`); ~~baseline hot-path error policy~~ (`HotPathErrorPolicy`); explicit `Position.active` scopes; `ollama-client` provisioning.
 3. **Debt reduction (P2):** legacy vs backend bot duplication, WebSocket patches, specs, `backend/bin/ci`, frontend tests in CI.
 4. **DX and docs (P3):** README/planning docs, dual `bot.yml`, `.github/README.md` accuracy.
 
@@ -83,8 +84,8 @@ Turn the 2026-04-03 repo audits into one prioritized, checkable backlog for the 
   - Files: `backend/app/services/trading/near_liquidation_exit.rb`, `backend/app/services/trading/risk/liquidation_guard.rb`  
   - Tests: `backend/spec/services/trading/near_liquidation_exit_spec.rb`, `backend/spec/services/trading/risk/liquidation_guard_spec.rb`
 
-- [ ] **Error policy on hot paths:** replace or narrow broad rescue-and-log in execution-critical flows; define reconcile vs fail-loud vs safe-ignore.  
-  - Files called out: `order_handler.rb`, `emergency_shutdown.rb`, other event-driven trading services.
+- [x] **Error policy on hot paths (baseline):** `Trading::HotPathErrorPolicy` + `StandardError` rescues on `order_handler.rb` and `emergency_shutdown.rb` (still **swallowed** so loops complete).  
+  - **Follow-up:** extend to other event-driven services; decide per-flow reconcile vs fail-loud (not done here).
 
 - [ ] **Money-critical numeric path (from todo audit):** reduce `to_f`/float usage in price, margin, PnL, and risk; prefer `BigDecimal` in risk/execution/accounting, float only at UI serialization boundaries.
 
