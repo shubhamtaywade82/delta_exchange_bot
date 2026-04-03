@@ -111,10 +111,10 @@ module Trading
     end
 
     def resolve_intended_fill_price(order_attrs)
-      px = order_attrs[:price].to_f
+      px = decimal_price(order_attrs[:price])
       return px if px.positive?
 
-      mark = Rails.cache.read("ltp:#{order_attrs[:symbol]}")&.to_f
+      mark = decimal_price(Rails.cache.read("ltp:#{order_attrs[:symbol]}"))
       unless mark&.positive?
         raise RiskManager::RiskError, "execution needs order price or cached ltp:#{order_attrs[:symbol]}"
       end
@@ -180,10 +180,10 @@ module Trading
     end
 
     def synthetic_fill_price(order)
-      px = order.price.to_f
+      px = decimal_price(order.price)
       return px if px.positive?
 
-      mark = Rails.cache.read("ltp:#{order.symbol}")&.to_f
+      mark = decimal_price(Rails.cache.read("ltp:#{order.symbol}"))
       raise "paper fill needs order price or cached ltp:#{order.symbol}" unless mark&.positive?
 
       mark
@@ -241,6 +241,14 @@ module Trading
       when "rejected" then "rejected"
       else "submitted"
       end
+    end
+
+    def decimal_price(value)
+      return BigDecimal("0") if value.respond_to?(:blank?) ? value.blank? : value.nil?
+
+      value.to_d
+    rescue ArgumentError, TypeError
+      BigDecimal("0")
     end
   end
 end

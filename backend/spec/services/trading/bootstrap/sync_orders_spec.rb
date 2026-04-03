@@ -30,4 +30,22 @@ RSpec.describe Trading::Bootstrap::SyncOrders do
 
     expect(stale.reload.status).to eq("cancelled")
   end
+
+  it "reports a warning and uses empty open ids when fetch fails" do
+    allow(client).to receive(:get_open_orders).and_raise(StandardError, "timeout")
+    allow(Rails.logger).to receive(:warn)
+    allow(Rails.error).to receive(:report)
+
+    described_class.call(client: client, session: session)
+
+    expect(Rails.error).to have_received(:report).with(
+      an_object_having_attributes(message: "timeout"),
+      handled: true,
+      context: hash_including(
+        "component" => "Bootstrap::SyncOrders",
+        "operation" => "fetch_open_exchange_order_ids",
+        "session_id" => session.id.to_s
+      )
+    )
+  end
 end

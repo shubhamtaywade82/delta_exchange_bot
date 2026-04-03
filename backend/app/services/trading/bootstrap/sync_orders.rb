@@ -15,8 +15,14 @@ module Trading
         open_exchange_ids = fetch_open_exchange_order_ids
         cancel_stale_local_orders(open_exchange_ids)
         Rails.logger.info("[Bootstrap::SyncOrders] Cancelled stale orders not found on exchange")
-      rescue => e
-        Rails.logger.error("[Bootstrap::SyncOrders] Failed: #{e.message}")
+      rescue StandardError => e
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "Bootstrap::SyncOrders",
+          operation: "call",
+          error:     e,
+          report_handled: false,
+          session_id: @session&.id
+        )
         raise
       end
 
@@ -24,8 +30,14 @@ module Trading
 
       def fetch_open_exchange_order_ids
         @client.get_open_orders.map { |o| o[:id].to_s }
-      rescue => e
-        Rails.logger.warn("[Bootstrap::SyncOrders] Could not fetch open orders: #{e.message}")
+      rescue StandardError => e
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "Bootstrap::SyncOrders",
+          operation: "fetch_open_exchange_order_ids",
+          error:     e,
+          log_level: :warn,
+          session_id: @session&.id
+        )
         []
       end
 

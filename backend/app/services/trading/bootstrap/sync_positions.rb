@@ -15,8 +15,13 @@ module Trading
         exchange_positions.each { |ep| upsert_position(ep) }
         close_stale_positions(exchange_positions)
         Rails.logger.info("[Bootstrap::SyncPositions] Synced #{exchange_positions.size} positions")
-      rescue => e
-        Rails.logger.error("[Bootstrap::SyncPositions] Failed: #{e.message}")
+      rescue StandardError => e
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "Bootstrap::SyncPositions",
+          operation: "call",
+          error:     e,
+          report_handled: false
+        )
         raise
       end
 
