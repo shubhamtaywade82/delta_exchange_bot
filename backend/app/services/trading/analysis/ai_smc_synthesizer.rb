@@ -52,17 +52,36 @@ module Trading
 
         raw = Ai::OllamaClient.ask(prompt, connection_settings: connection_settings)
         parse_model_json(raw)
-      rescue ::Timeout::Error
+      rescue ::Timeout::Error => e
         log_ollama_timeout_hint(symbol)
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "Analysis::AiSmcSynthesizer",
+          operation: "call",
+          error:     e,
+          log_level: :warn,
+          symbol:    symbol,
+          reason:    "ruby_timeout"
+        )
         nil
       rescue StandardError => e
-        if defined?(Ollama::TimeoutError) && e.is_a?(Ollama::TimeoutError)
-          log_ollama_timeout_hint(symbol)
-        else
-          Rails.logger.warn("[AiSmcSynthesizer] #{symbol}: #{e.message}")
-        end
+        log_ollama_timeout_hint(symbol) if ollama_client_timeout?(e)
+
+        reason = ollama_client_timeout?(e) ? "ollama_timeout" : "error"
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "Analysis::AiSmcSynthesizer",
+          operation: "call",
+          error:     e,
+          log_level: :warn,
+          symbol:    symbol,
+          reason:    reason
+        )
         nil
       end
+
+      def self.ollama_client_timeout?(error)
+        defined?(Ollama::TimeoutError) && error.is_a?(Ollama::TimeoutError)
+      end
+      private_class_method :ollama_client_timeout?
 
       def self.log_ollama_timeout_hint(symbol)
         Rails.logger.warn(
