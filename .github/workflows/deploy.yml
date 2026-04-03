@@ -57,13 +57,13 @@ jobs:
           fi
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ steps.ref.outputs.ref }}
 
       - name: Checkout delta_exchange (path gem)
         if: vars.DELTA_EXCHANGE_REPOSITORY != ''
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ vars.DELTA_EXCHANGE_REPOSITORY }}
           path: delta_exchange
