@@ -35,6 +35,27 @@ RSpec.describe Trading::EventBus do
     expect(called).to be false
   end
 
+  it "invokes later handlers when an earlier handler raises" do
+    seen = []
+    described_class.subscribe(:boom) { raise StandardError, "handler failed" }
+    described_class.subscribe(:boom) { |p| seen << p }
+    allow(Rails.logger).to receive(:error)
+    allow(Rails.error).to receive(:report)
+
+    described_class.publish(:boom, :payload)
+
+    expect(seen).to eq([:payload])
+    expect(Rails.error).to have_received(:report).with(
+      an_object_having_attributes(message: "handler failed"),
+      handled: true,
+      context: hash_including(
+        "component" => "EventBus",
+        "event_type" => "boom",
+        "payload_type" => "Symbol"
+      )
+    )
+  end
+
   it "is thread-safe under concurrent publish" do
     results = []
     mutex = Mutex.new
