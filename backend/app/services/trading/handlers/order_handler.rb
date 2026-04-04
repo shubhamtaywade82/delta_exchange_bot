@@ -12,7 +12,7 @@ module Trading
         return unless order&.filled?
 
         closing_entry = PositionsRepository.snapshot_for_closing_trade(order)
-        PositionsRepository.apply_fill_from_order!(order)
+        PositionsRepository.apply_fill_from_order!(order, closing: closing_entry.present?)
         create_trade_if_closing(order, closing_entry)
         EventBus.publish(:position_updated, build_position_event(order))
       rescue StandardError => e
@@ -63,13 +63,13 @@ module Trading
       def build_position_event(order)
         pos = Position.find_by(symbol: order.symbol, portfolio_id: order.portfolio_id)
         Events::PositionUpdated.new(
-          symbol:        order.symbol,
-          side:          pos&.side || "unknown",
-          size:          order.filled_qty,
-          entry_price:   pos&.entry_price || 0,
-          mark_price:    Rails.cache.read("ltp:#{order.symbol}").to_f,
+          symbol:         order.symbol,
+          side:           pos&.side || "unknown",
+          size:           order.filled_qty,
+          entry_price:    pos&.entry_price || 0,
+          mark_price:     MarkPrice.for_symbol(order.symbol)&.to_f || 0.0,
           unrealized_pnl: 0.0,
-          status:        pos&.status || "closed"
+          status:         pos&.status || "closed"
         )
       end
     end
