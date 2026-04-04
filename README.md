@@ -13,6 +13,8 @@ Automated multi-timeframe futures trading bot for Delta Exchange India.
 
 The **supported runtime is the Rails app under `backend/`**. It owns persistence, the JSON API, Solid Queue jobs, and `Trading::Runner` (strategy evaluation, `Trading::ExecutionEngine`, paper fills, risk).
 
+For visual maps of runtime interactions and per-component internal data flows, see [`backend/docs/architecture_diagrams.md`](backend/docs/architecture_diagrams.md).
+
 - **Repo root `lib/bot/`** duplicates older standalone code paths. Prefer `backend/app/services/bot/` and `backend/app/services/trading/`. Root **`bin/run` delegates to `backend/bin/bot`** so you do not need two different entry commands.
 - **Process model:** Run **at most one** long-lived trading loop per machine (or per Redis lock namespace) for a given session. `Trading::EventBus` is global in-process state; `Trading::Runner#start` resets subscribers on exit. A WebSocket consumer runs in a **background thread** inside the same process as the runner; size the Active Record pool accordingly if you add more threads.
 
