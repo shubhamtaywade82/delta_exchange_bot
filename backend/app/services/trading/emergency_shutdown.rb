@@ -45,7 +45,7 @@ module Trading
       Rails.logger.warn("[EmergencyShutdown] TRIGGERED for session #{@session_id}")
       cancel_open_orders!
       close_open_positions_for_portfolio!(session.portfolio_id)
-      session.update!(status: "stopped", stopped_at: Time.current)
+      session.update!(status: "stopped", stopped_at: Time.current) unless session.status == "stopped"
     end
 
     private

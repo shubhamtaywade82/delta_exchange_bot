@@ -25,24 +25,30 @@ module PositionsRepository
     existing = open_for(order.symbol, portfolio_id: order.portfolio_id)
     return false unless existing
 
-    case normalize_net_side(existing.side)
-    when "long"
-      order.side.to_s == "sell"
-    when "short"
-      order.side.to_s == "buy"
-    else
-      false
+    opposite_fill?(existing, order)
+  end
+
+  def self.opposite_fill?(position, order)
+    case normalize_net_side(position.side)
+    when "long"  then order.side.to_s == "sell"
+    when "short" then order.side.to_s == "buy"
+    else false
     end
   end
+  private_class_method :opposite_fill?
 
   def self.snapshot_for_closing_trade(order)
-    return nil unless closing_fill?(order)
+    existing = open_for(order.symbol, portfolio_id: order.portfolio_id)
+    return nil unless existing
 
-    open_for(order.symbol, portfolio_id: order.portfolio_id)
+    opposite_fill?(existing, order) ? existing : nil
   end
 
-  def self.apply_fill_from_order!(order)
-    if closing_fill?(order)
+  # @param closing [Boolean, nil] pass pre-computed close decision to avoid re-querying.
+  def self.apply_fill_from_order!(order, closing: nil)
+    is_closing = closing.nil? ? closing_fill?(order) : closing
+
+    if is_closing
       close!(order.symbol, order.portfolio_id)
     else
       upsert_from_order(order)

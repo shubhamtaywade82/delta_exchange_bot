@@ -25,15 +25,15 @@ module Trading
       return unless @position.liquidation_price.present?
       return if Rails.cache.read(cooldown_cache_key)
 
-      mark = MarkPrice.for_synthetic_exit(@position, fallback_entry_price: false)
-      current_price = mark&.to_f
+      current_price = MarkPrice.for_synthetic_exit(@position, fallback_entry_price: false)
       return unless current_price&.positive?
 
-      return unless distance_to_liquidation(current_price) < BUFFER_PCT
+      distance = distance_to_liquidation(current_price)
+      return unless distance < BUFFER_PCT
 
       Rails.logger.warn(
         "[NearLiquidationExit] Emergency exit: #{@position.symbol} price=#{current_price} " \
-        "liq=#{@position.liquidation_price} distance=#{(distance_to_liquidation(current_price) * 100).round(2)}%"
+        "liq=#{@position.liquidation_price} distance=#{(distance * 100).round(2)}%"
       )
       Rails.cache.write(cooldown_cache_key, 1, expires_in: COOLDOWN_TTL)
       EmergencyShutdown.force_exit_position(@position, @client)
@@ -46,7 +46,7 @@ module Trading
     end
 
     def distance_to_liquidation(current_price)
-      liq = @position.liquidation_price.to_f
+      liq = @position.liquidation_price.to_d
       if @position.side == "long"
         (current_price - liq) / current_price
       else
