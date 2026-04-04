@@ -51,15 +51,15 @@ This repo has one dominant theme: the canonical Rails runtime under `backend/` i
 
 ## P1 - Architecture and operational risks
 
-### 4) Two different `LiquidationGuard` classes invite review mistakes
+### 4) Liquidation-safety naming can mislead reviewers
 
 - **Files:**
-  - `backend/app/services/trading/liquidation_guard.rb`
-  - `backend/app/services/trading/risk/liquidation_guard.rb`
-- **Problem:** both classes have the same name but different responsibilities.
-- **Risk:** developers and reviewers can read or test the wrong class and think liquidation behavior is covered when it is not.
-- **Fix direction:** rename one or both classes so the role is obvious from the name alone.
-- **Suggested names:** `NearLiquidationExit`, `LiquidationPriceGuard`, or similarly explicit alternatives.
+  - `backend/app/services/trading/risk/liquidation_guard.rb` — classifies margin-ratio safety (:safe / :danger / :liquidation)
+  - `backend/app/services/trading/near_liquidation_exit.rb` — force-exits positions near mark-price liquidation threshold
+  - `backend/app/services/trading/liquidation_engine.rb` — delegates to `Risk::Engine` + `Risk::Executor`
+- **Problem:** three separate liquidation-related services with overlapping names. Planning docs still reference a nonexistent `Trading::LiquidationGuard` class.
+- **Risk:** developers and reviewers can confuse the margin-ratio classifier with the price-proximity exit and think liquidation behavior is covered when it is not.
+- **Fix direction:** add cross-reference comments between all three services, update planning docs to use correct class names, and write contract specs that clarify the boundary between each.
 
 ### 5) Broad rescue-and-log behavior can hide state drift
 
@@ -77,7 +77,7 @@ This repo has one dominant theme: the canonical Rails runtime under `backend/` i
 ### 6) `Position.active` is used globally in many services
 
 - **Files:**
-  - `backend/app/services/trading/liquidation_guard.rb`
+  - `backend/app/services/trading/near_liquidation_exit.rb`
   - `backend/app/services/trading/funding_monitor.rb`
   - `backend/app/services/trading/risk/entry_gates_summary.rb`
   - `backend/app/services/trading/paper_wallet_publisher.rb`
@@ -170,14 +170,16 @@ This repo has one dominant theme: the canonical Rails runtime under `backend/` i
 
 ## P2 - Missing or weak tests
 
-### 15) No direct coverage for the runtime liquidation exit guard
+### 15) No direct coverage for the price-proximity liquidation exit
 
-- **Files:** `backend/app/services/trading/liquidation_guard.rb`
-- **Gap:** the price-distance emergency exit path appears untested, while a different class with the same name in `trading/risk/` has coverage.
+- **Files:** `backend/app/services/trading/near_liquidation_exit.rb`
+- **Gap:** the price-distance emergency exit path has a spec file (`near_liquidation_exit_spec.rb`) but coverage should be verified for edge cases. `Trading::LiquidationEngine` has no spec file at all.
 - **Add tests for:**
-  - distance threshold behavior
+  - distance threshold behavior at and around `BUFFER_PCT`
   - no-op when liquidation price is absent
   - correct close side for long and short positions
+  - cooldown cache prevents repeated exit attempts
+  - `LiquidationEngine.evaluate_and_act!` delegates correctly to `Risk::Engine` and `Risk::Executor`
 
 ### 16) No focused unit coverage for `Trading::Handlers::OrderHandler`
 
@@ -265,8 +267,8 @@ These problems are broad enough that they deserve explicit review prompts:
 
 - [ ] Fix session and portfolio scoping in `EmergencyShutdown` and `RiskManager`
 - [ ] Add regression tests for the scoping fixes
-- [ ] Rename one of the `LiquidationGuard` classes
-- [ ] Add direct tests for the runtime liquidation exit path
+- [ ] Add cross-reference comments and contract specs clarifying `Risk::LiquidationGuard`, `NearLiquidationExit`, and `LiquidationEngine` boundaries
+- [ ] Add spec coverage for `LiquidationEngine` and verify `NearLiquidationExit` edge cases
 
 ### Second wave
 
