@@ -2696,6 +2696,63 @@ td {
   margin-top: 0.35rem;
 }
 
+/* AI Trigger Condition Blocks */
+.ai-trigger-conditions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 720px) {
+  .ai-trigger-conditions {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ai-trigger-block {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+}
+
+.ai-trigger-long {
+  border-left: 3px solid var(--success);
+  background: rgba(0, 255, 136, 0.04);
+}
+
+.ai-trigger-short {
+  border-left: 3px solid var(--danger);
+  background: rgba(255, 77, 77, 0.04);
+}
+
+.ai-trigger-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+
+.ai-trigger-icon {
+  font-size: 0.7rem;
+}
+
+.ai-trigger-block .ai-smc-bullets {
+  margin: 0;
+  padding-left: 0.85rem;
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.ai-trigger-block .ai-smc-bullets li {
+  margin-bottom: 0.25rem;
+}
+
+.ai-trigger-block .ai-smc-bullets li:last-child {
+  margin-bottom: 0;
+}
+
 /* Product Detail Panel & Overlay */
 .product-detail-panel-overlay {
   position: fixed;

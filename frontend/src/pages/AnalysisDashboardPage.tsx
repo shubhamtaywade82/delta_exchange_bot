@@ -148,6 +148,8 @@ interface AiSmcStructured {
   takeaway_bullets?: string[];
   comment_on_plan?: string;
   timeframe_notes?: Record<string, string>;
+  long_trigger_conditions?: string[];
+  short_trigger_conditions?: string[];
   trading_recommendation?: TradingRecommendation;
 }
 
@@ -572,6 +574,38 @@ function AiSmcBlock({ ai }: { ai?: AiSmcStructured | null }) {
           <strong>PLAN:</strong> {ai.comment_on_plan}
         </p>
       )}
+
+      {((ai.long_trigger_conditions?.length ?? 0) > 0 || (ai.short_trigger_conditions?.length ?? 0) > 0) && (
+        <div className="ai-trigger-conditions">
+          {(ai.long_trigger_conditions?.length ?? 0) > 0 && (
+            <div className="ai-trigger-block ai-trigger-long">
+              <div className="ai-trigger-head">
+                <span className="ai-trigger-icon">🟢</span>
+                <span className="dense-label">CONSIDER LONG WHEN</span>
+              </div>
+              <ul className="ai-smc-bullets">
+                {ai.long_trigger_conditions!.map((c, i) => (
+                  <li key={i}>{c}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {(ai.short_trigger_conditions?.length ?? 0) > 0 && (
+            <div className="ai-trigger-block ai-trigger-short">
+              <div className="ai-trigger-head">
+                <span className="ai-trigger-icon">🔴</span>
+                <span className="dense-label">CONSIDER SHORT WHEN</span>
+              </div>
+              <ul className="ai-smc-bullets">
+                {ai.short_trigger_conditions!.map((c, i) => (
+                  <li key={i}>{c}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
       {Object.keys(tfNotes).length > 0 && (
         <div className="ai-tf-notes">
           {Object.entries(tfNotes).map(([tf, note]) => (
