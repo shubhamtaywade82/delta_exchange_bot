@@ -47,6 +47,15 @@ module Trading
           "1h" => round_smc_snapshot(Trading::Analysis::SmcSnapshot.build(candles: candles_1h, resolution: "1h"))
         }
 
+        smc_confluence_mtf = SmcConfluenceMtf.from_timeframe_candles(
+          symbol: @symbol,
+          timeframe_candles: {
+            STRUCTURE_ENTRY => candles_5m,
+            STRUCTURE_CONFIRM => candles_15m,
+            STRUCTURE_TREND => candles_1h
+          }
+        )
+
         last_bar = candles_5m.last
         last_close = last_bar[:close].to_f
         ltp = Rails.cache.read("ltp:#{@symbol}")&.to_f
@@ -69,6 +78,7 @@ module Trading
           mtf_alignment: mtf_alignment(smc_by_timeframe, structure),
           risk_and_execution_framework: risk_execution_framework,
           smc_by_timeframe: smc_by_timeframe,
+          smc_confluence_mtf: smc_confluence_mtf,
           trade_plan: trade_plan
         }
         ai_smc = Trading::Analysis::AiSmcSynthesizer.call(
@@ -97,6 +107,7 @@ module Trading
             entry: timeframe_digest(STRUCTURE_ENTRY, candles_5m, entry_st)
           },
           smc_by_timeframe: smc_by_timeframe,
+          smc_confluence_mtf: smc_confluence_mtf,
           trade_plan: trade_plan,
           smc: legacy_smc,
           smc_model_version: "2",
@@ -192,7 +203,22 @@ module Trading
         round_premium_discount!(out)
         round_session_ranges!(out)
         round_volatility!(out)
+        round_smc_confluence!(out)
         out
+      end
+
+      def round_smc_confluence!(out)
+        conf = out["smc_confluence"]
+        return unless conf.is_a?(Hash)
+
+        c = conf.stringify_keys
+        %w[pdh pdl poc vah val atr14].each do |key|
+          c[key] = round_price(c[key]) if c.key?(key)
+        end
+        %w[tl_bear_break tl_bull_break].each do |key|
+          c[key] = c[key] ? true : false if c.key?(key)
+        end
+        out["smc_confluence"] = c
       end
 
       def round_structure_sequence!(out)
@@ -321,7 +347,8 @@ module Trading
           error: "insufficient_candles_#{tf}",
           candle_count: got,
           required: need,
-          updated_at: Time.current.iso8601
+          updated_at: Time.current.iso8601,
+          smc_confluence_mtf: nil
         }
       end
 
