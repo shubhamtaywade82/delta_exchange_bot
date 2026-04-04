@@ -35,6 +35,17 @@ RSpec.describe Bot::Strategy::Supertrend do
 
   it "raises ArgumentError with fewer than 2 candles" do
     expect { described_class.compute([candles.first], atr_period: 3, multiplier: 1.5) }
-      .to raise_error(ArgumentError)
+      .to raise_error(ArgumentError, /Need at least 2 candles/)
+  end
+
+  it "raises ArgumentError when atr_period is not positive" do
+    expect { described_class.compute(candles, atr_period: 0, multiplier: 1.5) }
+      .to raise_error(ArgumentError, /atr_period/)
+  end
+
+  it "does not seed bar-zero bands at zero (avoids bogus early flip thresholds)" do
+    idx = 3
+    expect(result[idx][:line]).to be_a(Float)
+    expect(result[idx][:line]).to be > 0.0
   end
 end

@@ -4,7 +4,7 @@ strategy:
   supertrend:
     variant: classic # classic | ml_adaptive — see backend/config/bot.yml
     atr_period: 10
-    multiplier: 3.0
+    multiplier: 2.2
   adx:
     period: 14
     threshold: 20

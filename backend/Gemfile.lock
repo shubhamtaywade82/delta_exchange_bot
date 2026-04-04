@@ -6,17 +6,6 @@ PATH
       dotenv (~> 2.8)
       json-schema (~> 4.0)
 
-PATH
-  remote: ../../delta_exchange
-  specs:
-    delta_exchange (0.1.2)
-      activesupport (>= 7.0)
-      dry-validation (~> 1.8)
-      eventmachine (~> 1.2)
-      faraday (~> 2.0)
-      faye-websocket (~> 0.11)
-      zeitwerk (>= 2.6)
-
 GEM
   remote: https://rubygems.org/
   specs:
@@ -120,6 +109,13 @@ GEM
     debug (1.11.1)
       irb (~> 1.10)
       reline (>= 0.3.8)
+    delta_exchange (0.1.2)
+      activesupport (>= 7.0)
+      dry-validation (~> 1.8)
+      eventmachine (~> 1.2)
+      faraday (~> 2.0)
+      faye-websocket (~> 0.11)
+      zeitwerk (>= 2.6)
     diff-lcs (1.6.2)
     dotenv (2.8.1)
     dotenv-rails (2.8.1)
@@ -481,7 +477,7 @@ DEPENDENCIES
   bullet
   bundler-audit
   debug
-  delta_exchange!
+  delta_exchange
   dotenv-rails
   factory_bot_rails
   image_processing (~> 1.2)
@@ -534,7 +530,7 @@ CHECKSUMS
   crass (1.0.6) sha256=dc516022a56e7b3b156099abc81b6d2b08ea1ed12676ac7a5657617f012bd45d
   date (3.5.1) sha256=750d06384d7b9c15d562c76291407d89e368dda4d4fff957eb94962d325a0dc0
   debug (1.11.1) sha256=2e0b0ac6119f2207a6f8ac7d4a73ca8eb4e440f64da0a3136c30343146e952b6
-  delta_exchange (0.1.2)
+  delta_exchange (0.1.2) sha256=fed2fe0d8afeab019cbde7a3773b9d67afa6495e84b0cf59698ca91712c35a30
   diff-lcs (1.6.2) sha256=9ae0d2cba7d4df3075fe8cd8602a8604993efc0dfa934cff568969efb1909962
   dotenv (2.8.1) sha256=c5944793349ae03c432e1780a2ca929d60b88c7d14d52d630db0508c3a8a17d8
   dotenv-rails (2.8.1) sha256=b05b81b7f4e51d1359e218d92279db1d84b12440f7118c9df19b5dfffb620f6c

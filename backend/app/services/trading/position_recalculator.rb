@@ -24,7 +24,8 @@ module Trading
           position = Position.lock.find(@position_id)
           lot_d = Trading::Risk::PositionLotSize.multiplier_for(position).to_d
 
-          fills = Fill.joins(:order)
+          fills = Fill.includes(:order)
+                      .joins(:order)
                       .where(orders: { portfolio_id: position.portfolio_id, symbol: position.symbol })
                       .to_a
 

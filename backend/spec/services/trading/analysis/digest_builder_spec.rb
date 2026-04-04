@@ -33,7 +33,7 @@ RSpec.describe Trading::Analysis::DigestBuilder do
       supertrend_indicator_type: nil,
       supertrend_variant: "classic",
       supertrend_atr_period: 10,
-      supertrend_multiplier: 3.0,
+      supertrend_multiplier: 2.2,
       ml_adaptive_supertrend_training_period: 100,
       ml_adaptive_supertrend_highvol: 0.75,
       ml_adaptive_supertrend_midvol: 0.5,

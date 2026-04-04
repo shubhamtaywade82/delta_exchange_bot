@@ -39,7 +39,7 @@ gem "action_text-trix", ">= 2.1.18"
 gem "rack-cors"
 gem "redis"
 
-gem "delta_exchange", path: "../../delta_exchange"
+gem "delta_exchange"
 gem "dotenv-rails"
 gem "telegram-bot-ruby"
 gem "tzinfo"

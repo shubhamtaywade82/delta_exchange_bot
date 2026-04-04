@@ -8,7 +8,7 @@ RSpec.describe Bot::Config do
     {
       "mode" => "testnet",
       "strategy" => {
-        "supertrend" => { "atr_period" => 10, "multiplier" => 3.0 },
+        "supertrend" => { "atr_period" => 10, "multiplier" => 2.2 },
         "adx" => { "period" => 14, "threshold" => 25 },
         "rsi" => { "period" => 14, "overbought" => 70, "oversold" => 30 },
         "vwap" => { "session_reset_hour_utc" => 0 },
@@ -54,7 +54,7 @@ RSpec.describe Bot::Config do
 
   it "exposes supertrend config" do
     expect(config.supertrend_atr_period).to eq(10)
-    expect(config.supertrend_multiplier).to eq(3.0)
+    expect(config.supertrend_multiplier).to eq(2.2)
     expect(config.supertrend_variant).to eq("classic")
     expect(config.effective_min_candles_for_supertrend).to eq(30)
   end

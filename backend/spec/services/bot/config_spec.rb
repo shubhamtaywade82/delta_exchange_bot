@@ -163,7 +163,7 @@ RSpec.describe Bot::Config do
     {
       "mode" => "testnet",
       "strategy" => {
-        "supertrend" => { "atr_period" => 10, "multiplier" => 3.0 },
+        "supertrend" => { "atr_period" => 10, "multiplier" => 2.2 },
         "adx" => { "period" => 14, "threshold" => 25 },
         "trailing_stop_pct" => 1.5,
         "timeframes" => { "trend" => "1h", "confirm" => "15m", "entry" => "5m" },
@@ -203,7 +203,7 @@ RSpec.describe Bot::Config do
 
   it "exposes supertrend config" do
     expect(config.supertrend_atr_period).to eq(10)
-    expect(config.supertrend_multiplier).to eq(3.0)
+    expect(config.supertrend_multiplier).to eq(2.2)
     expect(config.supertrend_variant).to eq("classic")
     expect(config.effective_min_candles_for_supertrend).to eq(30)
   end

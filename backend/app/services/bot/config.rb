@@ -57,7 +57,7 @@ module Bot
         "supertrend" => {
           "variant" => "classic",
           "atr_period" => 10,
-          "multiplier" => 3.0,
+          "multiplier" => 2.2,
           "ml_adaptive" => {
             "training_period" => 100,
             "highvol" => 0.75,
