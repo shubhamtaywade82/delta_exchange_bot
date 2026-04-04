@@ -2256,6 +2256,98 @@ td {
   font-family: var(--font-mono);
 }
 
+/* Final Recommendation & Verdict Styling */
+.header-verdict-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: 1.5rem;
+  padding-left: 1.5rem;
+  border-left: 1px solid var(--border-glass);
+}
+
+.header-action-badge {
+  padding: 0.35rem 0.85rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  font-family: var(--font-header);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
+}
+
+.header-action-badge.action-long {
+  background: rgba(0, 255, 136, 0.15);
+  color: var(--success);
+  border-color: rgba(0, 255, 136, 0.35);
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.1);
+}
+
+.header-action-badge.action-short {
+  background: rgba(255, 77, 77, 0.15);
+  color: var(--danger);
+  border-color: rgba(255, 77, 77, 0.35);
+  box-shadow: 0 0 20px rgba(255, 77, 77, 0.1);
+}
+
+.header-action-badge.action-wait,
+.header-action-badge.action-none {
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--text-dim);
+  border-color: var(--border-glass);
+}
+
+.header-conviction {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.header-conviction label {
+  font-size: 0.5rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.header-conviction .val {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--primary);
+  font-family: var(--font-mono);
+}
+
+/* Verdict Card in Interpretation Column */
+.ai-verdict-card {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-left: 4px solid var(--primary);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.ai-verdict-title {
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: var(--primary);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ai-verdict-body {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-main);
+}
+
 .smc-section-title-row {
   margin: 0 0 0.5rem;
   font-size: 0.68rem;

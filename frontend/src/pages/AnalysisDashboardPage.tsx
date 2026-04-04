@@ -849,6 +849,22 @@ const AnalysisDashboardPage: React.FC = () => {
                 
                 {!row.error && (
                   <div className="detail-header-stats">
+                    <div className="header-verdict-group">
+                      {row.ai_smc?.trading_recommendation?.primary_action && (
+                        <>
+                          <div className={`header-action-badge action-${row.ai_smc.trading_recommendation.primary_action.toLowerCase()}`}>
+                            {row.ai_smc.trading_recommendation.primary_action}
+                          </div>
+                          {row.ai_smc.trading_recommendation.conviction_0_to_100 != null && (
+                            <div className="header-conviction">
+                              <label>AI CONV</label>
+                              <span className="val">{row.ai_smc.trading_recommendation.conviction_0_to_100}%</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+
                     <div className="detail-stat">
                       <label>LTP / CLOSE</label>
                       <span className="value">
@@ -889,6 +905,19 @@ const AnalysisDashboardPage: React.FC = () => {
                         <h2>AI_INTERPRETATION</h2>
                       </div>
                       <div className="padding-1-5">
+                        {row.ai_smc?.trading_recommendation && (
+                          <div className="ai-verdict-card">
+                            <div className="ai-verdict-title">
+                              <span>FINAL_VERDICT</span>
+                              <span className={`smc-rec-action smc-rec-${sideBadgeMeta(row.ai_smc.trading_recommendation.primary_action).css}`}>
+                                {row.ai_smc.trading_recommendation.primary_action?.toUpperCase()}
+                              </span>
+                            </div>
+                            <div className="ai-verdict-body">
+                              {row.ai_smc.trading_recommendation.entry_guidance || row.ai_smc.summary || "No specific guidance provided."}
+                            </div>
+                          </div>
+                        )}
                         <AiSynthesisSection aiSmc={row.ai_smc} aiInsight={row.ai_insight} />
                         {!symbolHasAiNarrative(row) && (
                           <p className="text-muted small">No AI narrative generated for this snapshot.</p>
