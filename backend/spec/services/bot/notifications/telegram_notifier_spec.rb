@@ -98,4 +98,59 @@ RSpec.describe Bot::Notifications::TelegramNotifier do
       notifier.notify_signal_generated(symbol: "BTCUSD", side: :short, price: 41_000.0, strategy: "multi_timeframe")
     end
   end
+
+  context "SMC analysis digest (chunked)" do
+    let(:bot_double) { instance_double("Telegram::Bot::Client") }
+    let(:api_double) { double("api") }
+
+    it "does not send when the analysis event is disabled" do
+      notifier = described_class.new(
+        enabled: true,
+        token: "token",
+        chat_id: "123",
+        event_settings: { analysis: false }
+      )
+      allow(notifier).to receive(:client).and_return(bot_double)
+      allow(bot_double).to receive(:api).and_return(api_double)
+
+      expect(api_double).not_to receive(:send_message)
+      notifier.notify_smc_analysis_digest(symbol: "BTCUSD", plain_text: "long text")
+    end
+
+    it "sends one message for a short summary" do
+      notifier = described_class.new(
+        enabled: true,
+        token: "token",
+        chat_id: "123",
+        event_settings: { analysis: true }
+      )
+      allow(notifier).to receive(:client).and_return(bot_double)
+      allow(bot_double).to receive(:api).and_return(api_double)
+
+      expect(api_double).to receive(:send_message).once.with(
+        hash_including(
+          chat_id: "123",
+          parse_mode: "HTML",
+          text: a_string_including("SMC ANALYSIS", "BTCUSD", "1/1", "hello")
+        )
+      )
+      notifier.notify_smc_analysis_digest(symbol: "BTCUSD", plain_text: "hello")
+    end
+
+    it "sends multiple messages when the body exceeds the chunk size" do
+      notifier = described_class.new(
+        enabled: true,
+        token: "token",
+        chat_id: "123",
+        event_settings: { analysis: true }
+      )
+      allow(notifier).to receive(:client).and_return(bot_double)
+      allow(bot_double).to receive(:api).and_return(api_double)
+      allow(notifier).to receive(:sleep)
+
+      long = ("A" * 2_000 + "\n\n" + "B" * 2_000)
+      expect(api_double).to receive(:send_message).twice
+      notifier.notify_smc_analysis_digest(symbol: "SOLUSD", plain_text: long)
+    end
+  end
 end

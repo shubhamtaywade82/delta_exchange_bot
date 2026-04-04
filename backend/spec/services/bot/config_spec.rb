@@ -126,7 +126,8 @@ RSpec.describe Bot::Config do
         "notifications.telegram.events.signals",
         "notifications.telegram.events.positions",
         "notifications.telegram.events.trailing",
-        "notifications.telegram.events.errors"
+        "notifications.telegram.events.errors",
+        "notifications.telegram.events.analysis"
       )
     end
 

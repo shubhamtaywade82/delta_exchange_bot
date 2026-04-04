@@ -29,6 +29,7 @@ defaults = {
   "notifications.telegram.events.positions" => ["true", "boolean"],
   "notifications.telegram.events.trailing" => ["true", "boolean"],
   "notifications.telegram.events.errors" => ["true", "boolean"],
+  "notifications.telegram.events.analysis" => ["false", "boolean"],
   "notifications.daily_summary_time" => ["18:00", "string"],
   "logging.level" => ["info", "string"],
   "logging.file" => ["logs/bot.log", "string"],
