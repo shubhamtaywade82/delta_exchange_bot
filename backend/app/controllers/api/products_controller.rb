@@ -6,15 +6,15 @@ module Api
       # Fetch all products from Delta Exchange
       # Filter for Futures to keep the catalog focused
       all_products = DeltaExchange::Models::Product.all || []
-      
-      futures = all_products.select do |p| 
+
+      futures = all_products.select do |p|
         p.contract_type == "futures" || p.contract_type == "perpetual_futures"
       end
 
       # Enhance with current ticker info (OI, Mark Price) for the catalog view
       # Note: This might be slow if there are many products, so we only return basic info
       # and let the UI fetch specifics if needed, or we just return the symbols.
-      
+
       render json: futures.map { |p|
         {
           symbol: p.symbol,

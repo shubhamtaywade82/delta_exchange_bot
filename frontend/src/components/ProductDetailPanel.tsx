@@ -11,7 +11,7 @@ import {
   Target
 } from 'lucide-react';
 
-interface AiAnalysis {
+export interface AiAnalysis {
   summary: string;
   htf_bias: 'bullish' | 'bearish' | 'mixed';
   scenario: string;

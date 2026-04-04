@@ -3,7 +3,7 @@ class Api::PositionsController < ApplicationController
     prices = Bot::Feed::PriceStore.new.all
     positions = Position.active.map do |pos|
       ltp = prices[pos.symbol]
-      
+
       pos.as_json.merge(
         ltp: ltp,
         unrealized_pnl: calculate_unrealized_pnl(pos, ltp)

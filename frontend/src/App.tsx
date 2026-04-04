@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useLiveLtp } from './liveLtp/LiveLtpProvider';
+import { useLiveLtp } from './liveLtp/liveLtpContext';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 import Navbar from './components/Navbar';

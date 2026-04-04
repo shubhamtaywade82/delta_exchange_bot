@@ -24,9 +24,9 @@ module Trading
 
         margin_ratio = if initial_margin.zero?
                          0.to_d
-                       else
+        else
                          maintenance_margin / initial_margin
-                       end
+        end
 
         Result.new(
           position_value: position_value,

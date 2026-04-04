@@ -22,7 +22,7 @@ const OperationalStatePage: React.FC = () => {
 
   const todayLocal = useCallback(() => localCalendarDateISO(), []);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const params = new URLSearchParams();
       params.set('trades_limit', '500');
@@ -33,13 +33,13 @@ const OperationalStatePage: React.FC = () => {
     } catch (err) {
       console.error('Operational state sync error', err);
     }
-  };
+  }, [todayLocal]);
 
   useEffect(() => {
-    load();
-    const interval = setInterval(load, 5000);
+    void load();
+    const interval = setInterval(() => void load(), 5000);
     return () => clearInterval(interval);
-  }, [todayLocal]);
+  }, [load]);
 
   const setPaperRiskOverride = async (enabled: boolean) => {
     if (!operationalState?.paper_trading) return;

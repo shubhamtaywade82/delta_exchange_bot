@@ -51,18 +51,18 @@ module Bot
 
           dx = if (plus_di + minus_di).positive?
                  100.0 * (plus_di - minus_di).abs / (plus_di + minus_di)
-               else
+          else
                  0.0
-               end
+          end
           dx_arr << dx
 
           next if dx_arr.size < period
 
           adx = if dx_arr.size == period
                   dx_arr.sum / period
-                else
+          else
                   (results[i - 1][:adx] * (period - 1) + dx) / period
-                end
+          end
 
           results[i] = { adx: adx.round(4), plus_di: plus_di.round(4), minus_di: minus_di.round(4) }
         end

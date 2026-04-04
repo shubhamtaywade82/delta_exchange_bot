@@ -38,25 +38,25 @@ module Bot
           # Band carry-forward (prevents band from moving away from price)
           upper[i] = if basic_upper < upper[i - 1] || cp[:close].to_f > upper[i - 1]
                        basic_upper
-                     else
+          else
                        upper[i - 1]
-                     end
+          end
 
           lower[i] = if basic_lower > lower[i - 1] || cp[:close].to_f < lower[i - 1]
                        basic_lower
-                     else
+          else
                        lower[i - 1]
-                     end
+          end
 
           close = c[:close].to_f
 
           dir[i] = if dir[i - 1] == :bearish && close > upper[i - 1]
                      :bullish
-                   elsif dir[i - 1] == :bullish && close < lower[i - 1]
+          elsif dir[i - 1] == :bullish && close < lower[i - 1]
                      :bearish
-                   else
+          else
                      dir[i - 1]
-                   end
+          end
 
           next if i < atr_period
 

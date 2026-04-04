@@ -14,7 +14,7 @@ Rails.application.routes.draw do
     get "wallet"          => "wallet#index"
     get "analysis_dashboard" => "analysis_dashboard#index"
     get "symbols/:symbol/order_blocks" => "order_blocks#show"
-    
+
     # New catalog and watchlist
     resources :products, only: [:index]
     resources :symbol_configs, only: [:index, :create, :update, :destroy]

@@ -32,9 +32,9 @@ module Trading
         buffer = ENV.fetch("RISK_DANGER_STOP_BUFFER", "0.98").to_d
         stop = if position.side.to_s.in?(%w[long buy])
                  mark * buffer
-               else
+        else
                  mark / buffer
-               end
+        end
 
         position.update!(stop_price: stop)
       end

@@ -111,7 +111,7 @@ module Bot
     end
 
     def self.runtime_raw
-      raw = Marshal.load(Marshal.dump(DEFAULTS))
+      raw = DEFAULTS.deep_dup
       overlay = bot_yml_hash
       deep_merge_runtime_overlay!(raw, overlay)
 
