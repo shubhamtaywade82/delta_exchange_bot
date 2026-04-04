@@ -54,8 +54,8 @@ Edit `config/bot.yml` (or `backend/config/bot.yml` — keep them aligned if you 
    - `notifications.telegram.enabled` = `true` (boolean)
    - `notifications.telegram.bot_token` = token from [@BotFather](https://t.me/BotFather)
    - `notifications.telegram.chat_id` = your chat or group id (numeric string)
-2. Optionally toggle event keys: `notifications.telegram.events.signals`, `.positions`, `.trailing`, `.status`, `.errors` (booleans).
-3. Restart **`bin/bot`** (or the process running `Trading::Runner`) so config is picked up.
+2. Optionally toggle event keys: `notifications.telegram.events.signals`, `.positions`, `.trailing`, `.status`, `.errors`, `.analysis` (booleans). When **`.analysis`** is `true`, **`Trading::AnalysisDashboardRefreshJob`** sends each symbol’s Ollama **`ai_insight`** to Telegram in chunked messages (long summaries split under Telegram’s 4096-character limit).
+3. Restart **`bin/bot`** (or the process running `Trading::Runner`) so config is picked up. For digest pushes, ensure **`bin/jobs`** (Solid Queue) is running so the refresh job executes.
 
 **Precedence:** a value in Settings overrides `bot.yml`. If `bot_token` or `chat_id` is still blank after that, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` from the environment are applied. If `TELEGRAM_ENABLED` is set in the environment, it forces `notifications.telegram.enabled` on or off (`1` / `true` / `yes` / `on` vs anything else).
 

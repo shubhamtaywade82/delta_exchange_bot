@@ -18,11 +18,15 @@ module Trading
         "comment_on_plan" (string): critique of heuristic trade_plan (risk, PD zone, alignment),
         "timeframe_notes" (object): optional strings for keys "5m","15m","1h",
 
+        "long_trigger_conditions" (array of strings, max 4): specific conditions from INPUT that, if met NOW or soon, would justify a LONG entry (e.g. "BOS bullish confirmed on 15m + price returns to unfilled bullish FVG at 66,800-66,900 in discount zone"). Leave empty array if no plausible long setup exists.
+
+        "short_trigger_conditions" (array of strings, max 4): specific conditions from INPUT that, if met NOW or soon, would justify a SHORT entry (e.g. "CHOCH bearish on 5m + sweep of equal highs near 67,200 with bearish OB mitigation"). Leave empty array if no plausible short setup exists.
+
         "trading_recommendation" (object):
           "primary_action" ("long"|"short"|"wait"),
           "conviction_0_to_100" (integer 0-100),
           "preferred_entry_model" ("ob_mitigation"|"fvg_mitigation"|"liquidity_sweep_follow_through"|"wait"|"none"),
-          "entry_guidance" (string): zones/conditions from INPUT (no invented prices),
+          "entry_guidance" (string): zones/conditions from INPUT (no invented prices). Be specific about WHAT needs to happen for entry — not just "wait for confirmation",
           "structural_stop_guidance" (string),
           "target_guidance" (string or array of strings): next liquidity / RR framing,
           "aligns_with_htf_structure" (boolean),
@@ -38,9 +42,12 @@ module Trading
 
           Rules:
           - Do not invent prices, sessions, sweeps, or order flow not present in INPUT.
-          - Prefer "wait" when INPUT shows conflicted bias, premium/discount mismatch, or missing mitigation.
+          - When bias is clear and structure supports it, commit to "long" or "short" with specific entry conditions.
+          - Use "wait" only when bias is genuinely conflicted across timeframes, or the premium/discount zone strongly contradicts the direction.
+          - Always provide both long_trigger_conditions and short_trigger_conditions so the trader knows what to watch for in EITHER direction, even if primary_action favors one side.
           - Respect risk_and_execution_framework.min_suggested_rr conceptually when commenting on trade_plan.
           - trading_recommendation must be consistent with htf_bias and mtf_alignment unless you explain conflict in key_risks.
+          - entry_guidance must describe a concrete scenario, not vague "wait for confirmation."
 
           #{SCHEMA_HINT}
 

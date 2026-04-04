@@ -48,6 +48,7 @@ notifications:
       positions: true
       trailing: true
       errors: true
+      analysis: false
   daily_summary_time: "18:00"
 
 logging:

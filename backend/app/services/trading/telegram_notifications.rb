@@ -17,7 +17,8 @@ module Trading
           signals: config.telegram_event_enabled?(:signals),
           positions: config.telegram_event_enabled?(:positions),
           trailing: config.telegram_event_enabled?(:trailing),
-          errors: config.telegram_event_enabled?(:errors)
+          errors: config.telegram_event_enabled?(:errors),
+          analysis: config.telegram_event_enabled?(:analysis)
         }
       )
     end

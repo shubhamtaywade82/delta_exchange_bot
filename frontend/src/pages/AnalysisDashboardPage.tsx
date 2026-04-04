@@ -26,6 +26,38 @@ interface SmcMitigation {
   pct?: number;
 }
 
+/** Last-bar payload from `Trading::Analysis::SmcConfluence::Engine` (Pine parity). */
+interface SmcConfluenceLastBar {
+  bar_index?: number;
+  long_score?: number;
+  short_score?: number;
+  /** Engine serializes 1 / -1 / 0; strings may appear from other sources. */
+  structure_bias?: string | number | null;
+  long_signal?: boolean;
+  short_signal?: boolean;
+}
+
+/** Top-level digest object from `Trading::Analysis::SmcConfluenceMtf`. */
+interface SmcConfluenceMtfPayload {
+  kind?: string;
+  schema_version?: number;
+  symbol?: string;
+  generated_at_utc?: string;
+  source?: string;
+  timeframes?: Record<
+    string,
+    {
+      resolution?: string;
+      candle_count?: number;
+      last_bar_at?: string;
+      last_close?: number;
+      confluence?: SmcConfluenceLastBar | null;
+    }
+  >;
+  alignment?: Record<string, Record<string, boolean | number | string | null | undefined>>;
+  notes?: string[];
+}
+
 interface SmcTfSnapshot {
   resolution?: string;
   error?: string;
@@ -79,6 +111,7 @@ interface SmcTfSnapshot {
     doji_hint?: boolean;
   };
   volatility?: { atr?: number; range_vs_atr?: number; expansion_hint?: boolean };
+  smc_confluence?: SmcConfluenceLastBar | null;
 }
 
 interface TradePlan {
@@ -115,6 +148,8 @@ interface AiSmcStructured {
   takeaway_bullets?: string[];
   comment_on_plan?: string;
   timeframe_notes?: Record<string, string>;
+  long_trigger_conditions?: string[];
+  short_trigger_conditions?: string[];
   trading_recommendation?: TradingRecommendation;
 }
 
@@ -155,6 +190,7 @@ interface SymbolDigest {
     }
   >;
   smc_by_timeframe?: Record<string, SmcTfSnapshot>;
+  smc_confluence_mtf?: SmcConfluenceMtfPayload | null;
   trade_plan?: TradePlan;
   smc?: {
     bos: {
@@ -193,8 +229,22 @@ function symbolHasAiNarrative(row: SymbolDigest): boolean {
   return false;
 }
 
-function dirClass(dir: string | null | undefined): string {
-  const d = (dir ?? '').toLowerCase();
+/** Confluence engine uses numeric bias: 1 bull, -1 bear, 0 neutral (JSON number). */
+function formatStructureBias(bias: unknown): string {
+  if (bias === 1 || bias === '1') return 'bullish';
+  if (bias === -1 || bias === '-1') return 'bearish';
+  if (bias === 0 || bias === '0') return 'neutral';
+  if (typeof bias === 'string' && bias.trim()) return bias;
+  return '—';
+}
+
+function dirClass(dir: string | number | null | undefined): string {
+  if (typeof dir === 'number') {
+    if (dir === 1) return 'analysis-dir-bull';
+    if (dir === -1) return 'analysis-dir-bear';
+    return 'analysis-dir-neutral';
+  }
+  const d = String(dir ?? '').toLowerCase();
   if (d.includes('bullish_aligned')) return 'analysis-dir-bullish-aligned analysis-dir-bull';
   if (d.includes('bearish_aligned')) return 'analysis-dir-bearish-aligned analysis-dir-bear';
   if (d === 'bullish' || d === 'bull') return 'analysis-dir-bull';
@@ -210,6 +260,68 @@ function mitLabel(m?: SmcMitigation): string {
 
 function smcFreshLabel(fresh: boolean): string {
   return fresh ? 'fresh' : 'aged';
+}
+
+const CONFLUENCE_ALIGNMENT_ROWS: { key: string; label: string }[] = [
+  { key: 'long_score', label: 'Long score' },
+  { key: 'short_score', label: 'Short score' },
+  { key: 'structure_bias', label: 'Structure bias' },
+  { key: 'long_signal', label: 'Long signal' },
+  { key: 'short_signal', label: 'Short signal' },
+  { key: 'choch_bull', label: 'CHOCH bull' },
+  { key: 'choch_bear', label: 'CHOCH bear' }
+];
+
+function formatAlignCell(
+  metricKey: string,
+  value: boolean | number | string | null | undefined
+): React.ReactNode {
+  if (value === undefined || value === null) return '—';
+  if (typeof value === 'boolean') return value ? 'yes' : 'no';
+  if (typeof value === 'number') {
+    if (metricKey === 'structure_bias') {
+      return <span className={dirClass(value)}>{formatStructureBias(value)}</span>;
+    }
+    return String(value);
+  }
+  if (typeof value === 'string') {
+    return <span className={dirClass(value)}>{value}</span>;
+  }
+  return String(value);
+}
+
+function SmcConfluenceMtfSection({ mtf }: { mtf?: SmcConfluenceMtfPayload | null }) {
+  if (!mtf || mtf.kind !== 'smc_confluence_mtf') return null;
+  const align = mtf.alignment;
+  if (!align || typeof align !== 'object') return null;
+
+  return (
+    <div className="dense-group full-width border-top smc-confluence-section">
+      <div className="smc-section-title-row smc-section-title-compact">
+        <span className="dense-label">SMC confluence (last bar per TF)</span>
+        <span className="smc-source-pill smc-source-rules">Engine</span>
+      </div>
+      <div className="smc-conf-align-table">
+        <div className="smc-conf-align-row smc-conf-align-head">
+          <span>Metric</span>
+          {SMC_TF_ORDER.map(tf => (
+            <span key={tf}>{tf}</span>
+          ))}
+        </div>
+        {CONFLUENCE_ALIGNMENT_ROWS.map(row => (
+          <div key={row.key} className="smc-conf-align-row">
+            <span className="smc-conf-metric-label">{row.label}</span>
+            {SMC_TF_ORDER.map(tf => (
+              <span key={tf}>{formatAlignCell(row.key, align[row.key]?.[tf])}</span>
+            ))}
+          </div>
+        ))}
+      </div>
+      {mtf.generated_at_utc && (
+        <p className="text-muted small smc-conf-meta">Confluence MTF generated {mtf.generated_at_utc} (UTC)</p>
+      )}
+    </div>
+  );
 }
 
 function SmcTimeframePanel({ label, snap }: { label: string; snap?: SmcTfSnapshot }) {
@@ -242,6 +354,23 @@ function SmcTimeframePanel({ label, snap }: { label: string; snap?: SmcTfSnapsho
           <span className={`smc-bias-tag ${dirClass(snap.bias_hint)}`}>{snap.bias_hint}</span>
         )}
       </div>
+
+      {snap.smc_confluence && (
+        <p
+          className="smc-confluence-strip text-muted small"
+          title="Pine-parity confluence engine on the last bar in the fetched window"
+        >
+          Confluence: L {snap.smc_confluence.long_score ?? '—'} / S {snap.smc_confluence.short_score ?? '—'} ·{' '}
+          <span className={dirClass(snap.smc_confluence.structure_bias ?? undefined)}>
+            {formatStructureBias(snap.smc_confluence.structure_bias)}
+          </span>
+          {' · '}
+          sig{' '}
+          {[snap.smc_confluence.long_signal && 'L', snap.smc_confluence.short_signal && 'S']
+            .filter(Boolean)
+            .join(' ') || '—'}
+        </p>
+      )}
 
       <div className="smc-microgrid">
         <div className="smc-kv">
@@ -445,6 +574,38 @@ function AiSmcBlock({ ai }: { ai?: AiSmcStructured | null }) {
           <strong>PLAN:</strong> {ai.comment_on_plan}
         </p>
       )}
+
+      {((ai.long_trigger_conditions?.length ?? 0) > 0 || (ai.short_trigger_conditions?.length ?? 0) > 0) && (
+        <div className="ai-trigger-conditions">
+          {(ai.long_trigger_conditions?.length ?? 0) > 0 && (
+            <div className="ai-trigger-block ai-trigger-long">
+              <div className="ai-trigger-head">
+                <span className="ai-trigger-icon">🟢</span>
+                <span className="dense-label">CONSIDER LONG WHEN</span>
+              </div>
+              <ul className="ai-smc-bullets">
+                {ai.long_trigger_conditions!.map((c, i) => (
+                  <li key={i}>{c}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {(ai.short_trigger_conditions?.length ?? 0) > 0 && (
+            <div className="ai-trigger-block ai-trigger-short">
+              <div className="ai-trigger-head">
+                <span className="ai-trigger-icon">🔴</span>
+                <span className="dense-label">CONSIDER SHORT WHEN</span>
+              </div>
+              <ul className="ai-smc-bullets">
+                {ai.short_trigger_conditions!.map((c, i) => (
+                  <li key={i}>{c}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
       {Object.keys(tfNotes).length > 0 && (
         <div className="ai-tf-notes">
           {Object.entries(tfNotes).map(([tf, note]) => (
@@ -549,6 +710,7 @@ const AnalysisDashboardPage: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [inFlight, setInFlight] = useState(false);
   const [hadFirstLoad, setHadFirstLoad] = useState(false);
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [ollamaBannerDismissed, setOllamaBannerDismissed] = useState(readOllamaBannerDismissed);
 
   const dismissOllamaBanner = useCallback(() => {
@@ -566,6 +728,11 @@ const AnalysisDashboardPage: React.FC = () => {
       const { data: body } = await axios.get<AnalysisPayload>('/api/analysis_dashboard');
       setData(body);
       setLoadError(null);
+      
+      // Auto-select first symbol if none selected
+      if (!selectedSymbol && body.symbols?.length > 0) {
+        setSelectedSymbol(body.symbols[0].symbol);
+      }
     } catch (e) {
       setLoadError('Failed to load analysis snapshot');
       console.error(e);
@@ -573,7 +740,7 @@ const AnalysisDashboardPage: React.FC = () => {
       if (!opts?.silent) setInFlight(false);
       setHadFirstLoad(true);
     }
-  }, []);
+  }, [selectedSymbol]);
 
   useEffect(() => {
     fetchData();
@@ -681,102 +848,194 @@ const AnalysisDashboardPage: React.FC = () => {
           </div>
         )}
 
-      <div className="analysis-symbol-grid">
-        {(data?.symbols ?? []).map(row => (
-          <section key={row.symbol} className="terminal-section analysis-card">
-            <div className="section-header analysis-card-head">
-              <h2>{row.symbol}</h2>
+      {data?.symbols && data.symbols.length > 0 && (
+        <div className="analysis-tabs">
+          {data.symbols.map(s => (
+            <button
+              key={s.symbol}
+              type="button"
+              className={`analysis-tab-btn ${selectedSymbol === s.symbol ? 'active' : ''}`}
+              onClick={() => setSelectedSymbol(s.symbol)}
+            >
+              <span className={`dot ${s.error ? 'neg' : 'online'}`} />
+              {s.symbol}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="analysis-symbol-detail">
+        {(() => {
+          const row = (data?.symbols ?? []).find(s => s.symbol === selectedSymbol);
+          if (!row) return null;
+
+          return (
+            <div key={row.symbol} className="detail-view-container animate-fade-in">
+              <div className="detail-header-compact">
+                <div className="header-title-group">
+                  <h2>{row.symbol}</h2>
+                  {row.error ? (
+                    <span className="mode-badge blocked">ERROR</span>
+                  ) : (
+                    <span className="mode-badge live">OK</span>
+                  )}
+                </div>
+                
+                {!row.error && (
+                  <div className="detail-header-stats">
+                    <div className="header-verdict-group">
+                      {row.ai_smc?.trading_recommendation?.primary_action && (
+                        <>
+                          <div className={`header-action-badge action-${row.ai_smc.trading_recommendation.primary_action.toLowerCase()}`}>
+                            {row.ai_smc.trading_recommendation.primary_action}
+                          </div>
+                          {row.ai_smc.trading_recommendation.conviction_0_to_100 != null && (
+                            <div className="header-conviction">
+                              <label>AI CONV</label>
+                              <span className="val">{row.ai_smc.trading_recommendation.conviction_0_to_100}%</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+
+                    <div className="detail-stat">
+                      <label>LTP / CLOSE</label>
+                      <span className="value">
+                        {row.price_action?.ltp
+                          ? formatQuotePrice(row.price_action.ltp)
+                          : formatQuotePrice(row.price_action?.last_close)}
+                      </span>
+                    </div>
+                    <div className="detail-stat">
+                      <label>BIAS</label>
+                      <span className={`value dense-bias ${dirClass(row.market_structure?.bias)}`}>
+                        {(row.market_structure?.bias ?? '—').replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                    <div className="detail-stat">
+                      <label>ADX (15m)</label>
+                      <span className="value">
+                        {formatQuotePrice(row.market_structure?.adx)}{' '}
+                        <span className={row.market_structure?.trending ? 'text-trend' : 'text-range'}>
+                          {row.market_structure?.trending ? 'TREND' : 'RANGE'}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {row.error ? (
-                <span className="mode-badge blocked">ERROR</span>
+                <div className="terminal-section">
+                  <p className="analysis-error padding-1-5">{row.error}</p>
+                </div>
               ) : (
-                <span className="mode-badge live">OK</span>
+                <div className="analysis-detail-layout">
+                  {/* LEFT COLUMN: AI & Recommendations */}
+                  <div className="detail-main-col">
+                    <section className="terminal-section">
+                      <div className="section-header">
+                        <h2>AI_INTERPRETATION</h2>
+                      </div>
+                      <div className="padding-1-5">
+                        {row.ai_smc?.trading_recommendation && (
+                          <div className="ai-verdict-card">
+                            <div className="ai-verdict-title">
+                              <span>FINAL_VERDICT</span>
+                              <span className={`smc-rec-action smc-rec-${sideBadgeMeta(row.ai_smc.trading_recommendation.primary_action).css}`}>
+                                {row.ai_smc.trading_recommendation.primary_action?.toUpperCase()}
+                              </span>
+                            </div>
+                            <div className="ai-verdict-body">
+                              {row.ai_smc.trading_recommendation.entry_guidance || row.ai_smc.summary || "No specific guidance provided."}
+                            </div>
+                          </div>
+                        )}
+                        <AiSynthesisSection aiSmc={row.ai_smc} aiInsight={row.ai_insight} />
+                        {!symbolHasAiNarrative(row) && (
+                          <p className="text-muted small">No AI narrative generated for this snapshot.</p>
+                        )}
+                      </div>
+                    </section>
+
+                    <section className="terminal-section">
+                      <div className="section-header">
+                        <h2>MARKET_STRUCTURE_BIAS</h2>
+                      </div>
+                      <div className="padding-1-5">
+                         <div className="dense-multi-row">
+                          <div className="dense-group">
+                            <span className="dense-label">STRUCTURE (H1/M15/M5)</span>
+                            <div className="dense-pills">
+                              <span className={dirClass(row.market_structure?.h1)}>
+                                {row.market_structure?.h1?.substring(0, 4).toUpperCase() || '—'}
+                              </span>
+                              <span className={dirClass(row.market_structure?.m15)}>
+                                {row.market_structure?.m15?.substring(0, 4).toUpperCase() || '—'}
+                              </span>
+                              <span className={dirClass(row.market_structure?.m5)}>
+                                {row.market_structure?.m5?.substring(0, 4).toUpperCase() || '—'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="dense-group">
+                            <span className="dense-label">ST (H1/M15/M5)</span>
+                            <div className="dense-pills">
+                              {row.timeframes &&
+                                ['trend', 'confirm', 'entry'].map(tfKey => {
+                                  const tf = row.timeframes![tfKey];
+                                  if (!tf) return <span key={tfKey}>—</span>;
+                                  return (
+                                    <span key={tfKey} className={dirClass(tf.supertrend_direction)}>
+                                      {tf.supertrend_direction?.substring(0, 4).toUpperCase() || '—'}
+                                    </span>
+                                  );
+                                })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+
+                  {/* RIGHT COLUMN: Technical Rules & Plan */}
+                  <div className="detail-side-col">
+                    <section className="terminal-section">
+                      <div className="section-header">
+                        <h2>TECHNICAL_EVIDENCE (SMC)</h2>
+                      </div>
+                      <div className="padding-1-5">
+                        <SmcConfluenceMtfSection mtf={row.smc_confluence_mtf} />
+                        <div className="dense-group full-width border-top smc-algo-section">
+                          <div className="smc-section-title-row smc-section-title-compact">
+                            <span className="dense-label">SMC · 5m / 15m / 1h</span>
+                            <span className="smc-source-pill smc-source-rules">Rules</span>
+                          </div>
+                          <div className="smc-tf-grid">
+                            {SMC_TF_ORDER.map(tf => (
+                              <SmcTimeframePanel key={tf} label={tf} snap={row.smc_by_timeframe?.[tf]} />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section className="terminal-section">
+                      <div className="section-header">
+                        <h2>EXECUTION_PLAN</h2>
+                      </div>
+                      <div className="padding-1-5">
+                        <TradePlanBlock plan={row.trade_plan} />
+                      </div>
+                    </section>
+                  </div>
+                </div>
               )}
             </div>
-
-            {row.error ? (
-              <p className="analysis-error">{row.error}</p>
-            ) : (
-              <div className="analysis-dense-body">
-                <div className="dense-main-row">
-                  <div className="dense-group">
-                    <span className="dense-label">LTP / CLOSE</span>
-                    <span className="dense-val">
-                      {row.price_action?.ltp
-                        ? formatQuotePrice(row.price_action.ltp)
-                        : formatQuotePrice(row.price_action?.last_close)}
-                    </span>
-                  </div>
-
-                  <div className="dense-group">
-                    <span className="dense-label">BIAS</span>
-                    <span className={`dense-bias ${dirClass(row.market_structure?.bias)}`}>
-                      {(row.market_structure?.bias ?? '—').replace(/_/g, ' ')}
-                    </span>
-                  </div>
-
-                  <div className="dense-group">
-                    <span className="dense-label">ADX (15m)</span>
-                    <span className="dense-val">
-                      {formatQuotePrice(row.market_structure?.adx)}{' '}
-                      <span className={row.market_structure?.trending ? 'text-trend' : 'text-range'}>
-                        {row.market_structure?.trending ? 'TREND' : 'RANGE'}
-                      </span>
-                    </span>
-                  </div>
-                </div>
-
-                <div className="dense-multi-row">
-                  <div className="dense-group">
-                    <span className="dense-label">STRUCTURE (H1/M15/M5)</span>
-                    <div className="dense-pills">
-                      <span className={dirClass(row.market_structure?.h1)}>
-                        {row.market_structure?.h1?.substring(0, 4).toUpperCase() || '—'}
-                      </span>
-                      <span className={dirClass(row.market_structure?.m15)}>
-                        {row.market_structure?.m15?.substring(0, 4).toUpperCase() || '—'}
-                      </span>
-                      <span className={dirClass(row.market_structure?.m5)}>
-                        {row.market_structure?.m5?.substring(0, 4).toUpperCase() || '—'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="dense-group">
-                    <span className="dense-label">ST (H1/M15/M5)</span>
-                    <div className="dense-pills">
-                      {row.timeframes &&
-                        ['trend', 'confirm', 'entry'].map(tfKey => {
-                          const tf = row.timeframes![tfKey];
-                          if (!tf) return <span key={tfKey}>—</span>;
-                          return (
-                            <span key={tfKey} className={dirClass(tf.supertrend_direction)}>
-                              {tf.supertrend_direction?.substring(0, 4).toUpperCase() || '—'}
-                            </span>
-                          );
-                        })}
-                    </div>
-                  </div>
-                </div>
-
-                <AiSynthesisSection aiSmc={row.ai_smc} aiInsight={row.ai_insight} />
-
-                <div className="dense-group full-width border-top smc-algo-section">
-                  <div className="smc-section-title-row smc-section-title-compact">
-                    <span className="dense-label">SMC · 5m / 15m / 1h</span>
-                    <span className="smc-source-pill smc-source-rules">Rules</span>
-                  </div>
-                  <div className="smc-tf-grid">
-                    {SMC_TF_ORDER.map(tf => (
-                      <SmcTimeframePanel key={tf} label={tf} snap={row.smc_by_timeframe?.[tf]} />
-                    ))}
-                  </div>
-                </div>
-
-                <TradePlanBlock plan={row.trade_plan} />
-              </div>
-            )}
-          </section>
-        ))}
+          );
+        })()}
       </div>
 
       {hadFirstLoad && (data?.symbols?.length ?? 0) === 0 && (
