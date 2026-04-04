@@ -44,6 +44,7 @@ RSpec.describe Trading::MarkPrice do
     end
 
     it "uses PriceStore when cache keys are empty" do
+      allow(PaperTrading::RedisStore).to receive(:get_ltp).with(position.product_id).and_return(nil)
       Bot::Feed::PriceStore.new.update("BTCUSD", 52_222.5)
       expect(described_class.for_synthetic_exit(position)).to eq(BigDecimal("52222.5"))
     end

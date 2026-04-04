@@ -20,7 +20,13 @@ module Trading
           normalized
         end
       rescue StandardError => e
-        Rails.logger.warn("[AiEdgeModel] fallback due to #{e.class}: #{e.message}")
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "Strategy::AiEdgeModel",
+          operation: "call",
+          error:     e,
+          log_level: :warn,
+          regime:    regime.to_s
+        )
         fallback
       end
 

@@ -30,7 +30,14 @@ module Trading
         return value if value == true || value == false
 
         value.to_s.strip.downcase.in?(%w[1 true yes on])
-      rescue StandardError
+      rescue StandardError => e
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "RuntimeConfig",
+          operation: "fetch_boolean",
+          error:     e,
+          log_level: :warn,
+          key:       key
+        )
         default
       end
 

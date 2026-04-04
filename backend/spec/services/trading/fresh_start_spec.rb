@@ -22,6 +22,22 @@ RSpec.describe Trading::FreshStart do
     }.to raise_error(described_class::AbortError, /CONFIRM=YES/)
   end
 
+  it "continues when a documented Redis key delete fails and reports" do
+    allow(redis_double).to receive(:del) do |key|
+      raise Redis::BaseError, "redis down" if key == described_class::REDIS_TRADING_DOCUMENTED_KEYS.first
+    end
+    allow(Rails.error).to receive(:report)
+
+    described_class.call!(confirm: "YES", stdout: stdout)
+
+    expect(Rails.error).to have_received(:report).with(
+      instance_of(Redis::BaseError),
+      handled: true,
+      context: hash_including("component" => "FreshStart", "operation" => "flush_redis_trading_keys!")
+    )
+    expect(stdout.string).to include("[fresh_start] Redis DEL")
+  end
+
   it "removes trades, orders chain, signals, positions, and strategy_params" do
     trade = create(:trade)
     portfolio = Portfolio.create!(balance: 1, available_balance: 1, used_margin: 0)

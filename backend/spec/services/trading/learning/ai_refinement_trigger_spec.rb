@@ -24,5 +24,18 @@ RSpec.describe Trading::Learning::AiRefinementTrigger do
 
       expect(Trading::Learning::AiRefinementJob).to have_received(:perform_later).once
     end
+
+    it "returns false and reports when enqueue raises" do
+      allow(Trading::Learning::AiRefinementJob).to receive(:perform_later).and_raise(StandardError, "adapter down")
+      allow(Rails.error).to receive(:report)
+
+      expect(described_class.call(reason: "trade_closed:1")).to be(false)
+
+      expect(Rails.error).to have_received(:report).with(
+        an_object_having_attributes(message: "adapter down"),
+        handled: true,
+        context: hash_including("component" => "Learning::AiRefinementTrigger", "reason" => "trade_closed:1")
+      )
+    end
   end
 end
