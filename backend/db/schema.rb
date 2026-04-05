@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_05_180000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_05_233000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -82,9 +82,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_05_180000) do
   end
 
   create_table "paper_fills", force: :cascade do |t|
+    t.integer "closed_qty", default: 0, null: false
     t.datetime "created_at", null: false
     t.string "exchange_fill_id"
     t.datetime "filled_at", null: false
+    t.integer "filled_qty", null: false
+    t.string "liquidity", default: "taker", null: false
+    t.decimal "margin_inr_per_fill", precision: 20, scale: 2, default: "0.0", null: false
     t.bigint "paper_order_id", null: false
     t.decimal "price", precision: 36, scale: 18, null: false
     t.integer "size", null: false
@@ -115,6 +119,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_05_180000) do
   create_table "paper_positions", force: :cascade do |t|
     t.decimal "avg_entry_price", precision: 36, scale: 18, null: false
     t.datetime "created_at", null: false
+    t.datetime "last_funding_at"
     t.integer "leverage", default: 1, null: false
     t.integer "net_quantity", default: 0, null: false
     t.bigint "paper_product_snapshot_id", null: false
@@ -125,6 +130,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_05_180000) do
     t.index ["paper_product_snapshot_id"], name: "index_paper_positions_on_paper_product_snapshot_id"
     t.index ["paper_wallet_id", "paper_product_snapshot_id"], name: "index_paper_positions_on_wallet_and_product", unique: true
     t.index ["paper_wallet_id"], name: "index_paper_positions_on_paper_wallet_id"
+    t.index ["last_funding_at"], name: "index_paper_positions_on_last_funding_at"
   end
 
   create_table "paper_product_snapshots", force: :cascade do |t|
@@ -171,13 +177,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_05_180000) do
     t.datetime "created_at", null: false
     t.string "direction", null: false
     t.string "entry_type", null: false
+    t.string "external_ref"
     t.jsonb "meta", default: {}, null: false
     t.string "notes"
     t.bigint "paper_wallet_id", null: false
     t.bigint "reference_id"
     t.string "reference_type"
+    t.string "sub_type", null: false
     t.datetime "updated_at", null: false
     t.index ["paper_wallet_id", "entry_type"], name: "idx_on_paper_wallet_id_entry_type_b03b77b663"
+    t.index ["paper_wallet_id", "external_ref", "entry_type", "sub_type"], name: "index_paper_wallet_ledger_idempotency", unique: true, where: "(external_ref IS NOT NULL)"
     t.index ["paper_wallet_id"], name: "index_paper_wallet_ledger_entries_on_paper_wallet_id"
     t.index ["reference_type", "reference_id"], name: "index_paper_ledger_on_reference"
     t.index ["reference_type", "reference_id"], name: "index_paper_wallet_ledger_entries_on_reference"
@@ -190,9 +199,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_05_180000) do
     t.decimal "equity_inr", precision: 20, scale: 2, default: "0.0", null: false
     t.string "name", default: "default", null: false
     t.decimal "realized_pnl_inr", precision: 20, scale: 2, default: "0.0", null: false
+    t.string "status", default: "active", null: false
     t.decimal "unrealized_pnl_inr", precision: 20, scale: 2, default: "0.0", null: false
     t.datetime "updated_at", null: false
     t.decimal "used_margin_inr", precision: 20, scale: 2, default: "0.0", null: false
+    t.index ["status"], name: "index_paper_wallets_on_status"
   end
 
   create_table "portfolio_ledger_entries", force: :cascade do |t|
