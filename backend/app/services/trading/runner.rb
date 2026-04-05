@@ -253,10 +253,10 @@ module Trading
 
       decision = (context[:decision] || context["decision"]).to_s
       side = case decision
-      when "buy" then :buy
-      when "sell" then :sell
-      else nil
-      end
+             when "buy" then :buy
+             when "sell" then :sell
+             else nil
+             end
       return nil unless side
 
       observed_at = (context[:observed_at] || context["observed_at"]).to_i

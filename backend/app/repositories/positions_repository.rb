@@ -5,9 +5,9 @@ module PositionsRepository
   def self.open_for(symbol, portfolio_id: nil)
     scope = if portfolio_id.nil?
               Position.active.where(symbol: symbol)
-    else
+            else
               Position.active_for_portfolio(portfolio_id).where(symbol: symbol)
-    end
+            end
 
     scope.first
   end

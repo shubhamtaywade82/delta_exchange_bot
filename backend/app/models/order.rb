@@ -55,11 +55,11 @@ class Order < ApplicationRecord
 
     self.status = if qty >= size.to_d
                     "filled"
-    elsif qty.positive?
+                  elsif qty.positive?
                     "partially_filled"
-    else
+                  else
                     normalize_status(exchange_status)
-    end
+                  end
     save!
   end
 

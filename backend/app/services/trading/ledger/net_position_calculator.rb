@@ -81,11 +81,11 @@ module Trading
             new_q = q + dq
             new_avg = if new_q.zero?
                         0.to_d
-            elsif new_q.positive?
+                      elsif new_q.positive?
                         avg
-            else
+                      else
                         price
-            end
+                      end
             return [realized, new_q, new_avg]
           end
 
@@ -95,11 +95,11 @@ module Trading
             new_q = q + dq
             new_avg = if new_q.zero?
                         0.to_d
-            elsif new_q.negative?
+                      elsif new_q.negative?
                         avg
-            else
+                      else
                         price
-            end
+                      end
             return [realized, new_q, new_avg]
           end
 
