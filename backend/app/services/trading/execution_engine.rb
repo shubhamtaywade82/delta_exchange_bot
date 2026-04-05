@@ -51,15 +51,15 @@ module Trading
       Rails.logger.info("[ExecutionEngine] Order placed: #{order.exchange_order_id} for #{@signal.symbol} #{@signal.side}")
       order
     rescue OrderBuilder::SizingError => e
-      release_idempotency_after_failed_acquire!(idem_key)
+      release_idempotency!(idem_key)
       Rails.logger.warn("[ExecutionEngine] Sizing rejected signal for #{@signal.symbol}: #{e.message}")
       raise RiskManager::RiskError, e.message
     rescue RiskManager::RiskError => e
-      release_idempotency_after_failed_acquire!(idem_key)
+      release_idempotency!(idem_key)
       Rails.logger.warn("[ExecutionEngine] Risk rejected signal for #{@signal.symbol}: #{e.message}")
       raise
     rescue StandardError => e
-      release_idempotency_after_failed_acquire!(idem_key) unless order_persisted
+      release_idempotency!(idem_key) unless order_persisted
       HotPathErrorPolicy.log_swallowed_error(
         component: "ExecutionEngine",
         operation: "execute",
@@ -81,9 +81,7 @@ module Trading
       false
     end
 
-    # Risk / sizing / margin run after acquire; without release, Redis blocks the same bar for 1h and the
-    # runner mis-labels the next attempt as SKIPPED_DUPLICATE though nothing executed.
-    def release_idempotency_after_failed_acquire!(idem_key)
+    def release_idempotency!(idem_key)
       IdempotencyGuard.release(idem_key)
     end
 
