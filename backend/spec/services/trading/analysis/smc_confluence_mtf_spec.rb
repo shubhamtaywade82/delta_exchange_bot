@@ -19,14 +19,14 @@ RSpec.describe Trading::Analysis::SmcConfluenceMtf do
       rows = (0...50).map { |i| candle(i) }
       payload = described_class.from_timeframe_candles(
         symbol: "BTCUSD",
-        timeframe_candles: { "5m" => rows, "15m" => rows, "1h" => rows }
+        timeframe_candles: { "4h" => rows, "1h" => rows, "5m" => rows }
       )
 
       expect(payload["kind"]).to eq("smc_confluence_mtf")
       expect(payload["symbol"]).to eq("BTCUSD")
-      expect(payload["timeframes"].keys.map(&:to_s)).to contain_exactly("5m", "15m", "1h")
+      expect(payload["timeframes"].keys.map(&:to_s)).to contain_exactly("4h", "1h", "5m")
 
-      %w[5m 15m 1h].each do |tf|
+      %w[4h 1h 5m].each do |tf|
         block = payload["timeframes"][tf]
         expect(block["candle_count"]).to eq(50)
         expect(block["confluence"]).to be_a(Hash)
@@ -35,7 +35,7 @@ RSpec.describe Trading::Analysis::SmcConfluenceMtf do
       end
 
       align = payload["alignment"]
-      expect(align["long_signal"].keys.map(&:to_s)).to include("5m", "15m", "1h")
+      expect(align["long_signal"].keys.map(&:to_s)).to include("4h", "1h", "5m")
       expect(align["structure_bias"]).to be_a(Hash)
     end
 

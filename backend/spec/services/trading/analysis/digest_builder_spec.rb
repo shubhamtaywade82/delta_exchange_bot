@@ -25,8 +25,8 @@ RSpec.describe Trading::Analysis::DigestBuilder do
       Bot::Config,
       candles_lookback: 40,
       min_candles_required: 15,
-      timeframe_trend: "1h",
-      timeframe_confirm: "15m",
+      timeframe_trend: "4h",
+      timeframe_confirm: "1h",
       timeframe_entry: "5m",
       adx_period: 14,
       adx_threshold: 20,
@@ -69,15 +69,15 @@ RSpec.describe Trading::Analysis::DigestBuilder do
 
     expect(digest[:error]).to be_nil
     expect(digest[:symbol]).to eq("BTCUSD")
-    expect(digest[:market_structure]).to include(:bias, :h1, :m15, :m5, :adx)
+    expect(digest[:market_structure]).to include(:bias, :trend, :confirm, :entry, :adx, :timeframes)
     expect(digest[:smc]).to include(:bos, :order_blocks)
-    expect(digest[:smc_by_timeframe].keys.map(&:to_s)).to contain_exactly("5m", "15m", "1h")
+    expect(digest[:smc_by_timeframe].keys.map(&:to_s)).to contain_exactly("4h", "1h", "5m")
     expect(digest[:smc_by_timeframe]["5m"]).to include("structure_sequence", "premium_discount", "entry_model_flags")
     expect(digest[:smc_confluence_mtf]).to be_a(Hash)
     expect(digest[:smc_confluence_mtf]["kind"]).to eq("smc_confluence_mtf")
-    expect(digest[:smc_confluence_mtf]["timeframes"].keys.map(&:to_s)).to contain_exactly("5m", "15m", "1h")
+    expect(digest[:smc_confluence_mtf]["timeframes"].keys.map(&:to_s)).to contain_exactly("4h", "1h", "5m")
     expect(digest[:smc_model_version]).to eq("2")
-    expect(digest[:mtf_alignment]).to include(:htf_1h_trend_type)
+    expect(digest[:mtf_alignment]).to include(:primary_structure, :confirm_structure, :entry_structure)
     expect(digest[:trade_plan]).to include("direction")
     expect(digest[:timeframes].keys.map(&:to_s)).to contain_exactly("trend", "confirm", "entry")
   end

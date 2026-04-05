@@ -2,22 +2,26 @@
 
 module Trading
   module Analysis
-    # Heuristic entry / SL / TP ladder from 5m OB/FVG and 1h bias (not live orders).
+    # Heuristic entry / SL / TP ladder from entry-TF OB/FVG and trend-TF bias hint (not live orders).
     class TradePlanBuilder
       BUFFER_PCT = Float(ENV.fetch("ANALYSIS_TRADE_PLAN_BUFFER_PCT", "0.02"))
 
-      def self.call(smc_by_timeframe:, last_price:, structure_bias:)
+      def self.call(smc_by_timeframe:, last_price:, structure_bias:, trend_timeframe:, entry_timeframe:)
         new(
           smc_by_timeframe: smc_by_timeframe,
           last_price: last_price,
-          structure_bias: structure_bias
+          structure_bias: structure_bias,
+          trend_timeframe: trend_timeframe,
+          entry_timeframe: entry_timeframe
         ).build
       end
 
-      def initialize(smc_by_timeframe:, last_price:, structure_bias:)
+      def initialize(smc_by_timeframe:, last_price:, structure_bias:, trend_timeframe:, entry_timeframe:)
         @tf = smc_by_timeframe.transform_keys(&:to_s)
         @price = last_price.to_f
         @bias = structure_bias.to_s
+        @trend_tf = trend_timeframe.to_s
+        @entry_tf = entry_timeframe.to_s
       end
 
       def build
@@ -26,33 +30,33 @@ module Trading
         direction = plan_direction
         return none_plan("no_clear_bias") if direction == :flat
 
-        m5 = @tf["5m"]
-        return none_plan("no_5m_smc") unless m5.is_a?(Hash) && m5["error"].blank?
+        entry_snap = @tf[@entry_tf]
+        return none_plan("no_entry_smc") unless entry_snap.is_a?(Hash) && entry_snap["error"].blank?
 
         plan =
           if direction == :long
-            long_plan_from(m5)
+            long_plan_from(entry_snap)
           else
-            short_plan_from(m5)
+            short_plan_from(entry_snap)
           end
         return plan if plan[:direction] == "none"
 
-        note = premium_discount_note(m5, direction)
+        note = premium_discount_note(entry_snap, direction)
         plan[:risk_reward_notes] = [plan[:risk_reward_notes], note].compact.join(" | ") if note
         plan
       end
 
       private
 
-      def premium_discount_note(m5, direction)
-        pd = m5["premium_discount"]
+      def premium_discount_note(entry_snap, direction)
+        pd = entry_snap["premium_discount"]
         return nil unless pd.is_a?(Hash)
 
         zone = pd["zone"].to_s
         if direction == :long && zone == "premium"
-          "FILTER: 5m close in premium zone — long not ideal vs SMC discount rule."
+          "FILTER: #{@entry_tf} close in premium zone — long not ideal vs SMC discount rule."
         elsif direction == :short && zone == "discount"
-          "FILTER: 5m close in discount zone — short not ideal vs SMC premium rule."
+          "FILTER: #{@entry_tf} close in discount zone — short not ideal vs SMC premium rule."
         end
       end
 
@@ -76,8 +80,8 @@ module Trading
         when "bearish_aligned", "bearish"
           :short
         else
-          h1 = @tf["1h"]
-          hint = h1.is_a?(Hash) ? h1["bias_hint"].to_s : ""
+          trend_snap = @tf[@trend_tf]
+          hint = trend_snap.is_a?(Hash) ? trend_snap["bias_hint"].to_s : ""
           case hint
           when "bullish" then :long
           when "bearish" then :short
@@ -86,31 +90,31 @@ module Trading
         end
       end
 
-      def long_plan_from(m5)
-        ob = pick_ob(m5, "bull")
-        fvg = pick_fvg(m5, "bullish")
+      def long_plan_from(entry_snap)
+        ob = pick_ob(entry_snap, "bull")
+        fvg = pick_fvg(entry_snap, "bullish")
         entry = ob_entry(ob) || fvg_mid(fvg) || @price
         stop = ob_stop_long(ob) || fvg_stop_long(fvg) || buffer_stop(:long, entry)
         build_long_tp(entry, stop)
       end
 
-      def short_plan_from(m5)
-        ob = pick_ob(m5, "bear")
-        fvg = pick_fvg(m5, "bearish")
+      def short_plan_from(entry_snap)
+        ob = pick_ob(entry_snap, "bear")
+        fvg = pick_fvg(entry_snap, "bearish")
         entry = ob_entry_short(ob) || fvg_mid(fvg) || @price
         stop = ob_stop_short(ob) || fvg_stop_short(fvg) || buffer_stop(:short, entry)
         build_short_tp(entry, stop)
       end
 
-      def pick_ob(m5, side)
-        list = m5["order_blocks"]
+      def pick_ob(entry_snap, side)
+        list = entry_snap["order_blocks"]
         return nil unless list.is_a?(Array)
 
         list.reverse.find { |o| o["side"] == side && o["fresh"] == true }
       end
 
-      def pick_fvg(m5, type)
-        list = m5["fair_value_gaps"]
+      def pick_fvg(entry_snap, type)
+        list = entry_snap["fair_value_gaps"]
         return nil unless list.is_a?(Array)
 
         list.reverse.find do |f|

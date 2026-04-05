@@ -8,9 +8,19 @@ import {
   sideBadgeMeta,
 } from '../utils/tradingDisplay';
 
-const SMC_TF_ORDER = ['5m', '15m', '1h'] as const;
+const DEFAULT_SMC_TF_ORDER = ['4h', '1h', '5m'] as const;
 
 const OLLAMA_BANNER_DISMISS_KEY = 'analysis:dismiss-ollama-hint';
+
+function smcResolutionOrder(row: {
+  market_structure?: { timeframes?: { trend?: string; confirm?: string; entry?: string } };
+  smc_by_timeframe?: Record<string, unknown>;
+}): string[] {
+  const t = row.market_structure?.timeframes;
+  if (t?.trend && t?.confirm && t?.entry) return [t.trend, t.confirm, t.entry];
+  if (row.smc_by_timeframe && Object.keys(row.smc_by_timeframe).length > 0) return Object.keys(row.smc_by_timeframe);
+  return [...DEFAULT_SMC_TF_ORDER];
+}
 
 function readOllamaBannerDismissed(): boolean {
   if (typeof window === 'undefined') return false;
@@ -170,9 +180,10 @@ interface SymbolDigest {
   };
   market_structure?: {
     bias: string;
-    h1: string;
-    m15: string;
-    m5: string;
+    trend: string;
+    confirm: string;
+    entry: string;
+    timeframes?: { trend: string; confirm: string; entry: string };
     adx: number | null;
     plus_di?: number | null;
     minus_di?: number | null;
@@ -290,7 +301,13 @@ function formatAlignCell(
   return String(value);
 }
 
-function SmcConfluenceMtfSection({ mtf }: { mtf?: SmcConfluenceMtfPayload | null }) {
+function SmcConfluenceMtfSection({
+  mtf,
+  resolutionOrder
+}: {
+  mtf?: SmcConfluenceMtfPayload | null;
+  resolutionOrder: string[];
+}) {
   if (!mtf || mtf.kind !== 'smc_confluence_mtf') return null;
   const align = mtf.alignment;
   if (!align || typeof align !== 'object') return null;
@@ -304,14 +321,14 @@ function SmcConfluenceMtfSection({ mtf }: { mtf?: SmcConfluenceMtfPayload | null
       <div className="smc-conf-align-table">
         <div className="smc-conf-align-row smc-conf-align-head">
           <span>Metric</span>
-          {SMC_TF_ORDER.map(tf => (
+          {resolutionOrder.map(tf => (
             <span key={tf}>{tf}</span>
           ))}
         </div>
         {CONFLUENCE_ALIGNMENT_ROWS.map(row => (
           <div key={row.key} className="smc-conf-align-row">
             <span className="smc-conf-metric-label">{row.label}</span>
-            {SMC_TF_ORDER.map(tf => (
+            {resolutionOrder.map(tf => (
               <span key={tf}>{formatAlignCell(row.key, align[row.key]?.[tf])}</span>
             ))}
           </div>
@@ -756,8 +773,8 @@ const AnalysisDashboardPage: React.FC = () => {
           <div>
             <h1>ANALYSIS_DASHBOARD</h1>
             <p className="analysis-subtitle">
-              SMC (5m / 15m / 1h) + trade ladder: <strong>Rails rules</strong>. Ollama summary: <strong>optional</strong>.
-              Queue refresh + 30s poll.
+              SMC multi-timeframe (config: trend / confirm / entry, e.g. 4h / 1h / 5m) + trade ladder:{' '}
+              <strong>Rails rules</strong>. Ollama summary: <strong>optional</strong>. Queue refresh + 30s poll.
             </p>
             <details className="analysis-help-details">
               <summary>Details</summary>
@@ -869,6 +886,11 @@ const AnalysisDashboardPage: React.FC = () => {
           const row = (data?.symbols ?? []).find(s => s.symbol === selectedSymbol);
           if (!row) return null;
 
+          const smcTfOrder = smcResolutionOrder(row);
+          const msTf = row.market_structure?.timeframes;
+          const structureTfLabel = msTf ? `${msTf.trend} / ${msTf.confirm} / ${msTf.entry}` : smcTfOrder.join(' / ');
+          const adxTfLabel = msTf?.confirm ?? 'confirm';
+
           return (
             <div key={row.symbol} className="detail-view-container animate-fade-in">
               <div className="detail-header-compact">
@@ -914,7 +936,7 @@ const AnalysisDashboardPage: React.FC = () => {
                       </span>
                     </div>
                     <div className="detail-stat">
-                      <label>ADX (15m)</label>
+                      <label>ADX ({adxTfLabel})</label>
                       <span className="value">
                         {formatQuotePrice(row.market_structure?.adx)}{' '}
                         <span className={row.market_structure?.trending ? 'text-trend' : 'text-range'}>
@@ -966,22 +988,22 @@ const AnalysisDashboardPage: React.FC = () => {
                       <div className="padding-1-5">
                          <div className="dense-multi-row">
                           <div className="dense-group">
-                            <span className="dense-label">STRUCTURE (H1/M15/M5)</span>
+                            <span className="dense-label">STRUCTURE ({structureTfLabel})</span>
                             <div className="dense-pills">
-                              <span className={dirClass(row.market_structure?.h1)}>
-                                {row.market_structure?.h1?.substring(0, 4).toUpperCase() || '—'}
+                              <span className={dirClass(row.market_structure?.trend)}>
+                                {row.market_structure?.trend?.substring(0, 4).toUpperCase() || '—'}
                               </span>
-                              <span className={dirClass(row.market_structure?.m15)}>
-                                {row.market_structure?.m15?.substring(0, 4).toUpperCase() || '—'}
+                              <span className={dirClass(row.market_structure?.confirm)}>
+                                {row.market_structure?.confirm?.substring(0, 4).toUpperCase() || '—'}
                               </span>
-                              <span className={dirClass(row.market_structure?.m5)}>
-                                {row.market_structure?.m5?.substring(0, 4).toUpperCase() || '—'}
+                              <span className={dirClass(row.market_structure?.entry)}>
+                                {row.market_structure?.entry?.substring(0, 4).toUpperCase() || '—'}
                               </span>
                             </div>
                           </div>
 
                           <div className="dense-group">
-                            <span className="dense-label">ST (H1/M15/M5)</span>
+                            <span className="dense-label">ST ({structureTfLabel})</span>
                             <div className="dense-pills">
                               {row.timeframes &&
                                 ['trend', 'confirm', 'entry'].map(tfKey => {
@@ -1007,14 +1029,14 @@ const AnalysisDashboardPage: React.FC = () => {
                         <h2>TECHNICAL_EVIDENCE (SMC)</h2>
                       </div>
                       <div className="padding-1-5">
-                        <SmcConfluenceMtfSection mtf={row.smc_confluence_mtf} />
+                        <SmcConfluenceMtfSection mtf={row.smc_confluence_mtf} resolutionOrder={smcTfOrder} />
                         <div className="dense-group full-width border-top smc-algo-section">
                           <div className="smc-section-title-row smc-section-title-compact">
-                            <span className="dense-label">SMC · 5m / 15m / 1h</span>
+                            <span className="dense-label">SMC · {smcTfOrder.join(' / ')}</span>
                             <span className="smc-source-pill smc-source-rules">Rules</span>
                           </div>
                           <div className="smc-tf-grid">
-                            {SMC_TF_ORDER.map(tf => (
+                            {smcTfOrder.map(tf => (
                               <SmcTimeframePanel key={tf} label={tf} snap={row.smc_by_timeframe?.[tf]} />
                             ))}
                           </div>

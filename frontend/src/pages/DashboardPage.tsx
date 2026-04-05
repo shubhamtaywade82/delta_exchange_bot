@@ -32,9 +32,9 @@ interface OrderBlock {
 
 interface SymbolState {
   symbol: string;
-  h1_dir?: string;
-  m15_dir?: string;
-  m5_dir?: string;
+  trend_dir?: string;
+  confirm_dir?: string;
+  entry_dir?: string;
   adx?: number;
   signal?: string;
   updated_at?: string;
@@ -288,6 +288,18 @@ const DashboardPage: React.FC = () => {
     };
   }, [fetchEverything]);
 
+  const strategyTfLegend = useMemo(
+    () =>
+      strategyStatus?.strategy.timeframes?.length
+        ? strategyStatus.strategy.timeframes
+        : [
+            { tf: '4H', role: 'Trend filter', indicator: 'Supertrend direction' },
+            { tf: '1H', role: 'Confirmation', indicator: 'Supertrend + ADX strength' },
+            { tf: '5M', role: 'Entry trigger', indicator: 'BOS + Order Block zone' },
+          ],
+    [strategyStatus]
+  );
+
   const timeAgo = (ts: string) => {
     const diff = Math.floor((new Date().getTime() - new Date(ts).getTime()) / 1000);
     return diff < 60 ? `${diff}s ago` : `${Math.floor(diff/60)}m ago`;
@@ -313,7 +325,7 @@ const DashboardPage: React.FC = () => {
               </div>
 
               <div className="strategy-legend">
-                {strategyStatus.strategy.timeframes.map(tf => (
+                {strategyTfLegend.map(tf => (
                   <div key={tf.tf} className="tf-legend-item">
                     <span className="tf-label">{tf.tf}</span>
                     <span className="tf-role">{tf.role}</span>
@@ -327,8 +339,9 @@ const DashboardPage: React.FC = () => {
                   <thead>
                     <tr>
                       <th>SYMBOL</th>
-                      <th>1H_DIR</th>
-                      <th>15M_CONF</th>
+                      {strategyTfLegend.map(row => (
+                        <th key={row.tf}>{row.tf}_ST</th>
+                      ))}
                       <th>ADX_PWR</th>
                       <th>BOS</th>
                       <th>SIGNAL</th>
@@ -340,8 +353,13 @@ const DashboardPage: React.FC = () => {
                       <React.Fragment key={sym.symbol}>
                         <tr className="row-hover cursor-pointer" onClick={() => setExpandedSym(expandedSym === sym.symbol ? null : sym.symbol)}>
                           <td><span className="font-bold">{sym.symbol.replace('USDT', '')}</span></td>
-                          <td><span className={`dir-badge ${sym.h1_dir || 'neutral'}`}>{sym.h1_dir?.toUpperCase() || '---'}</span></td>
-                          <td><span className={`dir-badge ${sym.m15_dir || 'neutral'}`}>{sym.m15_dir?.toUpperCase() || '---'}</span></td>
+                          {[sym.trend_dir, sym.confirm_dir, sym.entry_dir]
+                            .slice(0, strategyTfLegend.length)
+                            .map((dir, idx) => (
+                              <td key={idx}>
+                                <span className={`dir-badge ${dir || 'neutral'}`}>{dir?.toUpperCase() || '---'}</span>
+                              </td>
+                            ))}
                           <td>
                             <FlashValue value={sym.adx}>
                               <span className="font-mono" style={{ color: (sym.adx ?? 0) > 20 ? 'var(--primary)' : 'var(--text-muted)' }}>
@@ -355,7 +373,7 @@ const DashboardPage: React.FC = () => {
                         </tr>
                         {expandedSym === sym.symbol && (
                           <tr>
-                            <td colSpan={7} className="no-padding">
+                            <td colSpan={5 + strategyTfLegend.length} className="no-padding">
                               <SignalQualityPanel sym={sym} />
                             </td>
                           </tr>

@@ -16,9 +16,9 @@ strategy:
     threshold: 20
   trailing_stop_pct: 1.5
   timeframes:
-    trend: "1h"
-    confirm: "15m"
-    entry: "1m"
+    trend: "4h"
+    confirm: "1h"
+    entry: "5m"
   candles_lookback: 100
   min_candles_required: 30
 

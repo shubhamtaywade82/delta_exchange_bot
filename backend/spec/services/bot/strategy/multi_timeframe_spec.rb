@@ -6,7 +6,7 @@ require "rails_helper"
 RSpec.describe Bot::Strategy::MultiTimeframe do
   let(:config) do
     double(
-      timeframe_trend: "1h", timeframe_confirm: "15m", timeframe_entry: "5m",
+      timeframe_trend: "4h", timeframe_confirm: "1h", timeframe_entry: "5m",
       supertrend_atr_period: 3, supertrend_multiplier: 1.5,
       supertrend_variant: "classic", supertrend_indicator_type: "supertrend",
       effective_min_candles_for_supertrend: 10,
@@ -61,7 +61,7 @@ RSpec.describe Bot::Strategy::MultiTimeframe do
     end
   end
 
-  context "when 1H is bearish but 15M and 5M flip bullish" do
+  context "when trend timeframe is bearish but confirm and entry flip bullish" do
     before do
       call_count = 0
       allow(market_data).to receive(:candles) do |_params|

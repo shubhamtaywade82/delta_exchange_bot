@@ -2,12 +2,8 @@
 
 module Trading
   module Analysis
-    # Builds a JSON-serializable multi-timeframe SMC digest (5m / 15m / 1h) + heuristic trade plan + Ollama JSON synthesis.
+    # Builds a JSON-serializable multi-timeframe SMC digest from config timeframes (trend → confirm → entry) + trade plan + Ollama JSON synthesis.
     class DigestBuilder
-      STRUCTURE_TREND = "1h"
-      STRUCTURE_CONFIRM = "15m"
-      STRUCTURE_ENTRY = "5m"
-
       def self.call(symbol:, market_data:, config:, ollama_connection_settings: nil)
         new(
           symbol: symbol,
@@ -25,38 +21,48 @@ module Trading
       end
 
       def build
-        candles_1h = fetch(STRUCTURE_TREND)
-        candles_15m = fetch(STRUCTURE_CONFIRM)
-        candles_5m = fetch(STRUCTURE_ENTRY)
+        trend_tf = @config.timeframe_trend.to_s
+        confirm_tf = @config.timeframe_confirm.to_s
+        entry_tf = @config.timeframe_entry.to_s
+
+        candles_trend = fetch(trend_tf)
+        candles_confirm = fetch(confirm_tf)
+        candles_entry = fetch(entry_tf)
         required = @config.min_candles_required
 
-        return insufficient(@symbol, :trend_1h, candles_1h.size, required) if candles_1h.size < required
-        return insufficient(@symbol, :confirm_15m, candles_15m.size, required) if candles_15m.size < required
-        return insufficient(@symbol, :entry_5m, candles_5m.size, required) if candles_5m.size < required
+        return insufficient(@symbol, trend_tf, candles_trend.size, required) if candles_trend.size < required
+        return insufficient(@symbol, confirm_tf, candles_confirm.size, required) if candles_confirm.size < required
+        return insufficient(@symbol, entry_tf, candles_entry.size, required) if candles_entry.size < required
 
-        trend_st = supertrend_last(candles_1h)
-        confirm_st = supertrend_last(candles_15m)
-        entry_st = supertrend_last(candles_5m)
-        m15_adx = Bot::Strategy::ADX.compute(candles_15m, period: @config.adx_period).last
+        trend_st = supertrend_last(candles_trend)
+        confirm_st = supertrend_last(candles_confirm)
+        entry_st = supertrend_last(candles_entry)
+        confirm_adx = Bot::Strategy::ADX.compute(candles_confirm, period: @config.adx_period).last
 
-        structure = structure_summary(trend_st, confirm_st, entry_st, m15_adx)
+        structure = structure_summary(trend_st, confirm_st, entry_st, confirm_adx, trend_tf, confirm_tf, entry_tf)
 
         smc_by_timeframe = {
-          "5m" => round_smc_snapshot(Trading::Analysis::SmcSnapshot.build(candles: candles_5m, resolution: "5m")),
-          "15m" => round_smc_snapshot(Trading::Analysis::SmcSnapshot.build(candles: candles_15m, resolution: "15m")),
-          "1h" => round_smc_snapshot(Trading::Analysis::SmcSnapshot.build(candles: candles_1h, resolution: "1h"))
+          trend_tf => round_smc_snapshot(
+            Trading::Analysis::SmcSnapshot.build(candles: candles_trend, resolution: trend_tf)
+          ),
+          confirm_tf => round_smc_snapshot(
+            Trading::Analysis::SmcSnapshot.build(candles: candles_confirm, resolution: confirm_tf)
+          ),
+          entry_tf => round_smc_snapshot(
+            Trading::Analysis::SmcSnapshot.build(candles: candles_entry, resolution: entry_tf)
+          )
         }
 
         smc_confluence_mtf = SmcConfluenceMtf.from_timeframe_candles(
           symbol: @symbol,
           timeframe_candles: {
-            STRUCTURE_ENTRY => candles_5m,
-            STRUCTURE_CONFIRM => candles_15m,
-            STRUCTURE_TREND => candles_1h
+            trend_tf => candles_trend,
+            confirm_tf => candles_confirm,
+            entry_tf => candles_entry
           }
         )
 
-        last_bar = candles_5m.last
+        last_bar = candles_entry.last
         last_close = last_bar[:close].to_f
         ltp = Rails.cache.read("ltp:#{@symbol}")&.to_f
 
@@ -64,11 +70,13 @@ module Trading
           Trading::Analysis::TradePlanBuilder.call(
             smc_by_timeframe: smc_by_timeframe,
             last_price: ltp.positive? ? ltp : last_close,
-            structure_bias: structure[:bias]
+            structure_bias: structure[:bias],
+            trend_timeframe: trend_tf,
+            entry_timeframe: entry_tf
           )
         )
 
-        legacy_smc = legacy_smc_from(smc_by_timeframe["5m"])
+        legacy_smc = legacy_smc_from(smc_by_timeframe[entry_tf])
 
         ai_payload = {
           smc_model_version: "2",
@@ -97,14 +105,14 @@ module Trading
           price_action: {
             last_close: round_price(last_close),
             ltp: ltp.positive? ? round_price(ltp) : nil,
-            entry_timeframe: STRUCTURE_ENTRY,
+            entry_timeframe: entry_tf,
             last_bar_at: Time.zone.at(last_bar[:timestamp]).iso8601
           },
           market_structure: structure,
           timeframes: {
-            trend: timeframe_digest(STRUCTURE_TREND, candles_1h, trend_st),
-            confirm: timeframe_digest(STRUCTURE_CONFIRM, candles_15m, confirm_st),
-            entry: timeframe_digest(STRUCTURE_ENTRY, candles_5m, entry_st)
+            trend: timeframe_digest(trend_tf, candles_trend, trend_st),
+            confirm: timeframe_digest(confirm_tf, candles_confirm, confirm_st),
+            entry: timeframe_digest(entry_tf, candles_entry, entry_st)
           },
           smc_by_timeframe: smc_by_timeframe,
           smc_confluence_mtf: smc_confluence_mtf,
@@ -119,20 +127,34 @@ module Trading
       private
 
       def mtf_alignment(smc_by_timeframe, structure)
-        h1 = smc_by_timeframe["1h"]
-        m15 = smc_by_timeframe["15m"]
-        m5 = smc_by_timeframe["5m"]
+        trend_tf = structure.dig(:timeframes, :trend).to_s
+        confirm_tf = structure.dig(:timeframes, :confirm).to_s
+        entry_tf = structure.dig(:timeframes, :entry).to_s
+
+        snap_trend = smc_by_timeframe[trend_tf]
+        snap_confirm = smc_by_timeframe[confirm_tf]
+        snap_entry = smc_by_timeframe[entry_tf]
+
         {
-          htf_1h_trend_type: h1&.dig("structure_sequence", "trend_type"),
-          mtf_15m_trend_type: m15&.dig("structure_sequence", "trend_type"),
-          ltf_5m_trend_type: m5&.dig("structure_sequence", "trend_type"),
+          primary_structure: {
+            resolution: trend_tf,
+            trend_type: snap_trend&.dig("structure_sequence", "trend_type")
+          },
+          confirm_structure: {
+            resolution: confirm_tf,
+            trend_type: snap_confirm&.dig("structure_sequence", "trend_type")
+          },
+          entry_structure: {
+            resolution: entry_tf,
+            trend_type: snap_entry&.dig("structure_sequence", "trend_type")
+          },
           roles: {
-            "1h" => "bias_liquidity_external_structure",
-            "15m" => "setup_fvg_internal_flow",
-            "5m" => "entry_mitigation_sweeps"
+            trend_tf => "bias_liquidity_external_structure",
+            confirm_tf => "structure_confirmation_internal_flow",
+            entry_tf => "entry_mitigation_sweeps"
           },
           supertrend_packaging_bias: structure[:bias],
-          workflow_hint: "Structure + liquidity context before entry; use entry_model_flags on 5m for trigger quality."
+          workflow_hint: "Align #{trend_tf} bias with #{confirm_tf} before #{entry_tf} execution; use entry_model_flags on #{entry_tf} for trigger quality."
         }
       end
 
@@ -341,10 +363,10 @@ module Trading
         end
       end
 
-      def insufficient(symbol, tf, got, need)
+      def insufficient(symbol, resolution, got, need)
         {
           symbol: symbol,
-          error: "insufficient_candles_#{tf}",
+          error: "insufficient_candles_#{resolution}",
           candle_count: got,
           required: need,
           updated_at: Time.current.iso8601,
@@ -369,16 +391,16 @@ module Trading
         }
       end
 
-      def structure_summary(trend_st, confirm_st, entry_st, adx_row)
-        h1 = trend_st[:direction]&.to_s
-        m15 = confirm_st[:direction]&.to_s
-        m5 = entry_st[:direction]&.to_s
+      def structure_summary(trend_st, confirm_st, entry_st, adx_row, trend_tf, confirm_tf, entry_tf)
+        trend_dir = trend_st[:direction]&.to_s
+        confirm_dir = confirm_st[:direction]&.to_s
+        entry_dir = entry_st[:direction]&.to_s
         adx = adx_row[:adx]
         plus_di = adx_row[:plus_di]
         minus_di = adx_row[:minus_di]
 
-        aligned_bull = h1 == "bullish" && m15 == "bullish" && m5 == "bullish"
-        aligned_bear = h1 == "bearish" && m15 == "bearish" && m5 == "bearish"
+        aligned_bull = trend_dir == "bullish" && confirm_dir == "bullish" && entry_dir == "bullish"
+        aligned_bear = trend_dir == "bearish" && confirm_dir == "bearish" && entry_dir == "bearish"
         bias =
           if aligned_bull
             "bullish_aligned"
@@ -390,9 +412,10 @@ module Trading
 
         {
           bias: bias,
-          h1: h1,
-          m15: m15,
-          m5: m5,
+          trend: trend_dir,
+          confirm: confirm_dir,
+          entry: entry_dir,
+          timeframes: { trend: trend_tf, confirm: confirm_tf, entry: entry_tf },
           adx: adx&.round(2),
           plus_di: plus_di&.round(2),
           minus_di: minus_di&.round(2),

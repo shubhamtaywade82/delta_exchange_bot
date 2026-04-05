@@ -5,7 +5,7 @@ module Trading
     # Multi-timeframe last-bar payload from {Trading::Analysis::SmcConfluence::Engine}
     # (Pine `smc_confluence.pine` parity). JSON-serializable for APIs, Redis, and Ollama.
     class SmcConfluenceMtf
-      DEFAULT_RESOLUTIONS = %w[5m 15m 1h].freeze
+      DEFAULT_RESOLUTIONS = %w[4h 1h 5m].freeze
 
       class << self
         # Fetches candles per resolution (Delta REST) and builds the MTF payload.

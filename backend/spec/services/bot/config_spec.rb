@@ -166,7 +166,7 @@ RSpec.describe Bot::Config do
         "supertrend" => { "atr_period" => 10, "multiplier" => 2.2 },
         "adx" => { "period" => 14, "threshold" => 25 },
         "trailing_stop_pct" => 1.5,
-        "timeframes" => { "trend" => "1h", "confirm" => "15m", "entry" => "5m" },
+        "timeframes" => { "trend" => "4h", "confirm" => "1h", "entry" => "5m" },
         "candles_lookback" => 100,
         "min_candles_required" => 30
       },
@@ -253,8 +253,8 @@ RSpec.describe Bot::Config do
   end
 
   it "exposes timeframes" do
-    expect(config.timeframe_trend).to eq("1h")
-    expect(config.timeframe_confirm).to eq("15m")
+    expect(config.timeframe_trend).to eq("4h")
+    expect(config.timeframe_confirm).to eq("1h")
     expect(config.timeframe_entry).to eq("5m")
   end
 

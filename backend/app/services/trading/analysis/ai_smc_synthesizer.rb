@@ -16,11 +16,11 @@ module Trading
         "invalidation" (string): specific structure/level that voids the idea (use INPUT only),
         "takeaway_bullets" (array of strings, max 5),
         "comment_on_plan" (string): critique of heuristic trade_plan (risk, PD zone, alignment),
-        "timeframe_notes" (object): optional strings for keys "5m","15m","1h",
+        "timeframe_notes" (object): optional strings keyed by resolution strings present in INPUT (e.g. "4h","1h","5m"),
 
-        "long_trigger_conditions" (array of strings, max 4): specific conditions from INPUT that, if met NOW or soon, would justify a LONG entry (e.g. "BOS bullish confirmed on 15m + price returns to unfilled bullish FVG at 66,800-66,900 in discount zone"). Leave empty array if no plausible long setup exists.
+        "long_trigger_conditions" (array of strings, max 4): specific conditions from INPUT that, if met NOW or soon, would justify a LONG entry (e.g. "BOS bullish confirmed on confirm timeframe + price returns to unfilled bullish FVG in discount zone"). Leave empty array if no plausible long setup exists.
 
-        "short_trigger_conditions" (array of strings, max 4): specific conditions from INPUT that, if met NOW or soon, would justify a SHORT entry (e.g. "CHOCH bearish on 5m + sweep of equal highs near 67,200 with bearish OB mitigation"). Leave empty array if no plausible short setup exists.
+        "short_trigger_conditions" (array of strings, max 4): specific conditions from INPUT that, if met NOW or soon, would justify a SHORT entry (e.g. "CHOCH bearish on entry timeframe + sweep of equal highs with bearish OB mitigation"). Leave empty array if no plausible short setup exists.
 
         "trading_recommendation" (object):
           "primary_action" ("long"|"short"|"wait"),
