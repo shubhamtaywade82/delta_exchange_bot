@@ -45,33 +45,94 @@ interface SettingChange {
   created_at: string;
 }
 
-const SETTING_GROUP_ORDER = [
-  'bot',
-  'strategy',
-  'risk',
-  'runner',
-  'regime',
-  'notifications',
-  'logging',
-  'learning',
-  'ai',
-] as const;
+interface SettingGroupRule {
+  id: string;
+  label: string;
+  match: (key: string) => boolean;
+}
 
-const SETTING_GROUP_LABELS: Record<string, string> = {
-  bot: 'BOT',
-  strategy: 'STRATEGY',
-  risk: 'RISK',
-  runner: 'RUNNER',
-  regime: 'REGIME',
-  notifications: 'NOTIFICATIONS',
-  logging: 'LOGGING',
-  learning: 'LEARNING',
-  ai: 'AI',
+function domainPrefixMatch(key: string, domain: string): boolean {
+  const x = key.toLowerCase();
+  const d = domain.toLowerCase();
+  return x === d || x.startsWith(`${d}.`);
+}
+
+function matchesSmcGroup(key: string): boolean {
+  const x = key.toLowerCase();
+  if (x.startsWith('smc.')) return true;
+  if (/^strategy\.smc[._]/i.test(key)) return true;
+  if (x.startsWith('strategy.str_smc')) return true;
+  if (x.includes('smc_confluence')) return true;
+  if (/^smc[._]/i.test(key)) return true;
+  if (x.includes('smc_fvg') || x.includes('smc_daily')) return true;
+  return false;
+}
+
+function matchesZScoreGroup(key: string): boolean {
+  const x = key.toLowerCase();
+  return x.includes('z_score') || x.includes('zscore');
+}
+
+function matchesObPoolGroup(key: string): boolean {
+  return key.toLowerCase().includes('ob_pool');
+}
+
+/** First matching rule wins (keep SMC / z-score / OB pool before broad `strategy.`). */
+const SETTING_GROUP_RULES: SettingGroupRule[] = [
+  { id: 'bot', label: 'Bot', match: k => domainPrefixMatch(k, 'bot') },
+  { id: 'smc', label: 'SMC', match: matchesSmcGroup },
+  { id: 'zscore', label: 'Z-score', match: matchesZScoreGroup },
+  { id: 'ob_pool', label: 'OB pool', match: matchesObPoolGroup },
+  { id: 'strategy', label: 'Strategy', match: k => domainPrefixMatch(k, 'strategy') },
+  { id: 'risk', label: 'Risk', match: k => domainPrefixMatch(k, 'risk') },
+  { id: 'safety', label: 'Safety', match: k => domainPrefixMatch(k, 'safety') },
+  { id: 'runner', label: 'Runner', match: k => domainPrefixMatch(k, 'runner') },
+  { id: 'regime', label: 'Regime', match: k => domainPrefixMatch(k, 'regime') },
+  {
+    id: 'notifications',
+    label: 'Notifications',
+    match: k => domainPrefixMatch(k, 'notifications')
+  },
+  { id: 'logging', label: 'Logging', match: k => domainPrefixMatch(k, 'logging') },
+  {
+    id: 'general',
+    label: 'General',
+    match: k => {
+      const x = k.toLowerCase();
+      return domainPrefixMatch(k, 'general') || x.startsWith('general_');
+    }
+  },
+  { id: 'learning', label: 'Learning', match: k => domainPrefixMatch(k, 'learning') },
+  { id: 'ai', label: 'AI', match: k => domainPrefixMatch(k, 'ai') },
+  { id: 'paper', label: 'Paper trading', match: k => domainPrefixMatch(k, 'paper') }
+];
+
+const RULE_ORDER = SETTING_GROUP_RULES.map(r => r.id);
+
+const FALLBACK_PREFIX_LABELS: Record<string, string> = {
+  other: 'Other'
 };
 
-function settingGroupPrefix(key: string): string {
+function fallbackGroupId(key: string): string {
   const dot = key.indexOf('.');
   return dot === -1 ? 'other' : key.slice(0, dot).toLowerCase();
+}
+
+function fallbackLabel(segment: string): string {
+  if (FALLBACK_PREFIX_LABELS[segment]) return FALLBACK_PREFIX_LABELS[segment];
+  return segment
+    .split(/[._]/g)
+    .filter(Boolean)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function resolveGroupForKey(key: string): { id: string; label: string } {
+  for (const rule of SETTING_GROUP_RULES) {
+    if (rule.match(key)) return { id: rule.id, label: rule.label };
+  }
+  const seg = fallbackGroupId(key);
+  return { id: seg, label: fallbackLabel(seg) };
 }
 
 interface SettingGroupSection {
@@ -81,21 +142,23 @@ interface SettingGroupSection {
 }
 
 function buildSettingGroupSections(settings: RuntimeSetting[]): SettingGroupSection[] {
-  const buckets: Record<string, RuntimeSetting[]> = {};
+  const buckets: Record<string, { label: string; items: RuntimeSetting[] }> = {};
+
   settings.forEach(s => {
-    const g = settingGroupPrefix(s.key);
-    if (!buckets[g]) buckets[g] = [];
-    buckets[g].push(s);
+    const { id, label } = resolveGroupForKey(s.key);
+    if (!buckets[id]) buckets[id] = { label, items: [] };
+    buckets[id].items.push(s);
   });
-  Object.values(buckets).forEach(list => list.sort((a, b) => a.key.localeCompare(b.key)));
+
+  Object.values(buckets).forEach(b => b.items.sort((a, c) => a.key.localeCompare(c.key)));
 
   const seen = new Set<string>();
   const sections: SettingGroupSection[] = [];
 
-  SETTING_GROUP_ORDER.forEach(id => {
-    const items = buckets[id];
-    if (!items?.length) return;
-    sections.push({ id, label: SETTING_GROUP_LABELS[id] ?? id.toUpperCase(), items });
+  RULE_ORDER.forEach(id => {
+    const b = buckets[id];
+    if (!b?.items.length) return;
+    sections.push({ id, label: b.label, items: b.items });
     seen.add(id);
   });
 
@@ -103,9 +166,9 @@ function buildSettingGroupSections(settings: RuntimeSetting[]): SettingGroupSect
     .filter(id => !seen.has(id))
     .sort()
     .forEach(id => {
-      const items = buckets[id];
-      if (!items?.length) return;
-      sections.push({ id, label: id === 'other' ? 'OTHER' : id.toUpperCase(), items });
+      const b = buckets[id];
+      if (!b.items.length) return;
+      sections.push({ id, label: b.label, items: b.items });
     });
 
   return sections;
