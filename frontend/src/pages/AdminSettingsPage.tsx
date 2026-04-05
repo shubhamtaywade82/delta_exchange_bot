@@ -111,6 +111,8 @@ function buildSettingGroupSections(settings: RuntimeSetting[]): SettingGroupSect
   return sections;
 }
 
+const AUDIT_PANEL_ID = 'setting_changes';
+
 const AdminSettingsPage: React.FC = () => {
   const [settings, setSettings] = useState<RuntimeSetting[]>([]);
   const [changes, setChanges] = useState<SettingChange[]>([]);
@@ -118,6 +120,7 @@ const AdminSettingsPage: React.FC = () => {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
+  const [activePanelId, setActivePanelId] = useState<string>('');
 
   const loadData = async () => {
     try {
@@ -160,6 +163,28 @@ const AdminSettingsPage: React.FC = () => {
   }, [drafts, settings]);
 
   const settingSections = useMemo(() => buildSettingGroupSections(settings), [settings]);
+
+  const resolvedPanelId = useMemo(() => {
+    if (activePanelId === AUDIT_PANEL_ID) return AUDIT_PANEL_ID;
+    if (settingSections.some(s => s.id === activePanelId)) return activePanelId;
+    return settingSections[0]?.id ?? '';
+  }, [activePanelId, settingSections]);
+
+  const dirtyKeySet = useMemo(() => {
+    const keys = new Set<string>();
+    settings.forEach(setting => {
+      const draft = drafts[setting.key];
+      if (!draft) return;
+      if (draft.value !== setting.value || draft.value_type !== setting.value_type) keys.add(setting.key);
+    });
+    return keys;
+  }, [drafts, settings]);
+
+  const dirtyCountInSection = (section: SettingGroupSection) =>
+    section.items.reduce((n, s) => n + (dirtyKeySet.has(s.key) ? 1 : 0), 0);
+
+  const activeSection = settingSections.find(s => s.id === resolvedPanelId);
+  const showAuditPanel = resolvedPanelId === AUDIT_PANEL_ID;
 
   const updateDraft = (key: string, patch: Partial<{ value: string; value_type: ValueType }>) => {
     setDrafts(prev => ({
@@ -341,44 +366,75 @@ const AdminSettingsPage: React.FC = () => {
         <span className="section-badge">{loading ? 'LOADING' : 'LIVE'}</span>
       </div>
 
-      <div className="admin-settings-panel-stack">
-        {loading && settings.length === 0 && (
-          <section className="terminal-section admin-settings-panel-span-full">
-            <div className="section-header">
-              <div className="header-title-group">
-                <Settings size={16} className="icon-accent" />
-                <h2>LOADING</h2>
-              </div>
-            </div>
-            <p className="text-muted" style={{ padding: '1rem 1.25rem', margin: 0 }}>
-              LOADING_RUNTIME_SETTINGS
-            </p>
-          </section>
-        )}
+      <div className="admin-settings-shell">
+        <nav className="admin-settings-sidebar" aria-label="Settings categories">
+          {settingSections.map(section => {
+            const dirty = dirtyCountInSection(section);
+            const isActive = resolvedPanelId === section.id;
+            return (
+              <button
+                key={section.id}
+                type="button"
+                className={`admin-settings-nav-item${isActive ? ' admin-settings-nav-item--active' : ''}`}
+                onClick={() => setActivePanelId(section.id)}
+              >
+                <span className="admin-settings-nav-label">{section.label}</span>
+                <span className="admin-settings-nav-meta">
+                  <span className="section-badge admin-settings-nav-count">{section.items.length}</span>
+                  {dirty > 0 && (
+                    <span className="admin-settings-nav-dirty" title={`${dirty} unsaved`}>
+                      {dirty}
+                    </span>
+                  )}
+                </span>
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            className={`admin-settings-nav-item admin-settings-nav-item--audit${showAuditPanel ? ' admin-settings-nav-item--active' : ''}`}
+            onClick={() => setActivePanelId(AUDIT_PANEL_ID)}
+          >
+            <span className="admin-settings-nav-label">AUDIT_LOG</span>
+            <span className="section-badge admin-settings-nav-count" title="Rows loaded (max 50 from API)">
+              {changes.length}
+            </span>
+          </button>
+        </nav>
 
-        {!loading && settings.length === 0 && (
-          <section className="terminal-section admin-settings-panel-span-full">
-            <div className="section-header">
-              <div className="header-title-group">
-                <Settings size={16} className="icon-accent" />
-                <h2>RUNTIME</h2>
-              </div>
-            </div>
-            <p className="text-muted" style={{ padding: '1rem 1.25rem', margin: 0 }}>
-              NO_SETTINGS_FOUND
-            </p>
-          </section>
-        )}
-
-        {!loading &&
-          settingSections.map(section => (
-            <section key={section.id} className="terminal-section admin-settings-group-panel">
+        <div className="admin-settings-content">
+          {loading && settings.length === 0 && (
+            <section className="terminal-section admin-settings-main-panel">
               <div className="section-header">
                 <div className="header-title-group">
                   <Settings size={16} className="icon-accent" />
-                  <h2>{section.label}</h2>
+                  <h2>LOADING</h2>
                 </div>
-                <span className="section-badge">{section.items.length}</span>
+              </div>
+              <p className="text-muted admin-settings-main-body">LOADING_RUNTIME_SETTINGS</p>
+            </section>
+          )}
+
+          {!loading && settings.length === 0 && (
+            <section className="terminal-section admin-settings-main-panel">
+              <div className="section-header">
+                <div className="header-title-group">
+                  <Settings size={16} className="icon-accent" />
+                  <h2>RUNTIME</h2>
+                </div>
+              </div>
+              <p className="text-muted admin-settings-main-body">NO_SETTINGS_FOUND</p>
+            </section>
+          )}
+
+          {!loading && settings.length > 0 && activeSection && !showAuditPanel && (
+            <section className="terminal-section admin-settings-main-panel admin-settings-group-panel">
+              <div className="section-header">
+                <div className="header-title-group">
+                  <Settings size={16} className="icon-accent" />
+                  <h2>{activeSection.label}</h2>
+                </div>
+                <span className="section-badge">{activeSection.items.length}</span>
               </div>
               <div className="table-wrapper">
                 <table>
@@ -390,53 +446,58 @@ const AdminSettingsPage: React.FC = () => {
                       <th>ACTION</th>
                     </tr>
                   </thead>
-                  <tbody>{renderSettingTableRows(section.items)}</tbody>
+                  <tbody>{renderSettingTableRows(activeSection.items)}</tbody>
                 </table>
               </div>
             </section>
-          ))}
-      </div>
+          )}
 
-      <section className="terminal-section">
-        <div className="section-header">
-          <div className="header-title-group">
-            <Settings size={16} className="icon-accent" />
-            <h2>SETTING_CHANGES</h2>
-          </div>
-          <span className="section-badge">RECENT_50</span>
+          {!loading && showAuditPanel && (
+            <section className="terminal-section admin-settings-main-panel">
+              <div className="section-header">
+                <div className="header-title-group">
+                  <Settings size={16} className="icon-accent" />
+                  <h2>SETTING_CHANGES</h2>
+                </div>
+                <span className="section-badge">RECENT_50</span>
+              </div>
+              <div className="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>TIME</th>
+                      <th>KEY</th>
+                      <th>OLD</th>
+                      <th>NEW</th>
+                      <th>SOURCE</th>
+                      <th>REASON</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {changes.map((change, index) => (
+                      <tr key={`${change.key}-${change.created_at}-${index}`} className="row-hover">
+                        <td className="text-muted">{new Date(change.created_at).toLocaleString()}</td>
+                        <td className="font-bold">{change.key}</td>
+                        <td>{change.old_value ?? '--'}</td>
+                        <td>{change.new_value}</td>
+                        <td>{change.source}</td>
+                        <td>{change.reason ?? '--'}</td>
+                      </tr>
+                    ))}
+                    {changes.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="text-center text-muted">
+                          NO_CHANGE_HISTORY
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
         </div>
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>TIME</th>
-                <th>KEY</th>
-                <th>OLD</th>
-                <th>NEW</th>
-                <th>SOURCE</th>
-                <th>REASON</th>
-              </tr>
-            </thead>
-            <tbody>
-              {changes.map((change, index) => (
-                <tr key={`${change.key}-${change.created_at}-${index}`} className="row-hover">
-                  <td className="text-muted">{new Date(change.created_at).toLocaleString()}</td>
-                  <td className="font-bold">{change.key}</td>
-                  <td>{change.old_value ?? '--'}</td>
-                  <td>{change.new_value}</td>
-                  <td>{change.source}</td>
-                  <td>{change.reason ?? '--'}</td>
-                </tr>
-              ))}
-              {changes.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="text-center text-muted">NO_CHANGE_HISTORY</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      </div>
     </div>
   );
 };
