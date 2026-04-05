@@ -93,11 +93,11 @@ module PaperTrading
     end
 
     def resolve_leverage(explicit)
-      v = explicit.to_i
-      return v if v.positive?
+      explicit_lev = explicit.to_i
+      return explicit_lev if explicit_lev.positive?
 
-      p = @product.default_leverage.to_i
-      p.positive? ? p : 1
+      product_lev = @product.default_leverage.to_i
+      product_lev.positive? ? product_lev : 1
     end
 
     def initial_margin(price, quantity, contract_value, leverage)
@@ -113,36 +113,14 @@ module PaperTrading
       (usd_amount.to_d * @usd_inr_rate).round(2)
     end
 
-    def record_entry_fee!(fill, quantity:, price:)
+    def record_fee!(fill, leg:, quantity:, price:)
       rate = Fees.taker_fee_rate_for_product(@product)
       notional = Fees.notional_usd(quantity: quantity, price: price, contract_value: @product.contract_value)
       fee_usd = Fees.fee_usd(notional_usd: notional, fee_rate: rate)
-      finr = Fees.fee_inr(fee_usd: fee_usd, usd_inr_rate: @usd_inr_rate)
-      return if finr.zero?
+      fee_inr = Fees.fee_inr(fee_usd: fee_usd, usd_inr_rate: @usd_inr_rate)
+      return if fee_inr.zero?
 
-      write_ledger!(
-        "commission",
-        :debit,
-        finr,
-        fill,
-        meta: { "leg" => "entry" }
-      )
-    end
-
-    def record_exit_fee!(fill, quantity:, price:)
-      rate = Fees.taker_fee_rate_for_product(@product)
-      notional = Fees.notional_usd(quantity: quantity, price: price, contract_value: @product.contract_value)
-      fee_usd = Fees.fee_usd(notional_usd: notional, fee_rate: rate)
-      finr = Fees.fee_inr(fee_usd: fee_usd, usd_inr_rate: @usd_inr_rate)
-      return if finr.zero?
-
-      write_ledger!(
-        "commission",
-        :debit,
-        finr,
-        fill,
-        meta: { "leg" => "exit" }
-      )
+      write_ledger!("commission", :debit, fee_inr, fill, meta: { "leg" => leg })
     end
 
     def open_position(side, quantity, price, risk_unit, contract_value, fill, leverage:)
@@ -152,7 +130,7 @@ module PaperTrading
       ensure_sufficient_margin!(required_margin_inr: margin_inr)
 
       write_ledger!("margin_reserved", :debit, margin_inr, fill)
-      record_entry_fee!(fill, quantity: quantity, price: price)
+      record_fee!(fill, leg: "entry", quantity: quantity, price: price)
 
       PaperPosition.create!(
         paper_wallet: @wallet,
@@ -179,7 +157,7 @@ module PaperTrading
       new_avg = ((prev_qty * position.avg_entry_price.to_d) + (quantity * price)) / new_qty
 
       write_ledger!("margin_reserved", :debit, margin_inr, fill)
-      record_entry_fee!(fill, quantity: quantity, price: price)
+      record_fee!(fill, leg: "entry", quantity: quantity, price: price)
       position.update!(net_quantity: new_qty.to_i, avg_entry_price: new_avg)
 
       Result.new(action: :added, realized_pnl: 0.to_d, margin_delta: margin_usd)
@@ -187,31 +165,41 @@ module PaperTrading
 
     def close_and_maybe_flip(position, incoming_side, quantity, price, risk_unit, contract_value, fill, flip_leverage:)
       pos_qty = position.net_quantity
-      close_qty = [ pos_qty, quantity ].min
+      close_qty = [pos_qty, quantity].min
       excess = quantity - close_qty
 
+      exit_fee_usd = compute_exit_fee_usd(close_qty, price)
+      gross_pnl_usd, net_pnl = compute_close_pnl(position, close_qty, price, risk_unit, exit_fee_usd)
+
+      released_inr, released_usd = release_close_margin(position, pos_qty, close_qty, contract_value)
+
+      persist_close!(fill, position, pos_qty - close_qty, close_qty, price, released_inr, gross_pnl_usd)
+
+      flip_reserve_usd, action = attempt_flip(excess, incoming_side, price, risk_unit, contract_value, fill, flip_leverage)
+
+      Result.new(action: action, realized_pnl: net_pnl, margin_delta: flip_reserve_usd - released_usd)
+    end
+
+    def compute_exit_fee_usd(close_qty, price)
       exit_rate = Fees.taker_fee_rate_for_product(@product)
       exit_notional = Fees.notional_usd(quantity: close_qty, price: price, contract_value: @product.contract_value)
-      exit_fee_usd = Fees.fee_usd(notional_usd: exit_notional, fee_rate: exit_rate)
+      Fees.fee_usd(notional_usd: exit_notional, fee_rate: exit_rate)
+    end
 
-      gross_row = PnlCalculator.call(
-        side: pnl_side_for_position(position.side),
-        entry_price: position.avg_entry_price,
-        exit_price: price,
-        quantity: close_qty,
-        risk_unit_value: risk_unit,
-        fees: 0.to_d
+    def compute_close_pnl(position, close_qty, price, risk_unit, exit_fee_usd)
+      pnl_side = pnl_side_for_position(position.side)
+      gross = PnlCalculator.call(
+        side: pnl_side, entry_price: position.avg_entry_price, exit_price: price,
+        quantity: close_qty, risk_unit_value: risk_unit, fees: 0.to_d
       )
-      gross_pnl_usd = gross_row[:gross_pnl]
-      net_row = PnlCalculator.call(
-        side: pnl_side_for_position(position.side),
-        entry_price: position.avg_entry_price,
-        exit_price: price,
-        quantity: close_qty,
-        risk_unit_value: risk_unit,
-        fees: exit_fee_usd
+      net = PnlCalculator.call(
+        side: pnl_side, entry_price: position.avg_entry_price, exit_price: price,
+        quantity: close_qty, risk_unit_value: risk_unit, fees: exit_fee_usd
       )
+      [gross[:gross_pnl], net[:net_pnl]]
+    end
 
+    def release_close_margin(position, pos_qty, close_qty, contract_value)
       released_inr = proportional_released_margin_inr(
         current_quantity: pos_qty,
         close_quantity: close_qty,
@@ -220,48 +208,42 @@ module PaperTrading
         fallback_contract_value: contract_value
       )
       released_usd = @usd_inr_rate.positive? ? (released_inr / @usd_inr_rate) : 0.to_d
-      new_qty = pos_qty - close_qty
+      [released_inr, released_usd]
+    end
 
+    def persist_close!(fill, position, remaining_qty, close_qty, price, released_inr, gross_pnl_usd)
       ActiveRecord::Base.transaction do
-        record_exit_fee!(fill, quantity: close_qty, price: price)
+        record_fee!(fill, leg: "exit", quantity: close_qty, price: price)
         write_ledger!("margin_released", :credit, released_inr, fill)
+        record_realized_pnl!(fill, gross_pnl_usd)
 
-        if gross_pnl_usd >= 0
-          write_ledger!("realized_pnl", :credit, to_inr(gross_pnl_usd), fill)
-        else
-          write_ledger!("realized_pnl", :debit, to_inr(gross_pnl_usd.abs), fill)
-        end
-
-        if new_qty.zero?
+        if remaining_qty.zero?
           position.destroy!
         else
-          position.update!(net_quantity: new_qty)
+          position.update!(net_quantity: remaining_qty)
         end
       end
+    end
 
-      new_reserve_usd = 0.to_d
-      action = :closed
-      if excess.positive?
-        flip_lev = resolve_leverage(flip_leverage)
-        begin
-          ActiveRecord::Base.transaction(requires_new: true) do
-            new_reserve_usd = open_after_flip(
-              incoming_side,
-              excess,
-              price,
-              risk_unit,
-              contract_value,
-              fill,
-              leverage: flip_lev
-            )
-          end
-          action = :flipped
-        rescue InsufficientMarginError, ActiveRecord::RecordInvalid => e
-          Rails.logger.warn("[PaperTrading::PositionManager] flip skipped after close: #{e.message}")
-        end
+    def record_realized_pnl!(fill, gross_pnl_usd)
+      if gross_pnl_usd >= 0
+        write_ledger!("realized_pnl", :credit, to_inr(gross_pnl_usd), fill)
+      else
+        write_ledger!("realized_pnl", :debit, to_inr(gross_pnl_usd.abs), fill)
       end
+    end
 
-      Result.new(action: action, realized_pnl: net_row[:net_pnl], margin_delta: new_reserve_usd - released_usd)
+    def attempt_flip(excess, incoming_side, price, risk_unit, contract_value, fill, flip_leverage)
+      return [0.to_d, :closed] unless excess.positive?
+
+      flip_lev = resolve_leverage(flip_leverage)
+      reserve_usd = ActiveRecord::Base.transaction(requires_new: true) do
+        open_after_flip(incoming_side, excess, price, risk_unit, contract_value, fill, leverage: flip_lev)
+      end
+      [reserve_usd, :flipped]
+    rescue InsufficientMarginError, ActiveRecord::RecordInvalid => e
+      Rails.logger.warn("[PaperTrading::PositionManager] flip skipped after close: #{e.message}")
+      [0.to_d, :closed]
     end
 
     def open_after_flip(side, quantity, price, risk_unit, contract_value, fill, leverage:)
@@ -271,7 +253,7 @@ module PaperTrading
       ensure_sufficient_margin!(required_margin_inr: margin_inr)
 
       write_ledger!("margin_reserved", :debit, margin_inr, fill)
-      record_entry_fee!(fill, quantity: quantity, price: price)
+      record_fee!(fill, leg: "entry", quantity: quantity, price: price)
       PaperPosition.create!(
         paper_wallet: @wallet,
         paper_product_snapshot: @product,
