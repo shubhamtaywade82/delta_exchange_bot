@@ -65,6 +65,8 @@ Modules:
 `Trading::NearLiquidationExit` runs in the runner loop and force-exits when cached LTP is within a small band of the position’s liquidation price (distinct from margin-ratio `Risk::LiquidationGuard`).
 
 `Trading::EmergencyShutdown` flattens **open positions for the session’s portfolio** and cancels that session’s orders (operational stop). `ExecutionEngine` checks `PortfolioGuard` before placing any new order.
+`ExecutionEngine` always applies `Risk::MarginAffordability` in paper mode (unless paper override is active). In live mode, the same pre-submit check is optional via `RISK_LIVE_MARGIN_AFFORDABILITY_ENABLED` because it relies on portfolio snapshot freshness.
+Paper close-and-flip behavior is conservative: the close leg is committed first; if excess flip margin is unaffordable or flip persistence fails, the flip leg is skipped (logged) instead of rolling back the close.
 
 
 ## Microstructure execution layer

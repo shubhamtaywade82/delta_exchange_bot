@@ -89,4 +89,111 @@ RSpec.describe PaperTrading::PositionManager do
       expect(PaperPosition.count).to eq(1)
     end
   end
+
+  describe "margin validation" do
+    it "rejects opening when required margin exceeds available balance" do
+      small_wallet = create(:paper_wallet, seed_inr: BigDecimal("100"))
+      tiny_signal = create(:paper_trading_signal, paper_wallet: small_wallet, product_id: product.product_id)
+      tiny_order = create(:paper_order,
+        paper_wallet: small_wallet,
+        paper_product_snapshot: product,
+        paper_trading_signal: tiny_signal,
+        side: "buy",
+        size: 1)
+      fill = fill_for(tiny_order, 1, "50000")
+
+      expect do
+        described_class.new(wallet: small_wallet, product: product).apply_fill(
+          fill: fill,
+          fill_side: "buy",
+          quantity: 1,
+          price: BigDecimal("50000"),
+          leverage: 1
+        )
+      end.to raise_error(PaperTrading::PositionManager::InsufficientMarginError)
+
+      expect(PaperPosition.where(paper_wallet: small_wallet).count).to eq(0)
+      expect(PaperWalletLedgerEntry.where(paper_wallet: small_wallet, entry_type: "margin_reserved").count).to eq(0)
+    end
+
+    it "keeps close committed when flip excess cannot be afforded" do
+      medium_wallet = create(:paper_wallet, seed_inr: BigDecimal("10000"))
+      medium_signal = create(:paper_trading_signal, paper_wallet: medium_wallet, product_id: product.product_id)
+      buy_order = create(:paper_order,
+        paper_wallet: medium_wallet,
+        paper_product_snapshot: product,
+        paper_trading_signal: medium_signal,
+        side: "buy",
+        size: 1)
+      buy_fill = fill_for(buy_order, 1, "50000")
+      manager = described_class.new(wallet: medium_wallet, product: product)
+      manager.apply_fill(
+        fill: buy_fill,
+        fill_side: "buy",
+        quantity: 1,
+        price: BigDecimal("50000"),
+        leverage: 1
+      )
+
+      sell_order = create(:paper_order,
+        paper_wallet: medium_wallet,
+        paper_product_snapshot: product,
+        paper_trading_signal: medium_signal,
+        side: "sell",
+        size: 5)
+      sell_fill = fill_for(sell_order, 5, "50000")
+      result = manager.apply_fill(
+        fill: sell_fill,
+        fill_side: "sell",
+        quantity: 5,
+        price: BigDecimal("50000"),
+        leverage: 1
+      )
+
+      expect(result.action).to eq(:closed)
+      expect(PaperPosition.where(paper_wallet: medium_wallet, paper_product_snapshot: product).count).to eq(0)
+      expect(medium_wallet.reload.used_margin_inr).to eq(0)
+    end
+
+    it "keeps close committed when flip position create fails" do
+      medium_wallet = create(:paper_wallet, seed_inr: BigDecimal("10000"))
+      medium_signal = create(:paper_trading_signal, paper_wallet: medium_wallet, product_id: product.product_id)
+      buy_order = create(:paper_order,
+        paper_wallet: medium_wallet,
+        paper_product_snapshot: product,
+        paper_trading_signal: medium_signal,
+        side: "buy",
+        size: 1)
+      buy_fill = fill_for(buy_order, 1, "50000")
+      manager = described_class.new(wallet: medium_wallet, product: product)
+      manager.apply_fill(
+        fill: buy_fill,
+        fill_side: "buy",
+        quantity: 1,
+        price: BigDecimal("50000"),
+        leverage: 1
+      )
+
+      allow(PaperPosition).to receive(:create!).and_raise(ActiveRecord::RecordInvalid.new(PaperPosition.new))
+
+      sell_order = create(:paper_order,
+        paper_wallet: medium_wallet,
+        paper_product_snapshot: product,
+        paper_trading_signal: medium_signal,
+        side: "sell",
+        size: 2)
+      sell_fill = fill_for(sell_order, 2, "50000")
+      result = manager.apply_fill(
+        fill: sell_fill,
+        fill_side: "sell",
+        quantity: 2,
+        price: BigDecimal("50000"),
+        leverage: 1
+      )
+
+      expect(result.action).to eq(:closed)
+      expect(PaperPosition.where(paper_wallet: medium_wallet, paper_product_snapshot: product).count).to eq(0)
+      expect(medium_wallet.reload.used_margin_inr).to eq(0)
+    end
+  end
 end

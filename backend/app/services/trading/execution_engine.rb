@@ -51,15 +51,15 @@ module Trading
       Rails.logger.info("[ExecutionEngine] Order placed: #{order.exchange_order_id} for #{@signal.symbol} #{@signal.side}")
       order
     rescue OrderBuilder::SizingError => e
-      release_idempotency_after_failed_acquire!(idem_key)
+      release_idempotency!(idem_key)
       Rails.logger.warn("[ExecutionEngine] Sizing rejected signal for #{@signal.symbol}: #{e.message}")
       raise RiskManager::RiskError, e.message
     rescue RiskManager::RiskError => e
-      release_idempotency_after_failed_acquire!(idem_key)
+      release_idempotency!(idem_key)
       Rails.logger.warn("[ExecutionEngine] Risk rejected signal for #{@signal.symbol}: #{e.message}")
       raise
     rescue StandardError => e
-      release_idempotency_after_failed_acquire!(idem_key) unless order_persisted
+      release_idempotency!(idem_key) unless order_persisted
       HotPathErrorPolicy.log_swallowed_error(
         component: "ExecutionEngine",
         operation: "execute",
@@ -81,9 +81,7 @@ module Trading
       false
     end
 
-    # Risk / sizing / margin run after acquire; without release, Redis blocks the same bar for 1h and the
-    # runner mis-labels the next attempt as SKIPPED_DUPLICATE though nothing executed.
-    def release_idempotency_after_failed_acquire!(idem_key)
+    def release_idempotency!(idem_key)
       IdempotencyGuard.release(idem_key)
     end
 
@@ -95,8 +93,11 @@ module Trading
     end
 
     def validate_margin_affordability!(order_attrs, position)
-      return unless PaperTrading.enabled?
-      return if PaperRiskOverride.active?
+      if PaperTrading.enabled?
+        return if PaperRiskOverride.active?
+      elsif !live_margin_affordability_enabled?
+        return
+      end
 
       fill_price = resolve_intended_fill_price(order_attrs)
       Trading::Risk::MarginAffordability.verify!(
@@ -107,6 +108,14 @@ module Trading
         fill_price: fill_price,
         position: position,
         session: @session
+      )
+    end
+
+    def live_margin_affordability_enabled?
+      Trading::RuntimeConfig.fetch_boolean(
+        "risk.live_margin_affordability_enabled",
+        default: false,
+        env_key: "RISK_LIVE_MARGIN_AFFORDABILITY_ENABLED"
       )
     end
 
@@ -125,7 +134,7 @@ module Trading
     def validate_risk_and_portfolio_guard!
       RiskManager.validate!(@signal, session: @session)
 
-      return if PaperRiskOverride.active?
+      return if PaperTrading.enabled? && PaperRiskOverride.active?
 
       guard_state = Trading::Risk::PortfolioGuard.call(portfolio: Trading::Risk::PortfolioSnapshot.current)
       if guard_state == :halt_trading
