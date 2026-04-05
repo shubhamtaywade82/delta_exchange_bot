@@ -12,9 +12,9 @@ module Trading
 
       def multiplier_for(position)
         persisted = position.contract_value.to_f
-        return persisted if persisted.positive?
+        raw = persisted.positive? ? persisted : from_exchange(position.symbol.to_s).to_f
 
-        from_exchange(position.symbol.to_s)
+        raw.positive? ? raw : 1.0
       end
 
       def from_exchange(symbol)

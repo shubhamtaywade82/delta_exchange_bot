@@ -56,6 +56,11 @@ RSpec.describe Trading::ExecutionEngine do
     expect(Order.last.exchange_order_id).to eq("EX-001")
   end
 
+  it "persists Delta product_id on new positions so paper marks resolve for synthetic exits" do
+    described_class.execute(signal, session: session, client: client)
+    expect(Position.order(:id).last.product_id).to eq(84)
+  end
+
   it "reports unexpected failures to the error reporter then re-raises" do
     allow(client).to receive(:place_order).and_raise(StandardError, "exchange unavailable")
     allow(Rails.logger).to receive(:error)

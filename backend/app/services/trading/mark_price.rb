@@ -26,10 +26,26 @@ module Trading
 
       from_cache(sym) ||
         from_price_store(sym) ||
-        from_paper_redis(position.product_id) ||
+        from_paper_redis_for_position(position) ||
         from_symbol_config(sym)
     end
     private_class_method :live_or_catalog_price
+
+    # Paper LTP is keyed by Delta +product_id+. Rows often omit +product_id+; resolve it from +SymbolConfig+
+    # so forced exits use the same live path as +Trading::Dashboard::Snapshot#resolve_dashboard_mark_price+.
+    def from_paper_redis_for_position(position)
+      pid = paper_product_id_for(position)
+      return nil if pid.blank?
+
+      positive_decimal(::PaperTrading::RedisStore.get_ltp(pid))
+    end
+    private_class_method :from_paper_redis_for_position
+
+    def paper_product_id_for(position)
+      position.product_id.presence ||
+        SymbolConfig.find_by(symbol: position.symbol.to_s)&.product_id
+    end
+    private_class_method :paper_product_id_for
 
     def from_cache(sym)
       positive_decimal(Rails.cache.read("mark:#{sym}")) ||
@@ -41,13 +57,6 @@ module Trading
       positive_decimal(Bot::Feed::PriceStore.new.get(sym))
     end
     private_class_method :from_price_store
-
-    def from_paper_redis(product_id)
-      return nil if product_id.blank?
-
-      positive_decimal(::PaperTrading::RedisStore.get_ltp(product_id))
-    end
-    private_class_method :from_paper_redis
 
     def from_symbol_config(sym)
       cfg = SymbolConfig.find_by(symbol: sym)

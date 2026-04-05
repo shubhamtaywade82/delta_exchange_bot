@@ -204,6 +204,7 @@ module Trading
       contract_scalar = Trading::Risk::PositionLotSize.from_exchange(symbol)
       leverage = @session.leverage.to_i
       leverage = 10 if leverage.zero?
+      product_id = fetch_product_id(symbol)
 
       position = Position.where(portfolio_id: @session.portfolio_id, symbol: symbol)
                          .where(status: Position::NET_OPEN_STATUSES)
@@ -212,6 +213,7 @@ module Trading
       if position
         updates = {}
         updates[:leverage] = leverage if position.leverage.blank? || position.leverage.to_i.zero?
+        updates[:product_id] = product_id if position.product_id.blank?
         if contract_scalar.to_f.positive? && (position.contract_value.blank? || position.contract_value.to_f.zero?)
           updates[:contract_value] = contract_scalar
         end
@@ -227,6 +229,7 @@ module Trading
       )
       position.status = "init"
       position.leverage = leverage
+      position.product_id = product_id
       position.contract_value = contract_scalar if contract_scalar.to_f.positive?
       position.save!
       position

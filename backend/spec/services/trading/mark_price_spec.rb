@@ -49,6 +49,18 @@ RSpec.describe Trading::MarkPrice do
       expect(described_class.for_synthetic_exit(position)).to eq(BigDecimal("52222.5"))
     end
 
+    it "uses paper Redis via SymbolConfig product_id when position.product_id is blank" do
+      position.update_column(:product_id, nil)
+      SymbolConfig.create!(
+        symbol: "BTCUSD",
+        product_id: 84,
+        last_mark_price: 50_000.0,
+        enabled: true
+      )
+      allow(PaperTrading::RedisStore).to receive(:get_ltp).with(84).and_return(66_200.5)
+      expect(described_class.for_synthetic_exit(position)).to eq(BigDecimal("66200.5"))
+    end
+
     it "uses SymbolConfig catalog prices when higher-priority sources are absent" do
       SymbolConfig.create!(
         symbol: "BTCUSD",
