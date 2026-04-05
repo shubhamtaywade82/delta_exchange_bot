@@ -66,6 +66,8 @@ Modules:
 
 `Trading::EmergencyShutdown` flattens **open positions for the session’s portfolio** and cancels that session’s orders (operational stop). `ExecutionEngine` checks `PortfolioGuard` before placing any new order.
 `ExecutionEngine` always applies `Risk::MarginAffordability` in paper mode (unless paper override is active). In live mode, the same pre-submit check is optional via `RISK_LIVE_MARGIN_AFFORDABILITY_ENABLED` because it relies on portfolio snapshot freshness.
+
+When **`PAPER_USE_ORDERBOOK_SIMULATOR=true`**, paper `ExecutionEngine` uses the same synthetic order book + matching + impact stack as `PaperTrading::ProcessSignalJob` (via `PaperTrading::DeltaLikeFillSimulator`), applies **taker/maker fees** to each `Fill`, and debits fees from **`Portfolio` balance** (`balance_delta = realized_pnl − fee` per fill). **`PAPER_LIMIT_FILL_STRICT`**: no fallback to instant fill when the book yields no slices. **`PAPER_EXEC_DELAY_MS`**: optional **one** delay per order batch on the runner path (default `0` in tests); `FillApplier` still applies per-fill delay on the paper-wallet path.
 Paper close-and-flip behavior is conservative: the close leg is committed first; if excess flip margin is unaffordable or flip persistence fails, the flip leg is skipped (logged) instead of rolling back the close.
 
 

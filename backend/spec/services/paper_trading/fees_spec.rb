@@ -3,6 +3,13 @@
 require "rails_helper"
 
 RSpec.describe PaperTrading::Fees do
+  describe ".default_fee_product" do
+    it "yields default taker rate with GST" do
+      rate = described_class.effective_fee_rate(product: described_class.default_fee_product, liquidity: :taker)
+      expect(rate).to eq(BigDecimal("0.00059"))
+    end
+  end
+
   describe ".effective_fee_rate" do
     it "applies default GST multiplier to taker rate" do
       product = build(:paper_product_snapshot, raw_metadata: {})

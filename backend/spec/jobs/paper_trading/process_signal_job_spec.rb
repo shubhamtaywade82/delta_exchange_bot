@@ -81,6 +81,20 @@ RSpec.describe PaperTrading::ProcessSignalJob do
     described_class.perform_now(signal.id)
   end
 
+  it "rejects when synthetic order book has no executable size" do
+    clear_enqueued_jobs
+
+    allow(ENV).to receive(:fetch).and_call_original
+    allow(ENV).to receive(:fetch).with("PAPER_MARKET_DEPTH", "100").and_return("0")
+
+    described_class.perform_now(signal.id)
+
+    expect(signal.reload.status).to eq("rejected")
+    expect(signal.rejection_reason).to eq("insufficient order book liquidity")
+    expect(PaperOrder.where(paper_trading_signal: signal)).to be_empty
+    expect(enqueued_jobs).to be_empty
+  end
+
   it "rejects when fill-price margin exceeds available margin" do
     clear_enqueued_jobs
 

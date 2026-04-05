@@ -48,7 +48,7 @@ module PaperTrading
       contract_value = @product.contract_value.to_d
       risk_unit = @product.risk_unit_per_contract.to_d
       fill_leverage = resolve_leverage(leverage)
-      ensure_notional_cap!(incoming_qty: quantity, incoming_price: fill_price, side: side)
+      ensure_notional_cap!(incoming_qty: quantity, incoming_price: fill_price)
 
       result = nil
 
@@ -75,6 +75,7 @@ module PaperTrading
               liquidate_if_breached!
             end
             @wallet.recompute_from_ledger!
+            clamp_wallet_equity_floor!
           end
         end
       end
@@ -269,7 +270,7 @@ module PaperTrading
             "insufficient paper margin: required_inr=#{required.to_s("F")} available_inr=#{available.to_s("F")}"
     end
 
-    def ensure_notional_cap!(incoming_qty:, incoming_price:, side:)
+    def ensure_notional_cap!(incoming_qty:, incoming_price:)
       max_leverage_cap = ENV["PAPER_MAX_LEVERAGE_CAP"]&.to_d
       max_leverage_cap = 10.to_d if max_leverage_cap.nil? || max_leverage_cap <= 0
       cap_usd = (@wallet.balance_inr.to_d / @usd_inr_rate) * max_leverage_cap
@@ -278,7 +279,7 @@ module PaperTrading
         position.net_quantity.to_d * @product.contract_value.to_d * incoming_price.to_d
       end
       incoming_notional = incoming_qty.to_d * @product.contract_value.to_d * incoming_price.to_d
-      total = side == "buy" || side == "sell" ? (existing_notional + incoming_notional) : existing_notional
+      total = existing_notional + incoming_notional
       return if total <= cap_usd
 
       raise InsufficientMarginError, "notional cap exceeded: required_usd=#{total.to_s("F")} cap_usd=#{cap_usd.to_s("F")}"
@@ -323,6 +324,8 @@ module PaperTrading
       return unless @wallet.equity_inr.to_d < maintenance_margin
 
       open_positions.each { |position| liquidate_incrementally!(position, mark_price: mark_price) }
+      @wallet.reload
+      @wallet.refresh_snapshot!(ltp_map: { @product.product_id => mark_price })
     end
 
     def maintenance_margin_inr(mark_price:)
@@ -340,12 +343,16 @@ module PaperTrading
 
     def liquidate_incrementally!(position, mark_price:)
       step_index = 0
+      position_id = position.id
 
-      while position.net_quantity.positive? && !safe_after_liquidation?(mark_price: mark_price)
+      loop do
+        pos = PaperPosition.find_by(id: position_id)
+        break unless pos&.net_quantity&.positive?
+        break if safe_after_liquidation?(mark_price: mark_price)
+
         step_index += 1
-        step_qty = [ liquidation_quantity_for(position: position, mark_price: mark_price), position.net_quantity ].min
-        apply_liquidation_step!(position: position, mark_price: mark_price, quantity: step_qty, step_index: step_index)
-        position.reload
+        step_qty = [ liquidation_quantity_for(position: pos, mark_price: mark_price), pos.net_quantity ].min
+        apply_liquidation_step!(position: pos, mark_price: mark_price, quantity: step_qty, step_index: step_index)
       end
     end
 

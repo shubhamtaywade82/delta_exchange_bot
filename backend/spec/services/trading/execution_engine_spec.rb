@@ -250,4 +250,63 @@ RSpec.describe Trading::ExecutionEngine do
       expect(closed.reload.status).to eq("closed")
     end
   end
+
+  context "when paper mode uses orderbook simulator" do
+    before do
+      allow(Trading::PaperTrading).to receive(:enabled?).and_return(true)
+      allow(ENV).to receive(:[]).and_wrap_original do |method, key|
+        case key.to_s
+        when "PAPER_USE_ORDERBOOK_SIMULATOR" then "true"
+        when "PAPER_EXEC_DELAY_MS" then "0"
+        when "PAPER_EXEC_DELAY_STD_MS" then "0"
+        else method.call(key)
+        end
+      end
+      allow(ENV).to receive(:fetch).and_wrap_original do |method, key, *args, &block|
+        case key.to_s
+        when "PAPER_MARKET_DEPTH" then "100"
+        when "PAPER_SPREAD_BPS" then "0"
+        else method.call(key, *args, &block)
+        end
+      end
+      allow(Rails.cache).to receive(:read).and_wrap_original do |method, key|
+        key.to_s == "ltp:BTCUSD" ? 50_000 : method.call(key)
+      end
+      key = Trading::IdempotencyGuard.key_for_signal(signal)
+      Trading::IdempotencyGuard.release(key)
+    end
+
+    after do
+      key = Trading::IdempotencyGuard.key_for_signal(signal)
+      Trading::IdempotencyGuard.release(key)
+    end
+
+    it "records a fill with non-zero fee via FillProcessor" do
+      expect do
+        described_class.execute(signal, session: session, client: client)
+      end.to change(Fill, :count).by(1)
+
+      expect(client).not_to have_received(:place_order)
+      expect(Order.last.fills.first.fee.to_d).to be > 0
+    end
+
+    it "raises RiskError when strict mode and book has no liquidity" do
+      allow(ENV).to receive(:[]).and_wrap_original do |method, key|
+        case key.to_s
+        when "PAPER_USE_ORDERBOOK_SIMULATOR" then "true"
+        when "PAPER_LIMIT_FILL_STRICT" then "true"
+        when "PAPER_EXEC_DELAY_MS" then "0"
+        when "PAPER_EXEC_DELAY_STD_MS" then "0"
+        else method.call(key)
+        end
+      end
+      allow(ENV).to receive(:fetch).and_wrap_original do |method, key, *args, &block|
+        key.to_s == "PAPER_MARKET_DEPTH" ? "0" : method.call(key, *args, &block)
+      end
+
+      expect do
+        described_class.execute(signal, session: session, client: client)
+      end.to raise_error(Trading::RiskManager::RiskError, /paper orderbook/)
+    end
+  end
 end

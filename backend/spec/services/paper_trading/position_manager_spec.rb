@@ -248,7 +248,7 @@ RSpec.describe PaperTrading::PositionManager do
 
       expect(first_buy.closed_qty).to eq(2)
       expect(second_buy.closed_qty).to eq(0)
-      expect(wallet.used_margin_inr).to eq(BigDecimal("2014.50"))
+      expect(wallet.used_margin_inr).to eq(BigDecimal("1997.50"))
     end
 
     it "matches net pnl after GST-inclusive taker fees through full close" do
@@ -274,6 +274,9 @@ RSpec.describe PaperTrading::PositionManager do
   end
 
   describe "maintenance margin liquidation" do
+    # Test env uses :null_store, so Rails.cache.write is a no-op. Liquidation reads mark prices from cache.
+    let(:memory_cache) { ActiveSupport::Cache::MemoryStore.new }
+
     let(:wallet) { create(:paper_wallet, seed_inr: BigDecimal("500")) }
     let(:product) do
       create(:paper_product_snapshot,
@@ -282,6 +285,22 @@ RSpec.describe PaperTrading::PositionManager do
         risk_unit_per_contract: "1",
         default_leverage: 1,
         raw_metadata: { "maintenance_margin" => "2.0" })
+    end
+
+    before do
+      allow(Rails).to receive(:cache).and_return(memory_cache)
+    end
+
+    around do |example|
+      previous_cap = ENV["PAPER_MAX_LEVERAGE_CAP"]
+      ENV["PAPER_MAX_LEVERAGE_CAP"] = "10000"
+      example.run
+    ensure
+      if previous_cap
+        ENV["PAPER_MAX_LEVERAGE_CAP"] = previous_cap
+      else
+        ENV.delete("PAPER_MAX_LEVERAGE_CAP")
+      end
     end
 
     it "forces liquidation when equity drops below maintenance margin requirement" do
@@ -293,15 +312,16 @@ RSpec.describe PaperTrading::PositionManager do
       expect(wallet.reload.used_margin_inr).to eq(0)
     end
 
-    it "uses mark price (cache/product mark), not trigger LTP, for liquidation checks" do
-      Rails.cache.write("mark_price:SOLUSD-MARK", [ BigDecimal("1"), Time.current ])
+    it "uses Rails.cache mark for liquidation maintenance, not the product's far-off mark_price" do
+      Rails.cache.write("mark_price:SOLUSD-MARK", [ BigDecimal("100"), Time.current ])
       high_price_product = create(:paper_product_snapshot,
         symbol: "SOLUSD-MARK",
         contract_value: "1",
         risk_unit_per_contract: "1",
         default_leverage: 100,
-        raw_metadata: { "maintenance_margin" => "1.0" },
-        mark_price: BigDecimal("1"))
+        raw_metadata: { "maintenance_margin" => "0.01" },
+        mark_price: BigDecimal("999"),
+        close_price: BigDecimal("999"))
       signal = create(:paper_trading_signal, paper_wallet: wallet, product_id: high_price_product.product_id)
       buy_order = create(:paper_order,
         paper_wallet: wallet,
@@ -325,16 +345,25 @@ RSpec.describe PaperTrading::PositionManager do
     end
 
     it "liquidates only required contracts incrementally" do
+      deep_wallet = create(:paper_wallet, seed_inr: BigDecimal("8000"))
+      deep_signal = create(:paper_trading_signal, paper_wallet: deep_wallet, product_id: product.product_id)
+      deep_order = create(:paper_order,
+        paper_wallet: deep_wallet,
+        paper_product_snapshot: product,
+        paper_trading_signal: deep_signal,
+        side: "buy",
+        size: 2)
+
       Rails.cache.write("mark_price:#{product.symbol}", [ BigDecimal("4"), Time.current ])
-      product.update!(raw_metadata: { "maintenance_margin" => "1.0", "liquidation_step_size" => 1 })
-      manager = described_class.new(wallet: wallet, product: product)
+      product.update!(raw_metadata: { "maintenance_margin" => "12.0", "liquidation_step_size" => 1 })
+      manager = described_class.new(wallet: deep_wallet, product: product)
 
-      manager.apply_fill(fill: fill_for(order, 2, "4"), fill_side: "buy", quantity: 2, price: BigDecimal("4"), leverage: 1)
+      manager.apply_fill(fill: fill_for(deep_order, 2, "4"), fill_side: "buy", quantity: 2, price: BigDecimal("4"), leverage: 1)
 
-      remaining = PaperPosition.find_by(paper_wallet: wallet, paper_product_snapshot: product)
+      remaining = PaperPosition.find_by(paper_wallet: deep_wallet, paper_product_snapshot: product)
       expect(remaining).to be_present
       expect(remaining.net_quantity).to eq(1)
-      liquidation_rows = wallet.reload.paper_wallet_ledger_entries.where(sub_type: "liquidation_margin_release")
+      liquidation_rows = deep_wallet.reload.paper_wallet_ledger_entries.where(sub_type: "liquidation_margin_release")
       expect(liquidation_rows.count).to eq(1)
     end
 
@@ -382,19 +411,35 @@ RSpec.describe PaperTrading::PositionManager do
     end
 
     it "handles funding before liquidation without double counting" do
-      product.update!(raw_metadata: { "maintenance_margin" => "1.0", "liquidation_step_size" => 1 })
-      manager = described_class.new(wallet: wallet, product: product)
-      manager.apply_fill(fill: fill_for(order, 2, "4"), fill_side: "buy", quantity: 2, price: BigDecimal("4"), leverage: 1)
+      deep_wallet = create(:paper_wallet, seed_inr: BigDecimal("8000"))
+      deep_signal = create(:paper_trading_signal, paper_wallet: deep_wallet, product_id: product.product_id)
+      deep_order = create(:paper_order,
+        paper_wallet: deep_wallet,
+        paper_product_snapshot: product,
+        paper_trading_signal: deep_signal,
+        side: "buy",
+        size: 2)
 
-      PaperTrading::FundingApplier.new(wallet: wallet, usd_inr_rate: 85).call(
+      product.update!(raw_metadata: { "maintenance_margin" => "12.0", "liquidation_step_size" => 1 })
+      manager = described_class.new(wallet: deep_wallet, product: product)
+      manager.apply_fill(fill: fill_for(deep_order, 2, "4"), fill_side: "buy", quantity: 2, price: BigDecimal("4"), leverage: 1)
+
+      PaperTrading::FundingApplier.new(wallet: deep_wallet, usd_inr_rate: 85).call(
         funding_rate: BigDecimal("0.001"),
         mark_prices: { product.product_id => BigDecimal("4") }
       )
 
-      Rails.cache.write("mark_price:#{product.symbol}", [ BigDecimal("4"), Time.current ])
-      manager.apply_fill(fill: fill_for(order, 1, "4"), fill_side: "buy", quantity: 1, price: BigDecimal("4"), leverage: 1)
+      add_order = create(:paper_order,
+        paper_wallet: deep_wallet,
+        paper_product_snapshot: product,
+        paper_trading_signal: deep_signal,
+        side: "buy",
+        size: 1)
 
-      entries = wallet.reload.paper_wallet_ledger_entries
+      Rails.cache.write("mark_price:#{product.symbol}", [ BigDecimal("4"), Time.current ])
+      manager.apply_fill(fill: fill_for(add_order, 1, "4"), fill_side: "buy", quantity: 1, price: BigDecimal("4"), leverage: 1)
+
+      entries = deep_wallet.reload.paper_wallet_ledger_entries
       expect(entries.where(entry_type: "funding").count).to be >= 1
       expect(entries.where(sub_type: "liquidation_margin_release").count).to be >= 1
     end

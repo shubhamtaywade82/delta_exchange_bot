@@ -6,7 +6,14 @@ module PaperTrading
     DEFAULT_TAKER_FEE_RATE = BigDecimal("0.0005")
     DEFAULT_GST_MULTIPLIER = BigDecimal("1.18")
 
+    # When no +PaperProductSnapshot+ exists (e.g. Rails +Order+ path), use default fee rates from metadata.
+    FeeProductStub = Struct.new(:raw_metadata, keyword_init: true)
+
     module_function
+
+    def default_fee_product
+      FeeProductStub.new(raw_metadata: {})
+    end
 
     def taker_fee_rate_for_product(product)
       raw = product.raw_metadata&.dig("taker_fee_rate") || product.raw_metadata&.dig("taker_fee")
