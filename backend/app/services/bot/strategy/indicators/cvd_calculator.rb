@@ -22,11 +22,11 @@ module Bot
           delta_pct = (delta / total_vol * 100.0).round(2)
           trend = if delta > 0
                     :bullish
-                  elsif delta < 0
+          elsif delta < 0
                     :bearish
-                  else
+          else
                     :neutral
-                  end
+          end
 
           {
             delta: delta.round(0),

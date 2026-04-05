@@ -11,9 +11,9 @@ module Trading
       def self.estimate(book:, side:, price:)
         levels = if side == :buy
                    book.bids.select { |p, _| p >= price.to_d }
-                 else
+        else
                    book.asks.select { |p, _| p <= price.to_d }
-                 end
+        end
 
         levels.sum { |_, size| size.to_d }
       end

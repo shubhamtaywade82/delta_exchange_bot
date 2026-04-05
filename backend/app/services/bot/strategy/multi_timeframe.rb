@@ -118,11 +118,11 @@ module Bot
         raw_trades = fetch_recent_trades(symbol)
         trades = if raw_trades.is_a?(Hash) && raw_trades.key?("result")
                    raw_trades["result"]
-                 elsif raw_trades.is_a?(Hash) && raw_trades.key?(:result)
+        elsif raw_trades.is_a?(Hash) && raw_trades.key?(:result)
                    raw_trades[:result]
-                 else
+        else
                    raw_trades
-                 end
+        end
         cvd_data = Indicators::CvdCalculator.compute(trades)
 
         deriv_data = if ticker
@@ -132,9 +132,9 @@ module Bot
                          funding_extreme: ticker.funding_rate.to_f.abs > 0.0005,
                          oi_usd: ticker.oi_value_usd.to_f
                        }
-                     else
+        else
                        { oi_trend: :neutral, funding_rate: 0.0, funding_extreme: false, oi_usd: 0.0 }
-                     end
+        end
 
         # Run Filters with Real Data
         potential_side = trend_dir == :bullish ? :long : :short
@@ -202,9 +202,9 @@ module Bot
 
         side = if trend_dir == :bullish && confirm_dir == :bullish && entry_last_dir == :bullish
                  :long
-               elsif trend_dir == :bearish && confirm_dir == :bearish && entry_last_dir == :bearish
+        elsif trend_dir == :bearish && confirm_dir == :bearish && entry_last_dir == :bearish
                  :short
-               end
+        end
 
         unless side
           Bot::StructuredLog.log(
@@ -294,11 +294,11 @@ module Bot
         # Handle nested result array if present
         candles_payload = if raw.is_a?(Hash) && raw.key?("result")
                            raw["result"]
-                         elsif raw.is_a?(Hash) && raw.key?(:result)
+        elsif raw.is_a?(Hash) && raw.key?(:result)
                            raw[:result]
-                         else
+        else
                            raw
-                         end
+        end
 
         return [] unless candles_payload.is_a?(Array)
 

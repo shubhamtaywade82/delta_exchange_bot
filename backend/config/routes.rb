@@ -7,8 +7,11 @@ Rails.application.routes.draw do
     resources :positions, only: [:index]
     resources :trades, only: [:index]
     resources :signals, only: [:index]
-    resources :settings, only: [:index, :update]
-    get "settings/changes" => "settings#changes"
+    # Dots in setting keys (e.g. strategy.timeframes.confirm) must not be parsed as :id + format.
+    get "settings", to: "settings#index"
+    get "settings/changes", to: "settings#changes"
+    # Glob so dotted keys (strategy.timeframes.confirm) are not split into :id + :format.
+    patch "settings/*id", to: "settings#update", format: false
     resources :trading_sessions, only: [:index, :create, :destroy]
     get "strategy_status" => "strategy_status#index"
     get "wallet"          => "wallet#index"

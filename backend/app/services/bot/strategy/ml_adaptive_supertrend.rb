@@ -40,17 +40,17 @@ module Bot
 
           cluster = if dist_h < dist_m && dist_h < dist_l
                       0
-                    elsif dist_m < dist_l
+          elsif dist_m < dist_l
                       1
-                    else
+          else
                       2
-                    end
+          end
 
           a_atr = case cluster
-                  when 0 then hv
-                  when 1 then mv
-                  else lv
-                  end
+          when 0 then hv
+          when 1 then mv
+          else lv
+          end
 
           hl2 = (highs[i] + lows[i]) / 2.0
           b_upper = hl2 + (factor * a_atr)
@@ -73,9 +73,9 @@ module Bot
 
             direction[i] = if prev_st == prev_upper
                              (closes[i] > upper_band[i] ? -1 : 1)
-                           else
+            else
                              (closes[i] < lower_band[i] ? 1 : -1)
-                           end
+            end
           end
 
           super_trend[i] = (direction[i] == -1 ? lower_band[i] : upper_band[i])
@@ -99,13 +99,13 @@ module Bot
         size.times do |i|
           tr[i] = if i.zero?
                     highs[i] - lows[i]
-                  else
+          else
                     [
                       highs[i] - lows[i],
                       (highs[i] - closes[i - 1]).abs,
                       (lows[i] - closes[i - 1]).abs
                     ].max
-                  end
+          end
         end
 
         rma_sum = 0.0

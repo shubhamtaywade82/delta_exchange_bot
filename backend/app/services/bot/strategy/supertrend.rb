@@ -38,25 +38,25 @@ module Bot
 
           upper[i] = if basic_upper < upper[i - 1] || cp[:close].to_f > upper[i - 1]
                        basic_upper
-                     else
+          else
                        upper[i - 1]
-                     end
+          end
 
           lower[i] = if basic_lower > lower[i - 1] || cp[:close].to_f < lower[i - 1]
                        basic_lower
-                     else
+          else
                        lower[i - 1]
-                     end
+          end
 
           close = c[:close].to_f
 
           dir[i] = if dir[i - 1] == :bearish && close > upper[i - 1]
                      :bullish
-                   elsif dir[i - 1] == :bullish && close < lower[i - 1]
+          elsif dir[i - 1] == :bullish && close < lower[i - 1]
                      :bearish
-                   else
+          else
                      dir[i - 1]
-                   end
+          end
 
           next if i < atr_period
 
@@ -99,11 +99,11 @@ module Bot
         (1...n).each do |i|
           atr[i] = if i < period - 1
                      tr[0..i].sum / (i + 1).to_f
-                   elsif i == period - 1
+          elsif i == period - 1
                      tr[0..i].sum / period.to_f
-                   else
+          else
                      (atr[i - 1] * (period - 1) + tr[i]) / period.to_f
-                   end
+          end
         end
         atr
       end
