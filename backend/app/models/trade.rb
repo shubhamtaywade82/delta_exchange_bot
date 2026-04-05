@@ -2,6 +2,7 @@ class Trade < ApplicationRecord
   EFFECTIVE_PNL_ZERO_EPS = BigDecimal("1e-12")
 
   belongs_to :portfolio, optional: true
+  belongs_to :position, optional: true
 
   # PnL for KPIs and dashboard when +pnl_usd+ was not backfilled (matches list inference in Snapshot).
   def effective_pnl_usd

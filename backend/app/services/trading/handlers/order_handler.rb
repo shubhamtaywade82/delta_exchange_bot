@@ -37,10 +37,12 @@ module Trading
 
       def create_trade_if_closing(order, entry_position)
         return if entry_position.nil?
+        return if entry_position.id.present? && Trade.exists?(position_id: entry_position.id)
 
         pnl = calculate_pnl(entry_position, order)
         Trade.create!(
           portfolio_id:     order.portfolio_id,
+          position_id:      entry_position.id,
           symbol:           order.symbol,
           side:             entry_position.side,
           size:             order.filled_qty,
@@ -53,6 +55,8 @@ module Trading
           strategy:         ENV.fetch("BOT_TRADE_STRATEGY", "multi_timeframe"),
           regime:           ENV.fetch("BOT_TRADE_REGIME", "unknown")
         )
+      rescue ActiveRecord::RecordNotUnique
+        nil
       end
 
       def calculate_pnl(position, order)

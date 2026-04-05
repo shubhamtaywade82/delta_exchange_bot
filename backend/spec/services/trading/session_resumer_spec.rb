@@ -11,6 +11,11 @@ RSpec.describe Trading::SessionResumer do
       allow(DeltaTradingJob).to receive(:perform_later)
     end
 
+    after do
+      Redis.current.del("delta_bot_lock:#{running_session.id}")
+      Redis.current.del(described_class::BOOT_LOCK_KEY)
+    end
+
     it "enqueues only running sessions without active lock" do
       described_class.call
 

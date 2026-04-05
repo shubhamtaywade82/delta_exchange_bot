@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_03_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_04_05_180000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -436,6 +436,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_03_120000) do
     t.decimal "pnl_inr"
     t.decimal "pnl_usd"
     t.bigint "portfolio_id"
+    t.bigint "position_id"
     t.decimal "realized_edge", precision: 12, scale: 6
     t.decimal "realized_pnl", precision: 16, scale: 6, default: "0.0"
     t.string "regime", null: false
@@ -445,6 +446,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_03_120000) do
     t.string "symbol"
     t.datetime "updated_at", null: false
     t.index ["portfolio_id"], name: "index_trades_on_portfolio_id"
+    t.index ["position_id"], name: "index_trades_unique_position_id_when_present", unique: true, where: "(position_id IS NOT NULL)"
     t.index ["regime"], name: "index_trades_on_regime"
     t.index ["strategy", "regime"], name: "index_trades_on_strategy_and_regime"
     t.index ["strategy"], name: "index_trades_on_strategy"
@@ -488,5 +490,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_03_120000) do
   add_foreign_key "solid_queue_recurring_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_scheduled_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "trades", "portfolios"
+  add_foreign_key "trades", "positions"
   add_foreign_key "trading_sessions", "portfolios"
 end

@@ -7,6 +7,8 @@ RSpec.describe DeltaTradingJob, type: :job do
   let(:runner_dbl) { instance_double(Trading::Runner, start: nil, stop: nil) }
 
   before do
+    # Session IDs often repeat across examples (transactional DB); another spec may leave this lock.
+    Redis.current.del("delta_bot_lock:#{session.id}")
     allow(Trading::Runner).to receive(:new).and_return(runner_dbl)
   end
 

@@ -10,6 +10,11 @@ module Trading
       # @param regime [String]
       # @return [Trade]
       def self.finalize_trade!(position, entry_features:, strategy:, regime:)
+        if position.id.present?
+          existing = Trade.find_by(position_id: position.id)
+          return existing if existing
+        end
+
         notional = position.size.to_d.abs * position.entry_price.to_d
         realized_pnl = position.pnl_usd.to_d
         fees = position.fee_total.to_d
@@ -18,6 +23,7 @@ module Trading
 
         Trade.create!(
           portfolio_id: position.portfolio_id,
+          position_id: position.id,
           symbol: position.symbol,
           side: position.side,
           size: position.size,
@@ -36,6 +42,11 @@ module Trading
           holding_time_ms: holding_time_ms(position),
           features: entry_features.merge("notional" => notional)
         )
+      rescue ActiveRecord::RecordNotUnique => e
+        existing = Trade.find_by(position_id: position.id)
+        raise e if existing.nil?
+
+        existing
       end
 
       def self.holding_time_ms(position)
