@@ -170,6 +170,29 @@ RSpec.describe "Api::Dashboard", type: :request do
       expect(row["opened_at"]).to be_present
     end
 
+    it "includes exit_summary with nearest automated exit in price space" do
+      create(:position,
+             symbol: "BTCUSD",
+             side: "short",
+             status: "filled",
+             entry_price: 100.0,
+             stop_price: 105.0,
+             liquidation_price: 120.0,
+             size: 1.0,
+             leverage: 10,
+             margin: 10.0)
+      Rails.cache.write("ltp:BTCUSD", 100.0)
+
+      get "/api/dashboard"
+
+      row = JSON.parse(response.body)["positions"].first
+      summary = row["exit_summary"]
+      expect(summary["trailing_stop"]["room_pct"]).to eq(5.0)
+      expect(summary["liquidation"]["distance_pct"]).to eq(20.0)
+      expect(summary["nearest_exit"]["kind"]).to eq("trailing_stop")
+      expect(summary["nearest_exit"]["room_pct"]).to eq(5.0)
+    end
+
     it "lists legacy open status positions in active list" do
       create(:position,
              symbol: "BTCUSD",

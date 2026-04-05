@@ -344,6 +344,41 @@ body::after {
   min-width: 0;
 }
 
+/* Primary narrative order: strategy → positions → signals → history (see DashboardPage). */
+.dashboard-trading-flow {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Cap strategy symbol grid height so ACTIVE_POSITIONS stays nearer the fold; scroll inside this pane. */
+.table-wrapper.strategy-monitor-table-scroll {
+  max-height: min(34vh, 17.5rem);
+}
+
+.table-wrapper.strategy-monitor-table-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-deep);
+  box-shadow: 0 1px 0 var(--border-glass);
+}
+
+.dashboard-section-loading {
+  padding: 1.25rem 1.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+}
+
+.header-badge-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .grid-right {
   display: flex;
   flex-direction: column;
@@ -1203,6 +1238,12 @@ td {
   background: rgba(0, 255, 136, 0.1);
   color: var(--success);
   border: 1px solid rgba(0, 255, 136, 0.2);
+}
+
+.mode-badge.unknown {
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text-muted);
+  border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 /* Catalog Page Styling */

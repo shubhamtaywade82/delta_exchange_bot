@@ -67,6 +67,31 @@ interface StrategyStatus {
   symbols: SymbolState[];
 }
 
+interface ExitSummaryTrailing {
+  trigger_price: number;
+  room_pct: number;
+  at_risk: boolean;
+}
+
+interface ExitSummaryLiquidation {
+  trigger_price: number;
+  distance_pct: number;
+  within_near_liquidation_band: boolean;
+}
+
+interface ExitSummaryNearest {
+  kind: string;
+  room_pct: number;
+  trigger_price?: number;
+  note?: string;
+}
+
+interface PositionExitSummary {
+  trailing_stop?: ExitSummaryTrailing;
+  liquidation?: ExitSummaryLiquidation;
+  nearest_exit?: ExitSummaryNearest;
+}
+
 interface ApiPosition {
   symbol: string;
   side?: string;
@@ -78,6 +103,7 @@ interface ApiPosition {
   unrealized_pnl?: number | null;
   unrealized_pnl_inr?: number | null;
   unrealized_pnl_pct?: number | null;
+  exit_summary?: PositionExitSummary;
 }
 
 interface ApiTrade {
@@ -110,6 +136,55 @@ interface ApiStats {
   equity_curve?: number[];
   daily_pnl?: number | null;
   weekly_pnl?: number | null;
+}
+
+function exitProximityTitle(p: ApiPosition, displayLtp: number | null | undefined): string {
+  const ex = p.exit_summary;
+  const lines: string[] = [
+    'Automated exit proximity (price space vs server LTP / mark used in this row).',
+    'Trailing: runner exits when LTP crosses stop (after grace).',
+    'Liquidation: same distance definition as NearLiquidationExit (live).',
+  ];
+  if (displayLtp != null && Number.isFinite(displayLtp)) {
+    lines.push(`UI LTP (if live): ${formatQuotePrice(displayLtp)} — exit math uses server mark unless you refresh.`);
+  }
+  if (!ex?.trailing_stop && !ex?.liquidation) {
+    lines.push('No stop_price or liquidation_price on this position row.');
+    return lines.join('\n');
+  }
+  if (ex.trailing_stop) {
+    const t = ex.trailing_stop;
+    lines.push(
+      `Trailing stop: $${formatQuotePrice(t.trigger_price)} · room ${formatDisplayDecimal(t.room_pct)}% · at_risk=${t.at_risk}`,
+    );
+  }
+  if (ex.liquidation) {
+    const l = ex.liquidation;
+    lines.push(
+      `Liquidation: $${formatQuotePrice(l.trigger_price)} · distance ${formatDisplayDecimal(l.distance_pct)}% · near_liq_band=${l.within_near_liquidation_band}`,
+    );
+  }
+  return lines.join('\n');
+}
+
+function exitProximityCell(p: ApiPosition): { text: string; className: string } {
+  const ex = p.exit_summary;
+  const nearest = ex?.nearest_exit;
+  if (nearest?.note === 'at_or_past_stop') {
+    return { text: 'AT_STOP', className: 'neg font-bold' };
+  }
+  if (!nearest) {
+    if (!ex?.trailing_stop && !ex?.liquidation) {
+      return { text: '—', className: 'text-muted' };
+    }
+    return { text: '—', className: 'text-muted' };
+  }
+  const label = nearest.kind === 'liquidation' ? 'LIQ' : 'TRAIL';
+  const tight = nearest.room_pct <= 0.15;
+  return {
+    text: `${label} ${formatDisplayDecimal(nearest.room_pct)}%`,
+    className: tight ? 'neg' : 'text-zinc-300',
+  };
 }
 
 function filterBadge(result?: FilterResult) {
@@ -308,85 +383,198 @@ const DashboardPage: React.FC = () => {
   return (
     <div className="dashboard-content pt-4">
       <main className="terminal-grid">
-        <div className="grid-left">
-          {strategyStatus && (
-            <section className="terminal-section">
-              <div className="section-header">
-                <div className="header-title-group">
-                  <Cpu size={18} className="icon-accent" />
-                  <h2>STRATEGY_MONITOR</h2>
-                </div>
-                <div className="header-badge-group">
-                  <span className="section-badge">{strategyStatus.strategy.name.toUpperCase()}</span>
-                  <span className={`mode-badge ${strategyStatus.strategy.mode}`}>
-                    {strategyStatus.strategy.mode?.toUpperCase()}
-                  </span>
-                </div>
+        <div className="grid-left dashboard-trading-flow">
+          <section id="strategy-monitor" className="terminal-section">
+            <div className="section-header">
+              <div className="header-title-group">
+                <Cpu size={18} className="icon-accent" />
+                <h2>STRATEGY_MONITOR</h2>
               </div>
-
-              <div className="strategy-legend">
-                {strategyTfLegend.map(tf => (
-                  <div key={tf.tf} className="tf-legend-item">
-                    <span className="tf-label">{tf.tf}</span>
-                    <span className="tf-role">{tf.role}</span>
-                    <span className="tf-indicator">{tf.indicator}</span>
-                  </div>
-                ))}
+              <div className="header-badge-group">
+                <span className="section-badge">
+                  {(strategyStatus?.strategy.name ?? 'MULTI-TIMEFRAME CONFLUENCE').toUpperCase()}
+                </span>
+                <span className={`mode-badge ${strategyStatus?.strategy.mode ?? 'unknown'}`}>
+                  {(strategyStatus?.strategy.mode ?? '…').toUpperCase()}
+                </span>
               </div>
+            </div>
 
-              <div className="table-wrapper">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>SYMBOL</th>
-                      {strategyTfLegend.map(row => (
-                        <th key={row.tf}>{row.tf}_ST</th>
-                      ))}
-                      <th>ADX_PWR</th>
-                      <th>BOS</th>
-                      <th>SIGNAL</th>
-                      <th>LAST_UPD</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {strategyStatus.symbols.map(sym => (
-                      <React.Fragment key={sym.symbol}>
-                        <tr className="row-hover cursor-pointer" onClick={() => setExpandedSym(expandedSym === sym.symbol ? null : sym.symbol)}>
-                          <td><span className="font-bold">{sym.symbol.replace('USDT', '')}</span></td>
-                          {[sym.trend_dir, sym.confirm_dir, sym.entry_dir]
-                            .slice(0, strategyTfLegend.length)
-                            .map((dir, idx) => (
-                              <td key={idx}>
-                                <span className={`dir-badge ${dir || 'neutral'}`}>{dir?.toUpperCase() || '---'}</span>
-                              </td>
-                            ))}
-                          <td>
-                            <FlashValue value={sym.adx}>
-                              <span className="font-mono" style={{ color: (sym.adx ?? 0) > 20 ? 'var(--primary)' : 'var(--text-muted)' }}>
-                                {formatDisplayDecimal(sym.adx ?? 0)}
-                              </span>
-                            </FlashValue>
-                          </td>
-                          <td><span className="text-dim">--</span></td>
-                          <td><span className={`side-badge ${sym.signal ? 'long' : 'none'}`}>{sym.signal?.toUpperCase() || 'NONE'}</span></td>
-                          <td><span className="text-muted">{sym.updated_at ? timeAgo(sym.updated_at) : '--'}</span></td>
-                        </tr>
-                        {expandedSym === sym.symbol && (
-                          <tr>
-                            <td colSpan={5 + strategyTfLegend.length} className="no-padding">
-                              <SignalQualityPanel sym={sym} />
+            {strategyStatus ? (
+              <>
+                <div className="strategy-legend">
+                  {strategyTfLegend.map(tf => (
+                    <div key={tf.tf} className="tf-legend-item">
+                      <span className="tf-label">{tf.tf}</span>
+                      <span className="tf-role">{tf.role}</span>
+                      <span className="tf-indicator">{tf.indicator}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="table-wrapper strategy-monitor-table-scroll" title="Scroll for more symbols — keeps positions visible below.">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>SYMBOL</th>
+                        {strategyTfLegend.map(row => (
+                          <th key={row.tf}>{row.tf}_ST</th>
+                        ))}
+                        <th>ADX_PWR</th>
+                        <th>BOS</th>
+                        <th>SIGNAL</th>
+                        <th>LAST_UPD</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {strategyStatus.symbols.map(sym => (
+                        <React.Fragment key={sym.symbol}>
+                          <tr className="row-hover cursor-pointer" onClick={() => setExpandedSym(expandedSym === sym.symbol ? null : sym.symbol)}>
+                            <td><span className="font-bold">{sym.symbol.replace('USDT', '')}</span></td>
+                            {[sym.trend_dir, sym.confirm_dir, sym.entry_dir]
+                              .slice(0, strategyTfLegend.length)
+                              .map((dir, idx) => (
+                                <td key={idx}>
+                                  <span className={`dir-badge ${dir || 'neutral'}`}>{dir?.toUpperCase() || '---'}</span>
+                                </td>
+                              ))}
+                            <td>
+                              <FlashValue value={sym.adx}>
+                                <span className="font-mono" style={{ color: (sym.adx ?? 0) > 20 ? 'var(--primary)' : 'var(--text-muted)' }}>
+                                  {formatDisplayDecimal(sym.adx ?? 0)}
+                                </span>
+                              </FlashValue>
                             </td>
+                            <td><span className="text-dim">--</span></td>
+                            <td><span className={`side-badge ${sym.signal ? 'long' : 'none'}`}>{sym.signal?.toUpperCase() || 'NONE'}</span></td>
+                            <td><span className="text-muted">{sym.updated_at ? timeAgo(sym.updated_at) : '--'}</span></td>
                           </tr>
-                        )}
-                      </React.Fragment>
-                    ))}
-                  </tbody>
-                </table>
+                          {expandedSym === sym.symbol && (
+                            <tr>
+                              <td colSpan={5 + strategyTfLegend.length} className="no-padding">
+                                <SignalQualityPanel sym={sym} />
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <div className="dashboard-section-loading" aria-live="polite">
+                SYNCING_STRATEGY_STATE_FROM_API…
               </div>
-            </section>
-          )}
+            )}
+          </section>
 
-          <section className="terminal-section signal-activity-section">
+          <section id="active-positions" className="terminal-section">
+            <div className="section-header">
+              <div className="header-title-group">
+                <BarChart3 size={18} className="icon-accent" />
+                <h2>ACTIVE_POSITIONS</h2>
+                {positionsMeta?.as_of_date && (
+                  <span className="text-muted trade-day-label" style={{ marginLeft: "0.5rem" }}>
+                    LOCAL_DATE {positionsMeta.as_of_date}
+                  </span>
+                )}
+              </div>
+              <span className="section-badge">{positions?.length || 0}</span>
+            </div>
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>SYMBOL</th>
+                    <th>SIDE</th>
+                    <th>ENTRY</th>
+                    <th>OPENED</th>
+                    <th>LTP</th>
+                    <th
+                      title="Order size in exchange contracts (not base coins). Notional ≈ contracts × contract_value × price."
+                    >
+                      CONTRACTS
+                    </th>
+                    <th>LEVERAGE</th>
+                    <th>PNL_UNREALIZED (INR)</th>
+                    <th
+                      title="Return on initial margin (ROE), not underlying price change %. ≈ (unrealized PnL USD) ÷ (initial margin USD) × 100."
+                    >
+                      ROE%
+                    </th>
+                    <th
+                      title="Tightest runner-driven exit in % of price: trailing stop (TrailingStopHandler) or near-liquidation distance. Smaller % = closer. See tooltip for full detail."
+                    >
+                      EXIT_NEAR
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(positions && positions.length > 0) ? positions.map((p, i) => {
+                    const prox = exitProximityCell(p);
+                    const ltpForTip = liveLtp[p.symbol] ?? p.mark_price ?? undefined;
+                    return (
+                    <tr key={i} className="row-hover">
+                      <td className="font-bold">{p.symbol}</td>
+                      <td>
+                        <span className={`side-badge ${sideBadgeMeta(p.side).css}`}>
+                          {sideBadgeMeta(p.side).label}
+                        </span>
+                      </td>
+                      <td className="font-mono">{formatQuotePrice(p.entry_price)}</td>
+                      <td className="text-muted">
+                        {p.opened_at
+                          ? new Date(p.opened_at).toLocaleString(undefined, {
+                              dateStyle: "short",
+                              timeStyle: "short",
+                            })
+                          : "--"}
+                      </td>
+                      <td className="font-mono">
+                        <FlashValue value={liveLtp[p.symbol] ?? p.mark_price}>
+                          {formatQuotePrice(liveLtp[p.symbol] ?? p.mark_price)}
+                        </FlashValue>
+                      </td>
+                      <td className="font-mono">{formatDisplayDecimal(p.size)}</td>
+                      <td className="font-mono text-zinc-400">{p.leverage}x</td>
+                      <td
+                        className={(p.unrealized_pnl_inr || 0) >= 0 ? 'pos' : 'neg'}
+                        title={
+                          p.unrealized_pnl != null
+                            ? `Unrealized ≈ ${formatUsd(p.unrealized_pnl)} USD (display INR uses a fixed USD/INR for the dashboard).`
+                            : undefined
+                        }
+                      >
+                        {formatInr(p.unrealized_pnl_inr || 0)}
+                      </td>
+                      <td
+                        className={(p.unrealized_pnl_pct || 0) >= 0 ? 'pos' : 'neg'}
+                        title="Return on equity vs posted initial margin (leverage magnifies this vs spot %)."
+                      >
+                        {formatDisplayDecimal(p.unrealized_pnl_pct || 0)}%
+                      </td>
+                      <td
+                        className={`font-mono ${prox.className}`}
+                        title={exitProximityTitle(p, ltpForTip)}
+                      >
+                        {prox.text}
+                      </td>
+                    </tr>
+                    );
+                  }) : (
+                    <tr>
+                      <td colSpan={10} className="text-center text-muted table-empty-row">
+                        NO_ACTIVE_POSITIONS_FOUND
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="signal-activity" className="terminal-section signal-activity-section">
             <div className="section-header">
               <div className="header-title-group">
                 <Activity size={18} className="icon-accent" />
@@ -452,97 +640,7 @@ const DashboardPage: React.FC = () => {
             </div>
           </section>
 
-          <section className="terminal-section">
-            <div className="section-header">
-              <div className="header-title-group">
-                <BarChart3 size={18} className="icon-accent" />
-                <h2>ACTIVE_POSITIONS</h2>
-                {positionsMeta?.as_of_date && (
-                  <span className="text-muted trade-day-label" style={{ marginLeft: "0.5rem" }}>
-                    LOCAL_DATE {positionsMeta.as_of_date}
-                  </span>
-                )}
-              </div>
-              <span className="section-badge">{positions?.length || 0}</span>
-            </div>
-            <div className="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>SYMBOL</th>
-                    <th>SIDE</th>
-                    <th>ENTRY</th>
-                    <th>OPENED</th>
-                    <th>LTP</th>
-                    <th
-                      title="Order size in exchange contracts (not base coins). Notional ≈ contracts × contract_value × price."
-                    >
-                      CONTRACTS
-                    </th>
-                    <th>LEVERAGE</th>
-                    <th>PNL_UNREALIZED (INR)</th>
-                    <th
-                      title="Return on initial margin (ROE), not underlying price change %. ≈ (unrealized PnL USD) ÷ (initial margin USD) × 100."
-                    >
-                      ROE%
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(positions && positions.length > 0) ? positions.map((p, i) => (
-                    <tr key={i} className="row-hover">
-                      <td className="font-bold">{p.symbol}</td>
-                      <td>
-                        <span className={`side-badge ${sideBadgeMeta(p.side).css}`}>
-                          {sideBadgeMeta(p.side).label}
-                        </span>
-                      </td>
-                      <td className="font-mono">{formatQuotePrice(p.entry_price)}</td>
-                      <td className="text-muted">
-                        {p.opened_at
-                          ? new Date(p.opened_at).toLocaleString(undefined, {
-                              dateStyle: "short",
-                              timeStyle: "short",
-                            })
-                          : "--"}
-                      </td>
-                      <td className="font-mono">
-                        <FlashValue value={liveLtp[p.symbol] ?? p.mark_price}>
-                          {formatQuotePrice(liveLtp[p.symbol] ?? p.mark_price)}
-                        </FlashValue>
-                      </td>
-                      <td className="font-mono">{formatDisplayDecimal(p.size)}</td>
-                      <td className="font-mono text-zinc-400">{p.leverage}x</td>
-                      <td
-                        className={(p.unrealized_pnl_inr || 0) >= 0 ? 'pos' : 'neg'}
-                        title={
-                          p.unrealized_pnl != null
-                            ? `Unrealized ≈ ${formatUsd(p.unrealized_pnl)} USD (display INR uses a fixed USD/INR for the dashboard).`
-                            : undefined
-                        }
-                      >
-                        {formatInr(p.unrealized_pnl_inr || 0)}
-                      </td>
-                      <td
-                        className={(p.unrealized_pnl_pct || 0) >= 0 ? 'pos' : 'neg'}
-                        title="Return on equity vs posted initial margin (leverage magnifies this vs spot %)."
-                      >
-                        {formatDisplayDecimal(p.unrealized_pnl_pct || 0)}%
-                      </td>
-                    </tr>
-                  )) : (
-                    <tr>
-                      <td colSpan={9} className="text-center text-muted table-empty-row">
-                        NO_ACTIVE_POSITIONS_FOUND
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="terminal-section">
+          <section id="trade-history" className="terminal-section">
             <div className="section-header">
               <div className="header-title-group">
                 <History size={18} className="icon-accent" />

@@ -377,7 +377,8 @@ module Trading
           unrealized_pnl_inr: (unrealized_usd * inr_rate).round(0),
           unrealized_pnl_pct: unrealized_pnl_pct(position, unrealized_usd),
           leverage: position.leverage,
-          status: position.status
+          status: position.status,
+          exit_summary: PositionExitSummary.call(position: position, mark_price: mark)
         }
       end
 
