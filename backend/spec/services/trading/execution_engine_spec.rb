@@ -107,10 +107,22 @@ RSpec.describe Trading::ExecutionEngine do
   end
 
   it "does not evaluate portfolio guard when paper risk override is active" do
+    allow(Trading::PaperTrading).to receive(:enabled?).and_return(true)
     allow(Trading::RiskManager).to receive(:validate!).and_return(true)
     allow(Trading::PaperRiskOverride).to receive(:active?).and_return(true)
     expect(Trading::Risk::PortfolioGuard).not_to receive(:call)
     described_class.execute(signal, session: session, client: client)
+  end
+
+  it "still evaluates portfolio guard in live mode even if paper override flag is on" do
+    allow(Trading::PaperTrading).to receive(:enabled?).and_return(false)
+    allow(Trading::RiskManager).to receive(:validate!).and_return(true)
+    allow(Trading::PaperRiskOverride).to receive(:active?).and_return(true)
+    allow(Trading::Risk::PortfolioGuard).to receive(:call).and_return(:safe)
+
+    described_class.execute(signal, session: session, client: client)
+
+    expect(Trading::Risk::PortfolioGuard).to have_received(:call)
   end
 
   it "dedupes long and buy to the same idempotency key" do
@@ -147,6 +159,44 @@ RSpec.describe Trading::ExecutionEngine do
       end.to raise_error(Trading::RiskManager::RiskError, /insufficient cash for margin/)
       expect(Order.count).to eq(0)
       expect(Trading::FillProcessor).not_to have_received(:process)
+    end
+  end
+
+  context "when live mode order exceeds available margin snapshot" do
+    before do
+      allow(Trading::PaperTrading).to receive(:enabled?).and_return(false)
+      allow(Trading::PaperRiskOverride).to receive(:active?).and_return(false)
+      allow(Trading::RuntimeConfig).to receive(:fetch_boolean)
+        .with("risk.live_margin_affordability_enabled", default: false, env_key: "RISK_LIVE_MARGIN_AFFORDABILITY_ENABLED")
+        .and_return(true)
+      session.portfolio.update!(balance: 100, available_balance: 100, used_margin: 0)
+      allow(Trading::OrderBuilder).to receive(:build).and_wrap_original do |original, signal, session:, position:|
+        original.call(signal, session: session, position: position).merge(size: 10_000)
+      end
+    end
+
+    it "raises RiskError and does not persist an order" do
+      expect do
+        described_class.execute(signal, session: session, client: client)
+      end.to raise_error(Trading::RiskManager::RiskError, /insufficient cash for margin/)
+      expect(Order.count).to eq(0)
+    end
+  end
+
+  context "when live margin affordability guard is disabled" do
+    before do
+      allow(Trading::PaperTrading).to receive(:enabled?).and_return(false)
+      allow(Trading::PaperRiskOverride).to receive(:active?).and_return(false)
+      allow(Trading::RuntimeConfig).to receive(:fetch_boolean)
+        .with("risk.live_margin_affordability_enabled", default: false, env_key: "RISK_LIVE_MARGIN_AFFORDABILITY_ENABLED")
+        .and_return(false)
+      allow(Trading::OrderBuilder).to receive(:build).and_wrap_original do |original, signal, session:, position:|
+        original.call(signal, session: session, position: position).merge(size: 10_000)
+      end
+    end
+
+    it "does not raise affordability error before order placement" do
+      expect { described_class.execute(signal, session: session, client: client) }.not_to raise_error
     end
   end
 

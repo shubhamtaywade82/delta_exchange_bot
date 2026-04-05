@@ -95,8 +95,11 @@ module Trading
     end
 
     def validate_margin_affordability!(order_attrs, position)
-      return unless PaperTrading.enabled?
-      return if PaperRiskOverride.active?
+      if PaperTrading.enabled?
+        return if PaperRiskOverride.active?
+      elsif !live_margin_affordability_enabled?
+        return
+      end
 
       fill_price = resolve_intended_fill_price(order_attrs)
       Trading::Risk::MarginAffordability.verify!(
@@ -107,6 +110,14 @@ module Trading
         fill_price: fill_price,
         position: position,
         session: @session
+      )
+    end
+
+    def live_margin_affordability_enabled?
+      Trading::RuntimeConfig.fetch_boolean(
+        "risk.live_margin_affordability_enabled",
+        default: false,
+        env_key: "RISK_LIVE_MARGIN_AFFORDABILITY_ENABLED"
       )
     end
 
@@ -125,7 +136,7 @@ module Trading
     def validate_risk_and_portfolio_guard!
       RiskManager.validate!(@signal, session: @session)
 
-      return if PaperRiskOverride.active?
+      return if PaperTrading.enabled? && PaperRiskOverride.active?
 
       guard_state = Trading::Risk::PortfolioGuard.call(portfolio: Trading::Risk::PortfolioSnapshot.current)
       if guard_state == :halt_trading
