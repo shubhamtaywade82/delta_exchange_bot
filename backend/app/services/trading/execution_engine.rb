@@ -145,14 +145,14 @@ module Trading
     end
 
     def persist_order_result!(order, result)
-      order.update!(
-        exchange_order_id: result[:id]&.to_s,
-        status: normalize_exchange_status(result[:status])
-      )
+      attrs = {}
+      attrs[:exchange_order_id] = result[:id].to_s if result[:id].present?
+      attrs[:status] = normalize_exchange_status(result[:status]) if result[:status].present?
+      order.update!(attrs) if attrs.any?
     end
 
     def place_order(order)
-      return simulate_fill_at_market(order) if PaperTrading.enabled?
+      return simulate_paper_fills(order) if PaperTrading.enabled?
 
       @client.place_order(
         product_id: fetch_product_id(order.symbol),
@@ -162,6 +162,14 @@ module Trading
         limit_price: order.price,
         client_order_id: order.client_order_id
       )
+    end
+
+    def simulate_paper_fills(order)
+      if paper_orderbook_simulator_enabled?
+        simulate_fills_via_orderbook(order)
+      else
+        simulate_fill_at_market(order)
+      end
     end
 
     def simulate_fill_at_market(order)
@@ -186,6 +194,110 @@ module Trading
       )
 
       { id: exchange_id, status: "filled" }
+    end
+
+    def paper_orderbook_simulator_enabled?
+      %w[1 true yes on].include?(ENV["PAPER_USE_ORDERBOOK_SIMULATOR"].to_s.strip.downcase)
+    end
+
+    def paper_limit_fill_strict?
+      %w[1 true yes on].include?(ENV["PAPER_LIMIT_FILL_STRICT"].to_s.strip.downcase)
+    end
+
+    def simulate_fills_via_orderbook(order)
+      ltp = synthetic_fill_price(order)
+      limit_px = decimal_price(order.price)
+      limit_for_sim = limit_px.positive? ? limit_px : nil
+
+      slices = ::PaperTrading::DeltaLikeFillSimulator.plan_slices(
+        ltp: ltp,
+        side: order.side,
+        order_type: order.order_type,
+        size: order.size,
+        limit_price: limit_for_sim
+      )
+
+      if slices.empty?
+        if paper_limit_fill_strict?
+          order.update!(status: "rejected")
+          raise RiskManager::RiskError, "paper orderbook: no executable size (strict limit or empty book)"
+        end
+
+        return simulate_fill_at_market(order)
+      end
+
+      exchange_id = "paper-#{SecureRandom.hex(8)}"
+      order.update!(exchange_order_id: exchange_id, status: "submitted")
+
+      maybe_apply_execution_engine_fill_delay!
+
+      fee_product = resolve_fee_product_for_order(order)
+      cumulative_qty = BigDecimal("0")
+
+      slices.each_with_index do |slice, slice_index|
+        cumulative_qty += slice.qty.to_d
+        fill_status = cumulative_qty >= order.size.to_d ? "filled" : "partially_filled"
+        fill_id = "paper-fill:#{order.id}:#{exchange_id}:#{slice_index}:#{slice.price}:#{slice.qty}:#{Time.current.to_f}"
+
+        FillProcessor.process(
+          Events::OrderFilled.new(
+            exchange_fill_id: fill_id,
+            exchange_order_id: exchange_id,
+            client_order_id: order.client_order_id,
+            symbol: order.symbol,
+            side: order.side,
+            quantity: slice.qty,
+            price: slice.price,
+            fee: compute_simulated_fee_usd(order: order, slice: slice, product: fee_product),
+            filled_at: Time.current,
+            status: fill_status,
+            raw_payload: { "source" => "paper_orderbook_simulator" }
+          )
+        )
+      end
+
+      order.reload
+      { id: exchange_id, status: order.status }
+    end
+
+    def resolve_fee_product_for_order(order)
+      sym = PaperProductSnapshot.find_by(symbol: order.symbol.to_s)
+      return sym if sym
+
+      pid = fetch_product_id(order.symbol)
+      PaperProductSnapshot.find_by(product_id: pid)
+    rescue StandardError
+      nil
+    end
+
+    def compute_simulated_fee_usd(order:, slice:, product:)
+      prod = product || ::PaperTrading::Fees.default_fee_product
+      lot = Trading::Risk::PositionLotSize.from_exchange(order.symbol.to_s).to_d
+      lot = BigDecimal("1") if lot <= 0
+      notional = ::PaperTrading::Fees.notional_usd(
+        quantity: slice.qty,
+        price: slice.price,
+        contract_value: lot
+      )
+      rate = ::PaperTrading::Fees.effective_fee_rate(product: prod, liquidity: slice.liquidity)
+      ::PaperTrading::Fees.fee_usd(notional_usd: notional, fee_rate: rate)
+    end
+
+    def maybe_apply_execution_engine_fill_delay!
+      mean_ms = ENV["PAPER_EXEC_DELAY_MS"].to_f
+      return if mean_ms <= 0
+
+      std_ms = ENV["PAPER_EXEC_DELAY_STD_MS"].to_f
+      sample_ms = if std_ms.positive?
+        u1 = [ rand, Float::MIN ].max
+        u2 = rand
+        z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math::PI * u2)
+        mean_ms + (z0 * std_ms)
+      else
+        mean_ms
+      end
+
+      sleep([ sample_ms, 0 ].max / 1000.0)
     end
 
     def synthetic_fill_price(order)

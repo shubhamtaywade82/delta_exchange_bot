@@ -12,7 +12,7 @@ Runtime config is built in [`app/services/bot/config.rb`](../app/services/bot/co
 4. **`SymbolConfig`** — enabled symbols and leverage injected as `symbols` (not from YAML alone).
 5. **Environment** — `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` fill empty telegram fields; `TELEGRAM_ENABLED` can force telegram on; **`BOT_MODE`** overrides top-level `mode` when set.
 
-Paper vs live execution mode is resolved separately in [`app/services/trading/paper_trading.rb`](../app/services/trading/paper_trading.rb): `EXECUTION_MODE` env (`live` / `paper`) wins when set; otherwise paper follows `dry_run?` from config (and non-production defaults). For a **parity matrix** (what still differs in paper vs live) and an operator checklist, see [`paper_vs_live_parity.md`](paper_vs_live_parity.md).
+Paper vs live execution mode is resolved separately in [`app/services/trading/paper_trading.rb`](../app/services/trading/paper_trading.rb): `EXECUTION_MODE` env (`live` / `paper`) wins when set; otherwise paper follows `dry_run?` from config (and non-production defaults). For a **parity matrix** (what still differs in paper vs live) and an operator checklist, see [`paper_vs_live_parity.md`](paper_vs_live_parity.md). Optional **`PAPER_USE_ORDERBOOK_SIMULATOR`** routes `Trading::ExecutionEngine` paper fills through `PaperTrading::DeltaLikeFillSimulator` (see `.env.example` and `backend/README.md`).
 
 ### USD/INR
 

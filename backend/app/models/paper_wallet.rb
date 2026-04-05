@@ -10,6 +10,7 @@ class PaperWallet < ApplicationRecord
   has_many :paper_wallet_ledger_entries, dependent: :destroy
 
   validates :name, presence: true
+  validates :status, inclusion: { in: %w[active bankrupt] }
   validates :balance_inr, :available_inr, :used_margin_inr, :equity_inr, :unrealized_pnl_inr, :realized_pnl_inr, presence: true
 
   def deposit!(amount_inr, meta: {})
@@ -52,6 +53,9 @@ class PaperWallet < ApplicationRecord
           realized_ledger_inr -= amt
         end
       when "commission"
+        balance -= amt if e.direction == "debit"
+        balance += amt if e.direction == "credit"
+      when "funding"
         balance -= amt if e.direction == "debit"
         balance += amt if e.direction == "credit"
       when "margin_reserved"

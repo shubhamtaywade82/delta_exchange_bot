@@ -33,14 +33,21 @@ class Portfolio < ApplicationRecord
       reload
       return if portfolio_ledger_entries.exists?(fill_id: fill.id)
 
-      if delta_realized.nonzero?
-        portfolio_ledger_entries.create!(
-          fill: fill,
-          realized_pnl_delta: delta_realized,
-          balance_delta: delta_realized
-        )
-        update!(balance: balance.to_d + delta_realized)
+      fee = fill.fee.to_d
+      pnl = delta_realized.to_d
+      wallet_delta = pnl - fee
+
+      if wallet_delta.zero? && pnl.zero? && fee.zero?
+        sync_margin_from_positions!
+        return
       end
+
+      portfolio_ledger_entries.create!(
+        fill: fill,
+        realized_pnl_delta: pnl,
+        balance_delta: wallet_delta
+      )
+      update!(balance: balance.to_d + wallet_delta)
       sync_margin_from_positions!
     end
   end
