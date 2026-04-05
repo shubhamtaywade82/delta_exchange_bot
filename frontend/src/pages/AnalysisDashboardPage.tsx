@@ -901,6 +901,11 @@ const AnalysisDashboardPage: React.FC = () => {
                   ) : (
                     <span className="mode-badge live">OK</span>
                   )}
+                  {row.error && row.updated_at && (
+                    <p className="text-muted small analysis-digest-meta">
+                      Digest record: {formatSignalActivityTimestamp(row.updated_at)}
+                    </p>
+                  )}
                 </div>
                 
                 {!row.error && (
@@ -944,6 +949,22 @@ const AnalysisDashboardPage: React.FC = () => {
                         </span>
                       </span>
                     </div>
+                    {row.updated_at && (
+                      <div className="detail-stat">
+                        <label>DIGEST BUILT</label>
+                        <span className="value">{formatSignalActivityTimestamp(row.updated_at)}</span>
+                      </div>
+                    )}
+                    {row.price_action?.last_bar_at && (
+                      <div className="detail-stat">
+                        <label>
+                          LAST BAR ({(row.price_action.entry_timeframe ?? 'entry').toUpperCase()})
+                        </label>
+                        <span className="value">
+                          {formatSignalActivityTimestamp(row.price_action.last_bar_at)}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

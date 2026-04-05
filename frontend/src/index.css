@@ -2240,9 +2240,16 @@ td {
   letter-spacing: 0.1em;
 }
 
+.analysis-digest-meta {
+  margin: 0.35rem 0 0;
+}
+
 .detail-header-stats {
   display: flex;
+  flex-wrap: wrap;
   gap: 2rem;
+  align-items: flex-start;
+  justify-content: flex-end;
 }
 
 .detail-stat {
