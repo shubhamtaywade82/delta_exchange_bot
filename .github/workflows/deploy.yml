@@ -5,9 +5,6 @@
 #   — Secrets (per environment as needed): RAILS_MASTER_KEY, KAMAL_REGISTRY_PASSWORD
 #   — SSH access from the runner to deploy targets (add a deploy key on the runner,
 #     use webfactory/ssh-agent, or run this workflow on a self-hosted runner)
-#
-# Repository variables (optional):
-#   DELTA_EXCHANGE_REPOSITORY — only if Gemfile uses path: ../../delta_exchange; else omit (rubygems).
 
 name: Deploy
 
@@ -61,23 +58,10 @@ jobs:
         with:
           ref: ${{ steps.ref.outputs.ref }}
 
-      - name: Checkout delta_exchange (path gem)
-        if: vars.DELTA_EXCHANGE_REPOSITORY != ''
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ vars.DELTA_EXCHANGE_REPOSITORY }}
-          path: delta_exchange
-          fetch-depth: 1
-
-      - name: Link delta_exchange for Gemfile path ../../delta_exchange
-        env:
-          DELTA_EXCHANGE_REPOSITORY: ${{ vars.DELTA_EXCHANGE_REPOSITORY }}
-        run: bash "${GITHUB_WORKSPACE}/.github/scripts/link_delta_exchange_path_gem.sh"
-
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version-file: backend/.ruby-version
+          ruby-version: backend/.ruby-version
           bundler-cache: true
           working-directory: backend
 

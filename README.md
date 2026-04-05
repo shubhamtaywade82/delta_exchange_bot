@@ -178,4 +178,4 @@ Legacy specs at repo root `spec/` (against `lib/bot/`) are optional; treat **`ba
 
 ## CI/CD
 
-GitHub Actions live under [`.github/workflows/`](.github/workflows/). See [`.github/README.md`](.github/README.md) for required checks, the `delta_exchange` path gem variable, and optional Kamal deploy.
+GitHub Actions live under [`.github/workflows/`](.github/workflows/). See [`.github/README.md`](.github/README.md) for required checks and optional Kamal deploy.

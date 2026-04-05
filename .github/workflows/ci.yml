@@ -1,6 +1,4 @@
-# Monorepo CI: backend (Rails) + frontend (Vite/React).
-# Optional: set DELTA_EXCHANGE_REPOSITORY (e.g. owner/delta_exchange) only when Gemfile uses
-# `gem "delta_exchange", path: "../../delta_exchange"`. Otherwise Bundler uses rubygems (default here).
+# Monorepo CI: backend (Rails) + frontend (Vite/React). Backend gems resolve from RubyGems only.
 
 name: CI
 
@@ -32,23 +30,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Checkout delta_exchange (path gem)
-        if: vars.DELTA_EXCHANGE_REPOSITORY != ''
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ vars.DELTA_EXCHANGE_REPOSITORY }}
-          path: delta_exchange
-          fetch-depth: 1
-
-      - name: Link delta_exchange for Gemfile path ../../delta_exchange
-        env:
-          DELTA_EXCHANGE_REPOSITORY: ${{ vars.DELTA_EXCHANGE_REPOSITORY }}
-        run: bash "${GITHUB_WORKSPACE}/.github/scripts/link_delta_exchange_path_gem.sh"
-
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version-file: backend/.ruby-version
+          ruby-version: backend/.ruby-version
           bundler-cache: true
           working-directory: backend
 
@@ -81,26 +66,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Checkout delta_exchange (path gem)
-        if: vars.DELTA_EXCHANGE_REPOSITORY != ''
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ vars.DELTA_EXCHANGE_REPOSITORY }}
-          path: delta_exchange
-          fetch-depth: 1
-
-      - name: Link delta_exchange for Gemfile path ../../delta_exchange
-        env:
-          DELTA_EXCHANGE_REPOSITORY: ${{ vars.DELTA_EXCHANGE_REPOSITORY }}
-        run: bash "${GITHUB_WORKSPACE}/.github/scripts/link_delta_exchange_path_gem.sh"
-
       - name: Gitleaks
         uses: gitleaks/gitleaks-action@v2
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version-file: backend/.ruby-version
+          ruby-version: backend/.ruby-version
           bundler-cache: true
           working-directory: backend
 
@@ -210,23 +182,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Checkout delta_exchange (path gem)
-        if: vars.DELTA_EXCHANGE_REPOSITORY != ''
-        uses: actions/checkout@v6
-        with:
-          repository: ${{ vars.DELTA_EXCHANGE_REPOSITORY }}
-          path: delta_exchange
-          fetch-depth: 1
-
-      - name: Link delta_exchange for Gemfile path ../../delta_exchange
-        env:
-          DELTA_EXCHANGE_REPOSITORY: ${{ vars.DELTA_EXCHANGE_REPOSITORY }}
-        run: bash "${GITHUB_WORKSPACE}/.github/scripts/link_delta_exchange_path_gem.sh"
-
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version-file: backend/.ruby-version
+          ruby-version: backend/.ruby-version
           bundler-cache: true
           working-directory: backend
 

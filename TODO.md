@@ -97,9 +97,6 @@ Turn the 2026-04-03 repo audits into one prioritized, checkable backlog for the 
 
 - [ ] **`Position.active` intent (remaining):** optional follow-up — name or document **global** scans (`funding_monitor.rb`, `risk/entry_gates_summary.rb`, `mark_prices_pnl_job.rb`, `position_reconciliation.rb`, `ws_client.rb`, `dashboard/snapshot.rb`, `bootstrap/sync_positions.rb`, `risk/portfolio_snapshot.rb`, API `positions_controller`, `bot/execution/position_tracker.rb`). Portfolio-scoped paths now use `Position.active_for_portfolio` where applicable.
 
-- [ ] **`ollama-client` path dependency:** document and automate provisioning (publish, vendor, submodule, or CI checkout) so bundle matches `Gemfile` path — backlog notes CI/docs treat it unlike the `delta_exchange` path gem, so expectations should be explicit for both.  
-  - Files: `backend/Gemfile`, `backend/Gemfile.lock`, `.github/workflows/ci.yml`, `.github/workflows/deploy.yml`, `.github/README.md`.
-
 - [ ] **Orchestration boundary:** one orchestrator and one event model between `Bot::*` strategy runtime and `Trading::*` (todo); document migration and remove parallel pipelines where safe.
 
 - [ ] **Event contracts:** typed event schemas, validation, and contract tests for publishers/subscribers (todo).
@@ -160,8 +157,6 @@ Turn the 2026-04-03 repo audits into one prioritized, checkable backlog for the 
   - (and any other historical plans that mention old Ruby/frontend versions or wrong paths.)
 
 - [ ] **Dual `bot.yml`:** one source of truth, generation, or drift check (`README.md`, `config/bot.yml`, `backend/config/bot.yml`).
-
-- [ ] **`.github/README.md`:** clarify required vs optional path gems (`DELTA_EXCHANGE_REPOSITORY`, `ollama-client` availability vs CI reality).
 
 - [ ] **Canonical architecture:** one diagram + sequence (root README + backend README) — partial: see [`backend/docs/architecture_diagrams.md`](backend/docs/architecture_diagrams.md) and [`backend/docs/smc_event_alerts.md`](backend/docs/smc_event_alerts.md); keep README cross-links in sync when runtime changes.
 
