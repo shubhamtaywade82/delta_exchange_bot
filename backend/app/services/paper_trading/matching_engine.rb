@@ -22,14 +22,17 @@ module PaperTrading
     end
 
     def match_market(order)
-      remaining = order.size.to_d
+      remaining = order.size.to_i
       levels = executable_levels(order)
       fills = []
 
       levels.each do |price, level_qty|
         break unless remaining.positive?
 
-        fill_qty = [ remaining, level_qty ].min
+        available = level_qty.to_i
+        next unless available.positive?
+
+        fill_qty = [remaining, available].min
         fills << build_fill(price: price, qty: fill_qty, liquidity: :taker)
         remaining -= fill_qty
       end

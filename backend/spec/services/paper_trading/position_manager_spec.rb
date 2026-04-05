@@ -283,7 +283,7 @@ RSpec.describe PaperTrading::PositionManager do
         symbol: "SOLUSD",
         contract_value: "1",
         risk_unit_per_contract: "1",
-        default_leverage: 1,
+        default_leverage: 10,
         raw_metadata: { "maintenance_margin" => "2.0" })
     end
 
@@ -306,15 +306,15 @@ RSpec.describe PaperTrading::PositionManager do
     it "forces liquidation when equity drops below maintenance margin requirement" do
       Rails.cache.write("mark_price:#{product.symbol}", [ BigDecimal("4"), Time.current ])
       manager = described_class.new(wallet: wallet, product: product)
-      manager.apply_fill(fill: fill_for(order, 1, "4"), fill_side: "buy", quantity: 1, price: BigDecimal("4"), leverage: 1)
+      manager.apply_fill(fill: fill_for(order, 1, "4"), fill_side: "buy", quantity: 1, price: BigDecimal("4"))
 
       expect(PaperPosition.where(paper_wallet: wallet, paper_product_snapshot: product)).to be_empty
       expect(wallet.reload.used_margin_inr).to eq(0)
     end
 
-    it "uses Rails.cache mark for liquidation maintenance, not the product's far-off mark_price" do
+    it "uses Rails.cache mark for liquidation maintenance, not the product's far-off catalog mark_price" do
       Rails.cache.write("mark_price:SOLUSD-MARK", [ BigDecimal("100"), Time.current ])
-      high_price_product = create(:paper_product_snapshot,
+      mark_product = create(:paper_product_snapshot,
         symbol: "SOLUSD-MARK",
         contract_value: "1",
         risk_unit_per_contract: "1",
@@ -322,24 +322,24 @@ RSpec.describe PaperTrading::PositionManager do
         raw_metadata: { "maintenance_margin" => "0.01" },
         mark_price: BigDecimal("999"),
         close_price: BigDecimal("999"))
-      signal = create(:paper_trading_signal, paper_wallet: wallet, product_id: high_price_product.product_id)
+      mark_signal = create(:paper_trading_signal, paper_wallet: wallet, product_id: mark_product.product_id)
       buy_order = create(:paper_order,
         paper_wallet: wallet,
-        paper_product_snapshot: high_price_product,
-        paper_trading_signal: signal,
+        paper_product_snapshot: mark_product,
+        paper_trading_signal: mark_signal,
         side: "buy",
         size: 1)
       fill = fill_for(buy_order, 1, "100")
 
-      manager = described_class.new(wallet: wallet, product: high_price_product)
+      manager = described_class.new(wallet: wallet, product: mark_product)
       manager.apply_fill(fill: fill, fill_side: "buy", quantity: 1, price: BigDecimal("100"), leverage: 100)
 
-      expect(PaperPosition.where(paper_wallet: wallet, paper_product_snapshot: high_price_product).count).to eq(1)
+      expect(PaperPosition.where(paper_wallet: wallet, paper_product_snapshot: mark_product).count).to eq(1)
     end
 
     it "skips liquidation when mark price is unavailable" do
       manager = described_class.new(wallet: wallet, product: product)
-      manager.apply_fill(fill: fill_for(order, 1, "4"), fill_side: "buy", quantity: 1, price: BigDecimal("4"), leverage: 1)
+      manager.apply_fill(fill: fill_for(order, 1, "4"), fill_side: "buy", quantity: 1, price: BigDecimal("4"))
 
       expect(PaperPosition.where(paper_wallet: wallet, paper_product_snapshot: product).count).to eq(1)
     end
@@ -371,7 +371,7 @@ RSpec.describe PaperTrading::PositionManager do
       Rails.cache.write("mark_price:#{product.symbol}", [ BigDecimal("4"), 5.seconds.ago ])
       manager = described_class.new(wallet: wallet, product: product)
 
-      manager.apply_fill(fill: fill_for(order, 1, "4"), fill_side: "buy", quantity: 1, price: BigDecimal("4"), leverage: 1)
+      manager.apply_fill(fill: fill_for(order, 1, "4"), fill_side: "buy", quantity: 1, price: BigDecimal("4"))
 
       expect(PaperPosition.where(paper_wallet: wallet, paper_product_snapshot: product).count).to eq(1)
     end
@@ -406,7 +406,7 @@ RSpec.describe PaperTrading::PositionManager do
       manager = described_class.new(wallet: wallet, product: product)
 
       expect do
-        manager.apply_fill(fill: fill_for(order, 1, "4"), fill_side: "buy", quantity: 1, price: BigDecimal("4"), leverage: 1)
+        manager.apply_fill(fill: fill_for(order, 1, "4"), fill_side: "buy", quantity: 1, price: BigDecimal("4"))
       end.to raise_error(PaperTrading::PositionManager::InsufficientMarginError, /bankrupt/)
     end
 
