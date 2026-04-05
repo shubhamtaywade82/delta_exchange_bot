@@ -3,6 +3,7 @@ Rails.application.routes.draw do
 
   namespace :api do
     get "dashboard" => "dashboard#index"
+    post "dashboard/close_position" => "dashboard#close_position"
     post "dashboard/paper_risk_override" => "dashboard#paper_risk_override"
     resources :positions, only: [:index]
     resources :trades, only: [:index]

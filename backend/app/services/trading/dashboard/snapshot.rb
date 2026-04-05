@@ -367,6 +367,7 @@ module Trading
         opened_at = position.entry_time || position.created_at
 
         {
+          id: position.id,
           symbol: position.symbol,
           side: position.side,
           size: position.size,

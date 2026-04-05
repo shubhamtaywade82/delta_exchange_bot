@@ -8,9 +8,9 @@ RSpec.describe Bot::Config do
 
     it "builds runtime config from DB settings and symbol configs" do
       SymbolConfig.create!(symbol: "BTCUSD", leverage: 12, enabled: true)
-      Setting.create!(key: "bot.mode", value: "testnet", value_type: "string")
-      Setting.create!(key: "strategy.supertrend.atr_period", value: "11", value_type: "integer")
-      Setting.create!(key: "strategy.adx.threshold", value: "23", value_type: "float")
+      Setting.find_or_initialize_by(key: "bot.mode").update!(value: "testnet", value_type: "string")
+      Setting.find_or_initialize_by(key: "strategy.supertrend.atr_period").update!(value: "11", value_type: "integer")
+      Setting.find_or_initialize_by(key: "strategy.adx.threshold").update!(value: "23", value_type: "float")
 
       config = described_class.load
 
@@ -22,7 +22,7 @@ RSpec.describe Bot::Config do
 
     it "batch-loads settings in one query instead of per-key find_by" do
       SymbolConfig.create!(symbol: "BTCUSD", leverage: 12, enabled: true)
-      Setting.create!(key: "bot.mode", value: "dry_run", value_type: "string")
+      Setting.find_or_initialize_by(key: "bot.mode").update!(value: "dry_run", value_type: "string")
 
       expect(Setting).to receive(:where).with(key: described_class::RUNTIME_SETTING_KEYS).once.and_call_original
       expect(Setting).not_to receive(:find_by)
@@ -37,6 +37,7 @@ RSpec.describe Bot::Config do
     end
 
     it "merges notifications.telegram from bot.yml when no DB row overrides" do
+      Setting.where("key LIKE ?", "notifications.telegram.%").delete_all
       allow(described_class).to receive(:bot_yml_hash).and_return(
         "notifications" => {
           "telegram" => {
@@ -65,7 +66,7 @@ RSpec.describe Bot::Config do
         }
       )
 
-      Setting.create!(key: "notifications.telegram.bot_token", value: "db-token", value_type: "string")
+      Setting.find_or_initialize_by(key: "notifications.telegram.bot_token").update!(value: "db-token", value_type: "string")
 
       raw = described_class.runtime_raw
       expect(raw.dig("notifications", "telegram", "bot_token")).to eq("db-token")
@@ -74,8 +75,9 @@ RSpec.describe Bot::Config do
 
     it "fills blank telegram bot_token from TELEGRAM_BOT_TOKEN after DB merge" do
       allow(described_class).to receive(:bot_yml_hash).and_return(nil)
-      Setting.create!(key: "notifications.telegram.enabled", value: "true", value_type: "boolean")
-      Setting.create!(key: "notifications.telegram.chat_id", value: "1", value_type: "string")
+      Setting.find_or_initialize_by(key: "notifications.telegram.enabled").update!(value: "true", value_type: "boolean")
+      Setting.find_or_initialize_by(key: "notifications.telegram.chat_id").update!(value: "1", value_type: "string")
+      Setting.find_or_initialize_by(key: "notifications.telegram.bot_token").update!(value: "", value_type: "string")
 
       old = ENV["TELEGRAM_BOT_TOKEN"]
       begin

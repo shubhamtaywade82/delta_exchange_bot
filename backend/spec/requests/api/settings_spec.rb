@@ -2,21 +2,22 @@ require "rails_helper"
 
 RSpec.describe "Api::Settings", type: :request do
   it "lists persisted settings" do
-    Setting.create!(key: "risk.max_concurrent_positions", value: "7", value_type: "integer")
+    Setting.find_or_initialize_by(key: "risk.max_concurrent_positions").update!(value: "7", value_type: "integer")
 
     get "/api/settings"
 
     expect(response).to have_http_status(:ok)
     payload = JSON.parse(response.body)
     expect(payload).to be_an(Array)
-    expect(payload.first["key"]).to eq("risk.max_concurrent_positions")
-    expect(payload.first["typed_value"]).to eq(7)
-    expect(payload.first["ui"]).to be_a(Hash)
-    expect(payload.first["ui"]["widget"]).to eq("number")
+    row = payload.find { |r| r["key"] == "risk.max_concurrent_positions" }
+    expect(row).to be_present
+    expect(row["typed_value"]).to eq(7)
+    expect(row["ui"]).to be_a(Hash)
+    expect(row["ui"]["widget"]).to eq("number")
   end
 
   it "updates setting and refreshes runtime cache" do
-    Setting.create!(key: "learning.epsilon", value: "0.05", value_type: "float")
+    Setting.find_or_initialize_by(key: "learning.epsilon").update!(value: "0.05", value_type: "float")
     allow(Trading::RuntimeConfig).to receive(:refresh!).and_call_original
     allow(Trading::Learning::AiRefinementTrigger).to receive(:call)
 
@@ -34,7 +35,8 @@ RSpec.describe "Api::Settings", type: :request do
   end
 
   it "lists recent setting changes" do
-    setting = Setting.create!(key: "risk.max_margin_utilization", value: "0.40", value_type: "float")
+    setting = Setting.find_or_initialize_by(key: "risk.max_margin_utilization")
+    setting.update!(value: "0.40", value_type: "float")
     setting.setting_changes.create!(
       key: setting.key,
       old_value: "0.35",

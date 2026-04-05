@@ -93,6 +93,7 @@ interface PositionExitSummary {
 }
 
 interface ApiPosition {
+  id?: number;
   symbol: string;
   side?: string;
   entry_price?: number | null;
@@ -320,6 +321,8 @@ const DashboardPage: React.FC = () => {
   );
   const [tradesCalendarDays, setTradesCalendarDays] = useState<string[]>([]);
   const [positionsMeta, setPositionsMeta] = useState<{ as_of_date: string; count: number } | null>(null);
+  const [closingPositionId, setClosingPositionId] = useState<number | null>(null);
+  const [closePositionError, setClosePositionError] = useState<string | null>(null);
 
   const todayLocal = useCallback(() => localCalendarDateISO(), []);
 
@@ -353,6 +356,32 @@ const DashboardPage: React.FC = () => {
       console.error("Dashboard sync error", err);
     }
   }, [tradeHistoryDay, todayLocal]);
+
+  const closePosition = useCallback(
+    async (positionId: number, symbol: string) => {
+      const ok = window.confirm(
+        `Manually close ${symbol} at the server mark price?\n\nPaper: synthetic exit. Live: market order + close in DB.`
+      );
+      if (!ok) return;
+      setClosePositionError(null);
+      setClosingPositionId(positionId);
+      try {
+        await axios.post('/api/dashboard/close_position', { position_id: positionId });
+        await fetchEverything();
+      } catch (e: unknown) {
+        const msg =
+          axios.isAxiosError(e) && e.response?.data && typeof e.response.data === 'object' && e.response.data !== null && 'error' in e.response.data
+            ? String((e.response.data as { error?: string }).error ?? e.message)
+            : e instanceof Error
+              ? e.message
+              : 'close_failed';
+        setClosePositionError(msg);
+      } finally {
+        setClosingPositionId(null);
+      }
+    },
+    [fetchEverything]
+  );
 
   useEffect(() => {
     const initial = setTimeout(() => void fetchEverything(), 0);
@@ -508,6 +537,7 @@ const DashboardPage: React.FC = () => {
                     >
                       EXIT_NEAR
                     </th>
+                    <th>ACTION</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -515,7 +545,7 @@ const DashboardPage: React.FC = () => {
                     const prox = exitProximityCell(p);
                     const ltpForTip = liveLtp[p.symbol] ?? p.mark_price ?? undefined;
                     return (
-                    <tr key={i} className="row-hover">
+                    <tr key={p.id ?? i} className="row-hover">
                       <td className="font-bold">{p.symbol}</td>
                       <td>
                         <span className={`side-badge ${sideBadgeMeta(p.side).css}`}>
@@ -560,11 +590,25 @@ const DashboardPage: React.FC = () => {
                       >
                         {prox.text}
                       </td>
+                      <td>
+                        {p.id != null ? (
+                          <button
+                            type="button"
+                            className="btn-close-position"
+                            disabled={closingPositionId === p.id}
+                            onClick={() => void closePosition(p.id!, p.symbol)}
+                          >
+                            {closingPositionId === p.id ? 'CLOSING…' : 'CLOSE'}
+                          </button>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
+                      </td>
                     </tr>
                     );
                   }) : (
                     <tr>
-                      <td colSpan={10} className="text-center text-muted table-empty-row">
+                      <td colSpan={11} className="text-center text-muted table-empty-row">
                         NO_ACTIVE_POSITIONS_FOUND
                       </td>
                     </tr>
@@ -572,6 +616,11 @@ const DashboardPage: React.FC = () => {
                 </tbody>
               </table>
             </div>
+            {closePositionError && (
+              <p className="dashboard-close-error neg" role="alert">
+                {closePositionError}
+              </p>
+            )}
           </section>
 
           <section id="signal-activity" className="terminal-section signal-activity-section">

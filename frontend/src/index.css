@@ -1709,6 +1709,35 @@ td {
   cursor: pointer;
 }
 
+.btn-close-position {
+  background: rgba(242, 54, 69, 0.12);
+  color: #f87171;
+  border: 1px solid rgba(242, 54, 69, 0.35);
+  padding: 0.3rem 0.55rem;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.btn-close-position:hover:not(:disabled) {
+  background: rgba(242, 54, 69, 0.22);
+  border-color: rgba(242, 54, 69, 0.55);
+}
+
+.btn-close-position:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dashboard-close-error {
+  margin: 0.5rem 1.25rem 0;
+  font-size: 0.72rem;
+}
+
 /* Analysis dashboard — full horizontal space; inner grids use responsive columns */
 .terminal-main {
   flex: 1;

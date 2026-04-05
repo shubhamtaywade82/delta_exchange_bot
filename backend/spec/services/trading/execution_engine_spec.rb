@@ -21,7 +21,9 @@ RSpec.describe Trading::ExecutionEngine do
     allow(Trading::PaperTrading).to receive(:enabled?).and_return(false)
     allow(client).to receive(:place_order).and_return({ id: "EX-001", status: "open" })
     allow(Trading::RiskManager).to receive(:validate!).and_return(true)
-    allow(Rails.cache).to receive(:fetch).with(/product_id:/, anything).and_return(84)
+    allow(Rails.cache).to receive(:fetch).and_wrap_original do |method, key, *args, **kwargs, &block|
+      key.to_s.match?(/product_id:/) ? 84 : method.call(key, *args, **kwargs, &block)
+    end
     allow(Trading::Risk::PositionLotSize).to receive(:from_exchange).and_return(0.001)
     allow(Trading::Risk::PositionLotSize).to receive(:multiplier_for).and_return(0.001)
     allow(Trading::RuntimeConfig).to receive(:fetch_float).and_call_original
@@ -110,6 +112,7 @@ RSpec.describe Trading::ExecutionEngine do
     allow(Trading::PaperTrading).to receive(:enabled?).and_return(true)
     allow(Trading::RiskManager).to receive(:validate!).and_return(true)
     allow(Trading::PaperRiskOverride).to receive(:active?).and_return(true)
+    allow(Trading::FillProcessor).to receive(:process)
     expect(Trading::Risk::PortfolioGuard).not_to receive(:call)
     described_class.execute(signal, session: session, client: client)
   end

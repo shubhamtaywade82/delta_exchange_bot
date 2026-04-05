@@ -77,8 +77,9 @@ RSpec.describe PaperTrading::ProcessSignalJob do
       max_loss_inr: BigDecimal("50_000"),
       status: "pending")
 
+    # One contract margin (~426 INR @ ~85 USD/INR) stays under 1000 INR; three exceeds it → affordability reject.
     allow(PaperTrading::RrPositionSizer).to receive(:compute!).and_return(
-      PaperTrading::RrPositionSizer::Result.new(final_contracts: 1)
+      PaperTrading::RrPositionSizer::Result.new(final_contracts: 3)
     )
 
     described_class.perform_now(pricey_signal.id)

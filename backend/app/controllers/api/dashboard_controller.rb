@@ -11,6 +11,16 @@ class Api::DashboardController < ApplicationController
   end
 
   # Paper mode only: toggle `paper.ignore_entry_risk_gates` so RiskManager + PortfolioGuard gates are skipped for testing.
+  def close_position
+    position_id = params.permit(:position_id)[:position_id]
+    result = Trading::Dashboard::ManualPositionClose.call(position_id: position_id)
+    if result.ok
+      render json: { status: "closed", position_id: result.position_id }
+    else
+      render json: { error: result.error }, status: result.http_status
+    end
+  end
+
   def paper_risk_override
     unless Trading::PaperTrading.enabled?
       render json: { error: "paper_risk_override_requires_paper_mode" }, status: :unprocessable_content

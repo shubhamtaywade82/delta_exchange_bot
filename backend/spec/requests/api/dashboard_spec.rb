@@ -393,4 +393,88 @@ RSpec.describe "Api::Dashboard", type: :request do
       expect(JSON.parse(response.body)["paper_risk_override_active"]).to be false
     end
   end
+
+  describe "POST /api/dashboard/close_position" do
+    around do |example|
+      previous_cache = Rails.cache
+      Rails.cache = ActiveSupport::Cache::MemoryStore.new
+      example.run
+    ensure
+      Rails.cache = previous_cache
+    end
+
+    def stub_close_side_effects
+      allow(Trading::Learning::OnlineUpdater).to receive(:update!)
+      allow(Trading::Learning::Metrics).to receive(:update)
+      allow(Trading::Learning::AiRefinementTrigger).to receive(:call)
+      allow(Trading::TelegramNotifications).to receive(:deliver).and_yield(double.as_null_object)
+    end
+
+    it "closes an active paper position when it belongs to the running session portfolio" do
+      allow(Trading::PaperTrading).to receive(:enabled?).and_return(true)
+      stub_close_side_effects
+      portfolio = create(:portfolio)
+      create(:trading_session, portfolio: portfolio, status: "running")
+      position = create(
+        :position,
+        portfolio: portfolio,
+        symbol: "BTCUSD",
+        side: "short",
+        status: "filled",
+        size: 1.0,
+        entry_price: 66_577.94,
+        leverage: 10,
+        contract_value: 1.0,
+        strategy: "multi_timeframe",
+        regime: "trending",
+        entry_time: 30.minutes.ago,
+        pnl_usd: nil,
+        pnl_inr: nil
+      )
+      allow(Trading::MarkPrice).to receive(:for_synthetic_exit).and_return(BigDecimal("50000"))
+
+      post "/api/dashboard/close_position", params: { position_id: position.id }, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)["status"]).to eq("closed")
+      expect(position.reload.status).to eq("closed")
+    end
+
+    it "returns forbidden when paper mode and position is on another portfolio" do
+      allow(Trading::PaperTrading).to receive(:enabled?).and_return(true)
+      stub_close_side_effects
+      mine = create(:portfolio)
+      other = create(:portfolio)
+      create(:trading_session, portfolio: mine, status: "running")
+      position = create(
+        :position,
+        portfolio: other,
+        symbol: "ETHUSD",
+        side: "long",
+        status: "filled",
+        size: 1.0,
+        entry_price: 3000,
+        leverage: 10,
+        contract_value: 1.0,
+        strategy: "multi_timeframe",
+        regime: "trending",
+        entry_time: 30.minutes.ago
+      )
+      allow(Trading::MarkPrice).to receive(:for_synthetic_exit).and_return(BigDecimal("3000"))
+
+      post "/api/dashboard/close_position", params: { position_id: position.id }, as: :json
+
+      expect(response).to have_http_status(:forbidden)
+      expect(position.reload.status).to eq("filled")
+    end
+
+    it "returns not_found for an unknown position id" do
+      allow(Trading::PaperTrading).to receive(:enabled?).and_return(true)
+      create(:trading_session, status: "running")
+
+      post "/api/dashboard/close_position", params: { position_id: 9_999_999 }, as: :json
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
 end

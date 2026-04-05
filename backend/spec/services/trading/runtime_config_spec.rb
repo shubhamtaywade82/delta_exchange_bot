@@ -3,7 +3,7 @@ require "rails_helper"
 RSpec.describe Trading::RuntimeConfig do
   describe ".fetch_float" do
     it "reads value from Setting with casting" do
-      Setting.create!(key: "learning.epsilon", value: "0.12", value_type: "float")
+      Setting.find_or_initialize_by(key: "learning.epsilon").update!(value: "0.12", value_type: "float")
 
       value = described_class.fetch_float("learning.epsilon", default: 0.05)
 
@@ -11,7 +11,7 @@ RSpec.describe Trading::RuntimeConfig do
     end
 
     it "falls back to default for invalid value" do
-      Setting.create!(key: "learning.epsilon", value: "bad", value_type: "string")
+      Setting.find_or_initialize_by(key: "learning.epsilon").update!(value: "bad", value_type: "string")
 
       value = described_class.fetch_float("learning.epsilon", default: 0.05)
 
@@ -37,7 +37,8 @@ RSpec.describe Trading::RuntimeConfig do
 
   describe ".refresh!" do
     it "evicts cached key and re-reads latest setting" do
-      setting = Setting.create!(key: "runner.strategy_interval_seconds", value: "60", value_type: "integer")
+      setting = Setting.find_or_initialize_by(key: "runner.strategy_interval_seconds")
+      setting.update!(value: "60", value_type: "integer")
       expect(described_class.fetch_integer("runner.strategy_interval_seconds", default: 30)).to eq(60)
 
       setting.update!(value: "15")
