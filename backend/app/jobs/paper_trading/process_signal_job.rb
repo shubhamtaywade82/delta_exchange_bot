@@ -25,12 +25,12 @@ module PaperTrading
       ltp = resolve_live_price(signal, product)
       return unless ltp
 
-      qty = compute_fill_quantity(signal, wallet, product, ltp)
-      return unless qty
+      quantity = compute_fill_quantity(signal, wallet, product)
+      return unless quantity
 
-      reject_unaffordable_fill!(signal, wallet, product, qty, ltp) && return
+      reject_unaffordable_fill!(signal, wallet, product, quantity, ltp) && return
 
-      execute_fill(signal, wallet, product, qty, ltp)
+      execute_matching_pipeline(signal:, wallet:, product:, quantity:, ltp:)
     end
 
     def resolve_live_price(signal, product)
@@ -39,10 +39,11 @@ module PaperTrading
         signal.update!(status: "rejected", rejection_reason: "no live price for product")
         return nil
       end
+
       ltp.to_d
     end
 
-    def compute_fill_quantity(signal, wallet, product, _ltp)
+    def compute_fill_quantity(signal, wallet, product)
       leverage = effective_leverage(product)
       result = PaperTrading::RrPositionSizer.compute!(
         max_loss_inr: signal.max_loss_inr,
@@ -61,10 +62,10 @@ module PaperTrading
       nil
     end
 
-    def reject_unaffordable_fill!(signal, wallet, product, qty, ltp)
+    def reject_unaffordable_fill!(signal, wallet, product, quantity, ltp)
       leverage = effective_leverage(product)
       required_margin_inr = PositionManager.estimate_margin_inr(
-        quantity: qty,
+        quantity: quantity,
         price: ltp,
         contract_value: product.contract_value,
         leverage: leverage,
@@ -76,44 +77,93 @@ module PaperTrading
       true
     end
 
-    def execute_fill(signal, wallet, product, qty, ltp)
-      leverage = effective_leverage(product)
+    def execute_matching_pipeline(signal:, wallet:, product:, quantity:, ltp:)
       fill_error_message = nil
+      order = nil
 
       ActiveRecord::Base.transaction(requires_new: true) do
-        order = PaperOrder.create!(
-          paper_wallet: wallet,
-          paper_product_snapshot: product,
-          paper_trading_signal: signal,
-          side: normalize_order_side(signal.side),
-          order_type: "market_order",
-          size: qty,
-          state: "filled",
-          client_order_id: "paper-signal-#{signal.id}",
-          avg_fill_price: ltp
-        )
-
-        FillApplicator.new(order: order, wallet: wallet, product: product).call(
-          price: ltp,
-          size: qty,
-          leverage: leverage
-        )
+        order = create_market_order(signal:, wallet:, product:, quantity:, ltp:)
+        fills = matching_engine_for(ltp:).execute(order)
+        apply_fills!(fills:, order:, wallet:, product:)
         signal.update!(status: "filled")
       rescue PaperTrading::PositionManager::InsufficientMarginError => e
         fill_error_message = e.message
         raise ActiveRecord::Rollback
       end
 
-      if fill_error_message.present?
-        signal.update!(status: "rejected", rejection_reason: fill_error_message)
-        return
-      end
+      return finalize_rejected_signal(signal, fill_error_message) if fill_error_message.present?
 
-      RepriceWalletJob.perform_later(wallet.id) if signal.reload.filled?
+      if order&.paper_fills&.exists?
+        RepriceWalletJob.perform_later(wallet.id)
+      else
+        signal.update!(status: "rejected", rejection_reason: "insufficient order book liquidity")
+      end
+    end
+
+    def create_market_order(signal:, wallet:, product:, quantity:, ltp:)
+      PaperOrder.create!(
+        paper_wallet: wallet,
+        paper_product_snapshot: product,
+        paper_trading_signal: signal,
+        side: normalize_order_side(signal.side),
+        order_type: "market_order",
+        size: quantity,
+        state: "filled",
+        client_order_id: "paper-signal-#{signal.id}",
+        avg_fill_price: ltp
+      )
+    end
+
+    def matching_engine_for(ltp:)
+      order_book = OrderBook.new
+      order_book.update!(build_order_book_snapshot(ltp:))
+      MatchingEngine.new(order_book: order_book)
+    end
+
+    def build_order_book_snapshot(ltp:)
+      depth = market_depth
+      spread_multiplier = spread_bps / 10_000.to_d / 2.to_d
+      ask = ltp * (1 + spread_multiplier)
+      bid = ltp * (1 - spread_multiplier)
+
+      {
+        bids: [ [ bid, depth ] ],
+        asks: [ [ ask, depth ] ]
+      }
+    end
+
+    def apply_fills!(fills:, order:, wallet:, product:)
+      fills.each do |fill|
+        adjusted_price = ImpactModel.apply(
+          price: fill[:price],
+          quantity: fill[:qty],
+          depth: market_depth,
+          side: order.side
+        )
+
+        FillApplier.new(order: order, wallet: wallet, product: product).call(
+          price: adjusted_price,
+          size: fill[:qty],
+          leverage: effective_leverage(product),
+          liquidity: fill[:liquidity]
+        )
+      end
+    end
+
+    def spread_bps
+      ENV.fetch("PAPER_SPREAD_BPS", "0").to_d
+    end
+
+    def market_depth
+      ENV.fetch("PAPER_MARKET_DEPTH", "100").to_d
+    end
+
+    def finalize_rejected_signal(signal, message)
+      signal.update!(status: "rejected", rejection_reason: message)
     end
 
     def effective_leverage(product)
-      [product.default_leverage.to_i, 1].max
+      [ product.default_leverage.to_i, 1 ].max
     end
 
     def normalize_order_side(side)

@@ -38,6 +38,23 @@ RSpec.describe PaperTrading::ProcessSignalJob do
     expect { described_class.perform_now(signal.id) }.not_to change(PaperFill, :count)
   end
 
+
+  it "partially fills when configured market depth is below requested quantity" do
+    clear_enqueued_jobs
+
+    allow(ENV).to receive(:fetch).and_call_original
+    allow(ENV).to receive(:fetch).with("PAPER_MARKET_DEPTH", "100").and_return("1")
+    allow(PaperTrading::RrPositionSizer).to receive(:compute!).and_return(
+      PaperTrading::RrPositionSizer::Result.new(final_contracts: 3)
+    )
+
+    described_class.perform_now(signal.id)
+
+    order = PaperOrder.find_by!(paper_trading_signal: signal)
+    expect(order.paper_fills.sum(:size)).to eq(1)
+    expect(signal.reload.status).to eq("filled")
+  end
+
   it "rejects when quantity below 1" do
     tiny_wallet = create(:paper_wallet, seed_inr: BigDecimal("1"))
     bad = create(:paper_trading_signal,
@@ -112,7 +129,7 @@ RSpec.describe PaperTrading::ProcessSignalJob do
   it "marks signal rejected when fill application raises insufficient margin in transaction" do
     clear_enqueued_jobs
 
-    allow_any_instance_of(PaperTrading::FillApplicator).to receive(:call)
+    allow_any_instance_of(PaperTrading::FillApplier).to receive(:call)
       .and_raise(PaperTrading::PositionManager::InsufficientMarginError, "late affordability failure")
 
     described_class.perform_now(signal.id)

@@ -18,10 +18,12 @@ This document describes how **paper** execution diverges from **live** in the ca
 
 ## Structural differences (paper cannot match live without further work)
 
+**Two paper execution paths:** (1) **Rails portfolio / runner** — `Trading::ExecutionEngine` + `FillProcessor` + `Portfolio`. (2) **Paper wallet** — `PaperTradingSignal` → [`ProcessSignalJob`](../app/jobs/paper_trading/process_signal_job.rb) + `PaperWallet` / `PositionManager`. Realism improvements (order book, partials, impact, fees, funding) apply mainly to **(2)** unless wired into **(1)**.
+
 | Area | Live behavior | Paper behavior | Primary references |
 |------|----------------|----------------|-------------------|
-| **Order placement** | REST `place_order` to Delta | **Skipped** — `ExecutionEngine` calls `simulate_fill_at_market` | [`execution_engine.rb`](../app/services/trading/execution_engine.rb) |
-| **Fill realism** | Exchange partials, rejects, latency, slippage | **Immediate** synthetic fill at resolved price (`synthetic_fill_price`), fee `0` in simulate path | [`execution_engine.rb`](../app/services/trading/execution_engine.rb) |
+| **Order placement** | REST `place_order` to Delta | **(1)** Skipped — `ExecutionEngine` calls `simulate_fill_at_market`. **(2)** No REST; synthetic `PaperOrder` + matching pipeline in `ProcessSignalJob`. | [`execution_engine.rb`](../app/services/trading/execution_engine.rb), [`process_signal_job.rb`](../app/jobs/paper_trading/process_signal_job.rb) |
+| **Fill realism** | Exchange partials, rejects, latency, slippage | **(1)** Still **single** immediate fill at `synthetic_fill_price`, **fee `0`**. **(2)** `OrderBook` + [`MatchingEngine`](../app/services/paper_trading/matching_engine.rb) (partial taker fills), [`ImpactModel`](../app/services/paper_trading/impact_model.rb), [`FillApplier`](../app/services/paper_trading/fill_applier.rb) (spread / slippage / impact bps, optional exec delay), [`Fees`](../app/services/paper_trading/fees.rb); signal can be **rejected** (no LTP, margin, **insufficient book liquidity**). Depth/spread from LTP + env (synthetic one-level book until WS depth is integrated). | [`execution_engine.rb`](../app/services/trading/execution_engine.rb), `paper_trading/*` as above |
 | **Private WebSocket** | Can subscribe to private streams (orders/fills) | **`subscribe_private_streams: false`** — avoids mixing exchange account state with simulated positions; allows running with empty API keys | [`paper_trading.rb`](../app/services/trading/paper_trading.rb), [`market_data/ws_client.rb`](../app/services/trading/market_data/ws_client.rb) |
 | **Runner bootstrap** | `Bootstrap::SyncPositions` + `SyncOrders` from exchange | **Skipped** — log line “Paper mode — skipping exchange position/order bootstrap” | [`runner.rb`](../app/services/trading/runner.rb) |
 | **Delta client credentials** | `ENV.fetch` API key/secret | **Optional** keys — `RunnerClient` allows blank credentials in paper | [`runner_client.rb`](../app/services/trading/runner_client.rb) |
@@ -32,6 +34,7 @@ This document describes how **paper** execution diverges from **live** in the ca
 | **Paper wallet Redis** | N/A (live uses broker wallet paths) | **`FillProcessor`** → **`PaperWalletPublisher.publish!`** after fills | [`fill_processor.rb`](../app/services/trading/fill_processor.rb), [`paper_wallet_publisher.rb`](../app/services/trading/paper_wallet_publisher.rb) |
 | **Dashboard manual close** | Delta client required | Paper: portfolio must match running session; **no** live client | [`dashboard/manual_position_close.rb`](../app/services/trading/dashboard/manual_position_close.rb) |
 | **Live margin affordability guard** | Optional extra gate via `RISK_LIVE_MARGIN_AFFORDABILITY_ENABLED` | Uses **paper branch** in `ExecutionEngine` (`MarginAffordability` when override off); not the same env flag path | [`execution_engine.rb`](../app/services/trading/execution_engine.rb) |
+| **Funding / carry** | Exchange-accrued funding | **Paper wallet:** [`FundingApplier`](../app/services/paper_trading/funding_applier.rb) + [`ApplyFundingJob`](../app/jobs/paper_trading/apply_funding_job.rb) (`PAPER_FUNDING_INTERVAL_SECONDS`, etc. in [`.env.example`](../.env.example)). **Rails `Portfolio` path:** not the same ledger — still exchange-funding-shaped only if you add an equivalent job. | `paper_trading/funding_applier.rb` |
 
 ---
 

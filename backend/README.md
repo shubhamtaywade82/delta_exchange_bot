@@ -105,6 +105,24 @@ Loop:
 - **Scheduled digest:** `Trading::AnalysisDashboardRefreshJob` (Solid Queue — `config/recurring.yml`, default every **15 minutes**) builds multi-timeframe SMC + optional **`AiSmcSynthesizer`** (Ollama) output and writes **`delta:analysis:dashboard`** (`Trading::Analysis::Store`). When Telegram **`notifications.telegram.events.analysis`** is enabled, `DigestTelegramPush` sends the digest **`ai_insight`** in chunks.
 - **Event alerts:** While **`Trading::Runner`** is running, **`tick_received`** invokes **`Trading::Analysis::SmcAlertTickSubscriber`** → **`SmcAlertEvaluator`**, which compares confluence flags on rising edges, throttles via Redis, and can attach the same style of Ollama summary once per burst (`DigestBuilder.ai_synthesis_from_loaded_candles`). Full behavior, env vars, and Redis keys: [`docs/smc_event_alerts.md`](docs/smc_event_alerts.md).
 
+## Paper INR wallet flow (SOLUSD contract math)
+
+- Paper fills are applied by `PaperTrading::FillApplier`, which writes fills then delegates to `PositionManager` for margin lock/release, fee booking, and realized PnL booking.
+- Margin/fees/PnL are computed from USD contract math first (`contracts × contract_value × price`) and converted to INR via `Finance::UsdInrRate` (default 85 in tests).
+- Fee rate uses GST-inclusive effective taker fee by default: `taker_fee_rate × 1.18`; override with product metadata key `gst_multiplier` when needed.
+- `PaperTrading::PositionAggregator` exposes position read-model fields: side, contracts, average entry, contract value, and used margin in INR.
+- Paper fills persist `filled_qty`, `closed_qty`, and `margin_inr_per_fill`; partial exits release margin FIFO from those fill rows for exchange-parity accounting.
+- Fill fees are liquidity-aware: pass `maker` or `taker` on fill apply and fee math uses the matching base rate before GST multiplier.
+- A maintenance-margin guard liquidates product positions when `equity_inr` falls below the configured maintenance requirement.
+- Liquidation guard requires a mark price from `Rails.cache["mark_price:<symbol>"]` (no LTP fallback), then computes deterministic liquidation quantity from maintenance deficit, then liquidates contracts in bounded steps until maintenance safety is restored; each step books liquidation fee + realized PnL.
+- Ledger rows are idempotent per fill via `external_ref` + `sub_type` to avoid duplicate margin/fee/pnl rows under retries/concurrency.
+- Liquidation skips when mark payload is stale (`PAPER_MARK_MAX_AGE_SECONDS`) and clamps wallet equity floor at zero after forced liquidation to prevent negative equity snapshots.
+- `PaperTrading::FundingApplier` applies periodic funding cashflows (`sub_type: funding`) from mark notional and long/short direction into the INR ledger. Funding supports interval prorating via `last_funding_at` and `PAPER_FUNDING_INTERVAL_SECONDS`.
+- `FillApplier` now supports execution realism hooks: bid/ask spread fills, non-linear impact slippage (`(size/depth)^1.5`) with cap, optional volatility spread factor, and optional delay distribution (`PAPER_EXEC_DELAY_MS` + `PAPER_EXEC_DELAY_STD_MS`).
+- `PaperTrading::MatchingEngine` now executes market/limit paper orders against an in-memory order book, supports partial fills across levels, and forwards each fill through `FillApplier` (no direct wallet mutation in matching layer).
+- `PaperTrading::ImpactModel` applies non-linear execution impact (`PAPER_IMPACT_COEFF`, `PAPER_MARKET_DEPTH`) before each matched fill is applied.
+- Position opens/adds enforce a paper notional cap (`PAPER_MAX_LEVERAGE_CAP`) and wallets that hit zero equity are marked `bankrupt` (trading disabled).
+
 ## Paper trading: session capital vs portfolio balance
 
 - **`trading_sessions.capital` is USD.** Risk sizing (`Trading::OrderBuilder`, position sizer) treats it as a US dollar notional budget and converts to INR for risk math via `Finance::UsdInrRate`. Do not store INR in this column expecting USD behavior.
