@@ -14,7 +14,8 @@
 
 Target: paper should mirror **live execution, risk, and wallet semantics** except where strategy thresholds are intentionally relaxed (confidence/score gates live in config/strategy code — see [`backend/docs/paper_vs_live_parity.md`](backend/docs/paper_vs_live_parity.md)). Items below are **gaps or optional enhancements**; not all are P0.
 
-- [ ] **Simulated fills:** model **fees**, **slippage**, optional **reject** / partial-fill probability; configurable strictness (vs current instant `simulate_fill_at_market` in `Trading::ExecutionEngine`).
+- [x] **Simulated fills (paper wallet / `PaperTradingSignal`):** orderbook matching, partial fills, impact, slippage/spread/delay env knobs, fee rates via `PaperTrading::Fees`, rejections — see `ProcessSignalJob`, `MatchingEngine`, `FillApplier`, `CHANGELOG`.
+- [ ] **Simulated fills (Rails runner / `ProcessGeneratedSignalJob` → `ExecutionEngine`):** still **single** `simulate_fill_at_market` with **fee 0** — parity with live (and with paper-wallet path) not done here.
 - [ ] **Near-liquidation watchdog in paper:** optional flag to run `Trading::NearLiquidationExit` in paper with production thresholds (currently hard-disabled when `PaperTrading.enabled?`).
 - [ ] **Runner bootstrap in paper:** optional read-only **exchange reconcile** (positions / open orders / wallet snapshot) for drift detection vs DB-only paper state (today bootstrap is skipped in paper in `Trading::Runner#bootstrap!`).
 - [ ] **Private WS streams in paper:** document trade-off (today `Trading::PaperTrading.subscribe_private_ws_streams?` is false); optional **read-only** private subscription mode for fill/reject testing without placing orders.
