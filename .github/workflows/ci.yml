@@ -30,10 +30,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      # setup-ruby treats "foo/bar" as engine/version; read file so we pass a plain version string.
+      - name: Read Ruby version
+        id: ruby_version
+        run: echo "version=$(tr -d '\r\n' < "${GITHUB_WORKSPACE}/backend/.ruby-version")" >> "$GITHUB_OUTPUT"
+
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: backend/.ruby-version
+          ruby-version: ${{ steps.ruby_version.outputs.version }}
           bundler-cache: true
           working-directory: backend
 
@@ -66,13 +71,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Read Ruby version
+        id: ruby_version
+        run: echo "version=$(tr -d '\r\n' < "${GITHUB_WORKSPACE}/backend/.ruby-version")" >> "$GITHUB_OUTPUT"
+
       - name: Gitleaks
         uses: gitleaks/gitleaks-action@v2
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: backend/.ruby-version
+          ruby-version: ${{ steps.ruby_version.outputs.version }}
           bundler-cache: true
           working-directory: backend
 
@@ -182,10 +191,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Read Ruby version
+        id: ruby_version
+        run: echo "version=$(tr -d '\r\n' < "${GITHUB_WORKSPACE}/backend/.ruby-version")" >> "$GITHUB_OUTPUT"
+
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: backend/.ruby-version
+          ruby-version: ${{ steps.ruby_version.outputs.version }}
           bundler-cache: true
           working-directory: backend
 
