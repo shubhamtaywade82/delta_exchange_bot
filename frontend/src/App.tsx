@@ -24,8 +24,8 @@ function trendArrow(trend?: string) {
   return trend === 'rising' || trend === 'bullish' ? '▲' : '▼';
 }
 
-/** Between DELTA_BOT header and derivatives (OI/FUND). Uses strategy symbol list + dashboard ltp:SYMBOL cache. */
-function WatchlistLtpBar({
+/** Single strip: LTP + open interest + funding per watchlist symbol (strategy list + dashboard cache). */
+function WatchlistMarketStrip({
   symbols,
   ltpBySymbol,
 }: {
@@ -36,18 +36,19 @@ function WatchlistLtpBar({
 
   return (
     <div
-      className="ticker-bar watchlist-ltp-bar"
+      className="ticker-bar watchlist-market-strip"
       role="region"
-      aria-label="Watchlist last traded prices"
+      aria-label="Watchlist last traded price, open interest, and funding"
     >
-      <div className="watchlist-ltp-bar-heading">LTP</div>
-      <div className="watchlist-ltp-bar-items">
+      <div className="watchlist-market-strip-heading">MARKET</div>
+      <div className="watchlist-market-strip-items">
         {symbols.map(s => {
           const ltp = ltpBySymbol[s.symbol];
           const hasLtp = ltp != null && Number.isFinite(ltp) && ltp > 0;
+          const symShort = s.symbol.replace('USDT', '').replace('USD', '');
           return (
-            <div key={s.symbol} className="ticker-item">
-              <span className="symbol">{s.symbol.replace('USDT', '').replace('USD', '')}</span>
+            <div key={s.symbol} className="ticker-item watchlist-market-item">
+              <span className="symbol">{symShort}</span>
               <FlashValue
                 value={ltp}
                 className="price"
@@ -55,32 +56,24 @@ function WatchlistLtpBar({
               >
                 {hasLtp ? formatUsd(ltp) : '--'}
               </FlashValue>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function DerivativesStrip({ symbols }: { symbols: SymbolState[] }) {
-  return (
-    <div className="derivatives-marquee">
-      <div className="marquee-content">
-        {symbols.map(s => (
-          <div key={s.symbol} className="deriv-item-modern">
-            <span className="symbol-tag">{s.symbol.replace('USDT', '').replace('USD', '')}</span>
-            <div className="metrics">
-              <span className={s.oi_trend === 'rising' ? 'pos' : 'neg'}>
-                OI {s.oi_usd ? `$${formatDisplayDecimal(s.oi_usd / 1_000_000)}M` : '--'} {trendArrow(s.oi_trend)}
+              <span className="watchlist-metric-sep" aria-hidden />
+              <span
+                className={`watchlist-metric oi ${s.oi_trend === 'rising' ? 'pos' : 'neg'}`}
+                title="Open interest notional + trend from strategy feed"
+              >
+                OI {s.oi_usd ? `$${formatDisplayDecimal(s.oi_usd / 1_000_000)}M` : '--'}
+                {s.oi_trend ? ` ${trendArrow(s.oi_trend)}` : ''}
               </span>
-              <span className="sep"></span>
-              <span className={(s.funding_rate ?? 0) > 0.0005 ? 'neg' : 'pos'}>
+              <span className="watchlist-metric-sep" aria-hidden />
+              <span
+                className={`watchlist-metric fund ${(s.funding_rate ?? 0) > 0.0005 ? 'neg' : 'pos'}`}
+                title="Perpetual funding rate (8h-style fraction from ticker)"
+              >
                 FUND {formatDisplayDecimal((s.funding_rate ?? 0) * 100)}%
               </span>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -146,8 +139,7 @@ const App: React.FC = () => {
           executionHealth={shellExecutionHealth}
           operationalState={shellOperationalState}
         />
-        <WatchlistLtpBar symbols={symbols} ltpBySymbol={mergedLtpBySymbol} />
-        <DerivativesStrip symbols={symbols} />
+        <WatchlistMarketStrip symbols={symbols} ltpBySymbol={mergedLtpBySymbol} />
         <Navbar />
         <Routes>
           <Route path="/" element={<DashboardPage />} />

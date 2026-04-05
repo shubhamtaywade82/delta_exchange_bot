@@ -22,10 +22,11 @@
 
   --header-height: 72px;
   --footer-height: 48px;
-  --ticker-height: 42px;
-  --fund-height: 32px;
+  /* Single combined strip: LTP + OI + funding (see WatchlistMarketStrip in App.tsx). */
+  --ticker-height: 46px;
+  --fund-height: 0px;
   --navbar-height: 48px;
-  --sticky-top: calc(var(--header-height) + var(--ticker-height) + var(--fund-height) + var(--navbar-height) + 1.5rem);
+  --sticky-top: calc(var(--header-height) + var(--ticker-height) + var(--navbar-height) + 1.5rem);
 
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-header: 'Space Grotesk', var(--font-sans);
@@ -116,14 +117,14 @@ body::after {
   100% { color: var(--text-main); text-shadow: none; }
 }
 
-/* LTP row: directly under DELTA_BOT, above OI/FUND strip; aligns with strategy watchlist symbols */
-.watchlist-ltp-bar {
+/* One strip under DELTA_BOT: LTP + OI + funding per symbol */
+.watchlist-market-strip {
   gap: 0;
   padding-left: 1rem;
   padding-right: 1rem;
 }
 
-.watchlist-ltp-bar-heading {
+.watchlist-market-strip-heading {
   flex-shrink: 0;
   align-self: stretch;
   display: flex;
@@ -138,13 +139,32 @@ body::after {
   font-family: var(--font-mono);
 }
 
-.watchlist-ltp-bar-items {
+.watchlist-market-strip-items {
   display: flex;
   align-items: center;
-  gap: 2.5rem;
+  gap: 2rem;
   flex: 1;
   min-width: 0;
   overflow-x: auto;
+}
+
+.watchlist-market-item {
+  gap: 0.45rem;
+  padding-right: 0.25rem;
+}
+
+.watchlist-metric {
+  font-size: 0.68rem;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.watchlist-metric-sep {
+  width: 1px;
+  height: 12px;
+  background: var(--border-glass);
+  flex-shrink: 0;
+  opacity: 0.85;
 }
 
 /* Navbar */
@@ -156,7 +176,7 @@ body::after {
   display: flex;
   align-items: center;
   position: sticky;
-  top: calc(var(--header-height) + var(--ticker-height) + var(--fund-height));
+  top: calc(var(--header-height) + var(--ticker-height));
   z-index: 101;
 }
 
@@ -951,59 +971,6 @@ td {
 .analysis-block-reason .label {
   color: var(--danger);
   font-weight: bold;
-}
-
-/* Derivatives Marquee */
-.derivatives-marquee {
-  background: #000;
-  border-bottom: 1px solid var(--border-glass);
-  overflow: hidden;
-  height: var(--fund-height);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: sticky;
-  top: calc(var(--header-height) + var(--ticker-height));
-  z-index: 100;
-}
-
-.marquee-content {
-  display: flex;
-  gap: 4rem;
-  padding: 0 2rem;
-  justify-content: center;
-}
-
-@keyframes marquee {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
-}
-
-.deriv-item-modern {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  white-space: nowrap;
-}
-
-.deriv-item-modern .symbol-tag {
-  font-size: 0.65rem;
-  font-weight: 800;
-  color: var(--text-muted);
-}
-
-.deriv-item-modern .metrics {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.7rem;
-  font-family: var(--font-mono);
-}
-
-.deriv-item-modern .sep {
-  width: 1px;
-  height: 10px;
-  background: var(--border-glass);
 }
 
 /* Strategy Specifics */
