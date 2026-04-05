@@ -31,9 +31,22 @@ Ledger-style paper wallets use **`Portfolio`** (balance, available, used margin)
 - **`Rails.cache`** — e.g. `ltp:*`, `mark:*`, adaptive entry context; fed by the market/runner path. Dashboard and risk code may fall back to entry price when cache is cold.
 - **Redis** — coordination and snapshots, including:
   - `delta:wallet:state` — wallet payload for live reads and paper publisher writes (`Bot::Account::CapitalManager::REDIS_KEY`)
+  - `delta:analysis:dashboard` — JSON blob for the analysis API / UI (`Trading::Analysis::Store`)
+  - `delta:smc_alert:*` — SMC Telegram **event** alert state, per-symbol gate, and per-alert cooldowns (`Trading::Analysis::SmcAlertEvaluator`)
   - Locks, idempotency, execution incidents, optional live position mirrors
 
 These are **not** replacements for Postgres for durable positions/trades; they are working set or published snapshots.
+
+### SMC event alerts (optional env)
+
+When the runner is up and Telegram analysis events are enabled, tick-throttled evaluation may use:
+
+- `ANALYSIS_SMC_ALERT_ENABLED` — set `false` to disable the event path (default: on).
+- `ANALYSIS_SMC_ALERT_INCLUDE_AI` — set `false` to skip Ollama on event bursts (default: on).
+- `ANALYSIS_SMC_ALERT_MIN_INTERVAL_S` — minimum seconds between eval attempts per symbol (default `15`).
+- `ANALYSIS_SMC_ALERT_COOLDOWN_S` — per-alert cooldown after a send (default `300`).
+
+See [`smc_event_alerts.md`](smc_event_alerts.md).
 
 ## Dashboard wallet snapshot
 
@@ -63,6 +76,8 @@ flowchart TD
     RC[Rails_cache_ltp_mark_context]
     RWallet[Redis_delta_wallet_state]
     RLocks[Redis_locks_idempotency_incidents]
+    RAD[Redis_delta_analysis_dashboard]
+    RSMC[Redis_delta_smc_alert_star]
   end
   D --> Y --> S --> SC --> TE --> BM
 ```

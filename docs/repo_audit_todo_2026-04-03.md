@@ -2,6 +2,8 @@
 
 This checklist captures repo-wide issues found during a broad static review of both the root bot code and the Rails backend/frontend stack.
 
+> **Status:** Historical snapshot. For merged completion notes, see **[`TODO.md`](../TODO.md)**. Canonical runtime docs: **[`README.md`](../README.md)**, **[`backend/README.md`](../backend/README.md)**, **[`AGENTS.md`](../AGENTS.md)**.
+
 ## 0) Scope and assumptions
 - Reviewed repository structure, key runtime entrypoints, service layer, test layout, and docs/config consistency.
 - Focused on dead-code candidates, design drift, risk/safety gaps, and testing/code-review blind spots.

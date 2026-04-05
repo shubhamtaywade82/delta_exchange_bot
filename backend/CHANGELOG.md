@@ -1,6 +1,10 @@
 # Changelog
 
 ## 2026-04-05
+
+- **SMC event Telegram alerts:** `Trading::Analysis::SmcAlertEvaluator` + `SmcAlertTickSubscriber`, wired from `Trading::Runner` on `tick_received`. Rising-edge detection vs Redis `delta:smc_alert:prev:*`, throttle gate and per-alert cooldowns, optional Ollama summary once per burst via `DigestBuilder.ai_synthesis_from_loaded_candles` / `AiSmcSynthesizer`. Telegram: `notify_smc_confluence_event` + chunked `AI (SMC EVENT)` follow-up. Env: `ANALYSIS_SMC_ALERT_*` (see `backend/docs/smc_event_alerts.md`).
+- **Confluence schema:** `pdh_sweep` / `pdl_sweep` exposed on `SmcConfluence::BarResult` and in `SmcConfluenceMtf` alignment; digest rounding updated.
+- **Fresh start:** `delta:smc_alert:*` included in Redis `SCAN` cleanup.
 - Tightened paper broker margin flow: margin reservations now validate available INR before open/add/flip using `contract_value` + leverage math at fill time.
 - `PaperTrading::ProcessSignalJob` now rejects unaffordable signals using fill-price affordability and only enqueues `RepriceWalletJob` after successful fills.
 - Extended `Trading::ExecutionEngine` affordability checks to live mode too, so oversized entries are rejected before order persistence when portfolio cash snapshot cannot fund incremental margin.

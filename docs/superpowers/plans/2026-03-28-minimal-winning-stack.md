@@ -1,5 +1,7 @@
 # Minimal Winning Stack Implementation Plan
 
+> **Repo status (2026-04):** Historical plan; not a live roadmap. Current architecture and features are described in **`README.md`**, **`backend/README.md`**, and **`AGENTS.md`**.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Extend the bot with RSI, VWAP, BOS, Order Block indicators + CVD/OI/Funding Rate data stores and a three-gate filter pipeline, replacing the noisy 5M Supertrend flip with a precision BOS+OB entry trigger.

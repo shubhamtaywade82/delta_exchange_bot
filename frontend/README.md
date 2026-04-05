@@ -1,4 +1,12 @@
-# React + TypeScript + Vite
+# Delta bot dashboard (React + TypeScript + Vite)
+
+Operator UI for the **Delta Exchange bot** monorepo: talks to the **Rails API** under [`backend/`](../backend/README.md). Local full stack: run [`./bin/dev`](../README.md#development-all-services) from the **repository root** (starts API, bot, Solid Queue worker, and this Vite dev server).
+
+---
+
+## Vite template notes
+
+The sections below come from the default Vite + React template (HMR, ESLint). Prefer the root [`README.md`](../README.md) for trading-specific setup.
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 

@@ -19,6 +19,10 @@ Runs on pull requests and pushes to `main`:
 
 If the variable is empty, CI fails fast with an error (same as the previous backend-local workflow).
 
+### Path gem `ollama-client`
+
+`backend/Gemfile` may reference `gem "ollama-client", path: "../../../ai-workspace/ollama-client"`. On CI or clones **without** that sibling directory, `bundle install` fails unless you vendor the gem, change the path, or use a published version. Local dev: clone or symlink **`ai-workspace/ollama-client`** next to the repo as implied by the path, or adjust the `Gemfile` for your layout.
+
 ### Branch protection
 
 Recommended required checks:

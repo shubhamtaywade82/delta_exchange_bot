@@ -1,3 +1,7 @@
+> **Document status (2026-04):** This file is a **historical / advisory narrative** from an earlier review. The **canonical** description of the current stack is **[`README.md`](README.md)**, **[`backend/README.md`](backend/README.md)**, **[`AGENTS.md`](AGENTS.md)**, and **[`backend/docs/architecture_diagrams.md`](backend/docs/architecture_diagrams.md)**. Much of the "missing" runtime below now exists in Rails as `Trading::Runner`, `Trading::MarketData::WsClient`, `Trading::FillProcessor`, `Trading::ExecutionEngine`, portfolio-scoped risk, Solid Queue jobs, etc. Keep this file for background only; do not treat every "gap" as current fact.
+
+---
+
 Direct Decision
 
 Your current system (bot + frontend + delta_exchange gem) is well beyond a toy bot—it’s structured, test-backed, and modular.

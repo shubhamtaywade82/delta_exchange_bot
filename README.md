@@ -4,16 +4,19 @@ Automated multi-timeframe futures trading bot for Delta Exchange India.
 
 ## Strategy
 
-- **1H** Supertrend → trend bias
-- **15M** Supertrend + ADX → direction confirmation
-- **5M** Supertrend flip → entry trigger
-- **Trailing stop** (percentage-based) → exit
+Configured under `strategy.timeframes` in `backend/config/bot.yml` (overridable via DB `Setting` keys where supported). **Defaults in repo YAML:**
+
+- **4h** Supertrend → trend bias  
+- **1h** Supertrend + ADX → direction confirmation  
+- **5m** Supertrend → entry trigger  
+
+**Trailing stop** (percentage-based) → exit. Adaptive / ML Supertrend variant and other strategy keys live in the same YAML section.
 
 ## Architecture (canonical runtime)
 
 The **supported runtime is the Rails app under `backend/`**. It owns persistence, the JSON API, Solid Queue jobs, and `Trading::Runner` (strategy evaluation, `Trading::ExecutionEngine`, paper fills, risk).
 
-For visual maps of runtime interactions and per-component internal data flows, see [`backend/docs/architecture_diagrams.md`](backend/docs/architecture_diagrams.md).
+For visual maps of runtime interactions and per-component internal data flows, see [`backend/docs/architecture_diagrams.md`](backend/docs/architecture_diagrams.md). SMC / analysis Telegram behavior (scheduled digest vs tick-driven event alerts) is summarized in [`backend/docs/smc_event_alerts.md`](backend/docs/smc_event_alerts.md).
 
 - **Repo root `lib/bot/`** duplicates older standalone code paths. Prefer `backend/app/services/bot/` and `backend/app/services/trading/`. Root **`bin/run` delegates to `backend/bin/bot`** so you do not need two different entry commands.
 - **Process model:** Run **at most one** long-lived trading loop per machine (or per Redis lock namespace) for a given session. `Trading::EventBus` is global in-process state; `Trading::Runner#start` resets subscribers on exit. A WebSocket consumer runs in a **background thread** inside the same process as the runner; size the Active Record pool accordingly if you add more threads.
@@ -54,8 +57,10 @@ Edit `config/bot.yml` (or `backend/config/bot.yml` — keep them aligned if you 
    - `notifications.telegram.enabled` = `true` (boolean)
    - `notifications.telegram.bot_token` = token from [@BotFather](https://t.me/BotFather)
    - `notifications.telegram.chat_id` = your chat or group id (numeric string)
-2. Optionally toggle event keys: `notifications.telegram.events.signals`, `.positions`, `.trailing`, `.status`, `.errors`, `.analysis` (booleans). When **`.analysis`** is `true`, **`Trading::AnalysisDashboardRefreshJob`** sends each symbol’s Ollama **`ai_insight`** to Telegram in chunked messages (long summaries split under Telegram’s 4096-character limit).
-3. Restart **`bin/bot`** (or the process running `Trading::Runner`) so config is picked up. For digest pushes, ensure **`bin/jobs`** (Solid Queue) is running so the refresh job executes.
+2. Optionally toggle event keys: `notifications.telegram.events.signals`, `.positions`, `.trailing`, `.status`, `.errors`, `.analysis` (booleans). When **`.analysis`** is `true`:
+   - **`Trading::AnalysisDashboardRefreshJob`** (Solid Queue, default **every 15 minutes** in `backend/config/recurring.yml`) sends each symbol’s Ollama **`ai_insight`** to Telegram in chunked messages.
+   - **`Trading::Analysis::SmcAlertEvaluator`** (wired from **`Trading::Runner`** on each **`tick_received`**) can send **SMC confluence event** messages (rising-edge alerts + optional Ollama follow-up). Details, Redis keys, and env toggles: [`backend/docs/smc_event_alerts.md`](backend/docs/smc_event_alerts.md).
+3. Restart **`bin/bot`** (or the process running `Trading::Runner`) so config is picked up. For digest pushes, ensure **`bin/jobs`** (Solid Queue) is running so the refresh job executes. **SMC event alerts require the runner process** (they are not triggered by the digest job alone).
 
 **Precedence:** a value in Settings overrides `bot.yml`. If `bot_token` or `chat_id` is still blank after that, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` from the environment are applied. If `TELEGRAM_ENABLED` is set in the environment, it forces `notifications.telegram.enabled` on or off (`1` / `true` / `yes` / `on` vs anything else).
 
@@ -110,7 +115,9 @@ CONFIRM=YES bin/rails trading:fresh_start
 
 It does **not** delete `trading_sessions`, `portfolios`, `settings`, `symbol_configs`, or Solid Queue data.
 
-### Redis scope (`Redis.current`, typically DB `0` from `REDIS_URL`)
+### Redis scope (`Redis.current`, logical DB from `REDIS_URL`)
+
+The Redis **database index** is the path segment in `REDIS_URL` (e.g. `redis://localhost:6379/1` → DB `1`). Keep this aligned with `config.cache_store` in each environment so app Redis keys and Rails cache see the same logical DB where intended (`backend/config/initializers/redis.rb`).
 
 Exact keys removed:
 
@@ -122,6 +129,7 @@ Exact keys removed:
 - `delta_bot_lock:*` (session locks)
 - `delta:order:*` (signal idempotency keys)
 - `delta_bot:prices:*` (legacy price store prefix)
+- `delta:smc_alert:*` (SMC Telegram event-alert state, gate, and cooldown keys)
 
 ### Cache scope (`Rails.cache`)
 

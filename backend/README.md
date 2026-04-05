@@ -100,6 +100,11 @@ Loop:
 - Learning pauses automatically when portfolio PnL breaches `LEARNING_FREEZE_PNL`.
 - `AiRefinementJob` runs off-path (every 10 minutes) to suggest parameter bounds; execution remains deterministic.
 
+## Analysis dashboard and SMC Telegram
+
+- **Scheduled digest:** `Trading::AnalysisDashboardRefreshJob` (Solid Queue — `config/recurring.yml`, default every **15 minutes**) builds multi-timeframe SMC + optional **`AiSmcSynthesizer`** (Ollama) output and writes **`delta:analysis:dashboard`** (`Trading::Analysis::Store`). When Telegram **`notifications.telegram.events.analysis`** is enabled, `DigestTelegramPush` sends the digest **`ai_insight`** in chunks.
+- **Event alerts:** While **`Trading::Runner`** is running, **`tick_received`** invokes **`Trading::Analysis::SmcAlertTickSubscriber`** → **`SmcAlertEvaluator`**, which compares confluence flags on rising edges, throttles via Redis, and can attach the same style of Ollama summary once per burst (`DigestBuilder.ai_synthesis_from_loaded_candles`). Full behavior, env vars, and Redis keys: [`docs/smc_event_alerts.md`](docs/smc_event_alerts.md).
+
 ## Paper trading: session capital vs portfolio balance
 
 - **`trading_sessions.capital` is USD.** Risk sizing (`Trading::OrderBuilder`, position sizer) treats it as a US dollar notional budget and converts to INR for risk math via `Finance::UsdInrRate`. Do not store INR in this column expecting USD behavior.

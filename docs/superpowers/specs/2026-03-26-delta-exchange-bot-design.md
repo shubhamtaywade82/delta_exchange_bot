@@ -1,7 +1,7 @@
 # Delta Exchange Futures Trading Bot — Design Spec
 
 **Date:** 2026-03-26
-**Status:** Approved
+**Status:** Approved (historical — see root **`README.md`** / **`backend/README.md`** for the current system)
 
 ---
 

@@ -2,7 +2,7 @@
 
 This document maps how the current Rails runtime works end-to-end and how each major component behaves internally.
 
-> Canonical runtime: `backend/` Rails app (`Trading::Runner`, JSON API, Sidekiq/Solid Queue jobs, Postgres, Redis cache/locks, and Delta exchange integration).
+> Canonical runtime: `backend/` Rails app (`Trading::Runner`, JSON API, **Solid Queue** jobs, Postgres, Redis + `Rails.cache`, Delta REST/WebSocket, optional Telegram).
 
 ## 1) High-level system architecture (all components + interactions)
 
@@ -122,7 +122,7 @@ flowchart TD
     C --> D[register_event_handlers!]
     D --> D1[order_filled -> Handlers::OrderHandler]
     D --> D2[position_updated -> Handlers::PositionHandler]
-    D --> D3[tick_received -> Handlers::TrailingStopHandler]
+    D --> D3[tick_received -> TrailingStopHandler + SmcAlertTickSubscriber]
 
     D --> E[start_ws! thread]
     E --> F[run_loop every 5s]
@@ -222,6 +222,8 @@ flowchart TB
       LTP[ltp:* / mark:*]
       ADAPT[adaptive:entry_context:*]
       RUNTIME[runtime_config:*]
+      ADASH[delta:analysis:dashboard]
+      SMCAL[delta:smc_alert:*]
     end
 
     API[API controllers] --> TS
@@ -249,3 +251,4 @@ flowchart TB
 - `Trading::EventBus` is in-process global state; `Runner#start` calls `EventBus.reset!` on shutdown.
 - In paper mode, fills are generated locally by `ExecutionEngine#simulate_fill_at_market`; in live mode, fills/orders arrive from exchange WS streams and are reconciled by `FillProcessor`/`OrderUpdater`.
 - Strategy pass cadence and WS ingestion throughput are runtime-tunable (`runner.strategy_interval_seconds`, `WS_INGESTION_WORKERS`, queue size, etc.).
+- **SMC Telegram event alerts** (`SmcAlertTickSubscriber` on `tick_received`) run only inside the same OS process as `Trading::Runner`; the 15m **`AnalysisDashboardRefreshJob`** is independent and writes `delta:analysis:dashboard`. See [`smc_event_alerts.md`](smc_event_alerts.md).

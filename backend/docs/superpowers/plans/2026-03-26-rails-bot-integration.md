@@ -1,5 +1,7 @@
 # Delta Exchange Rails Bot Integration Plan
 
+> **Repo status (2026-04):** Much of this migration has landed; **`lib/bot/`** remains legacy alongside **`backend/app/services/bot/`**. Treat this document as **background**, not a checklist of remaining work. Current entrypoints and diagrams: **`README.md`**, **`backend/README.md`**, **`backend/docs/architecture_diagrams.md`**.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Migrate the standalone Delta Exchange trading bot into the Rails backend as a production-grade, event-driven, stateful trading system with Redis-locked singleton workers, order lifecycle tracking, and real-time frontend control.

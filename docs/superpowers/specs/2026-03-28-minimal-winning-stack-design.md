@@ -1,7 +1,7 @@
 # Minimal Winning Stack — Design Spec
 
 **Date:** 2026-03-28
-**Status:** Approved
+**Status:** Approved (historical design — current stack: **`backend/`** Rails runtime)
 **Branch:** rails
 
 ---

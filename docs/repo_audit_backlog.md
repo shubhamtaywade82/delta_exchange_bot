@@ -2,6 +2,8 @@
 
 Point-in-time whole-repo audit captured on 2026-04-03.
 
+**After this date:** several **P0** items called out here were fixed (emergency shutdown and risk scoping, order fill semantics, `NearLiquidationExit` naming, hot-path error policy baseline, etc.). Track what landed in **[`TODO.md`](../TODO.md)** (Done section) before treating a finding as still open.
+
 Purpose:
 
 - keep a durable backlog of cross-repo issues

@@ -1,7 +1,7 @@
 # Delta Exchange Bot — consolidated TODO
 
 **Sources:** [docs/repo_audit_backlog.md](docs/repo_audit_backlog.md), [docs/repo_audit_todo_2026-04-03.md](docs/repo_audit_todo_2026-04-03.md)  
-**Last merged:** 2026-04-03
+**Last merged:** 2026-04-05
 
 ---
 
@@ -24,6 +24,7 @@ Work through items **in priority order**, one PR-sized slice at a time.
 - [x] **P1 — `Position.active_for_portfolio`:** named scope on `Position`; portfolio-scoped queries updated in `PositionsRepository`, `EmergencyShutdown`, `RiskManager`, `PaperWalletPublisher`, `MarginAffordability`. `NearLiquidationExit` keeps a global scan (commented) and uses `find_each` for batching. Spec: `position_spec` (`active_for_portfolio`). Remaining `Position.active` uses are intentional cross-session/portfolio scans or dashboard-wide views — migrate in a later pass if needed.
 - [x] **P0 — Hot-path error policy (baseline):** `HotPathErrorPolicy.log_swallowed_error` — `log_level:`, `report_handled:` (default `true`; `false` when error is re-raised). Wired in `EmergencyShutdown`, `OrderHandler`, `FillProcessor`, `PositionHandler`, `EventBus`, `FundingMonitor`, `MarketData::WsClient`, `ExecutionEngine`, `Bootstrap::Sync*`, **`MarketData::OhlcvFetcher`** (`fetch`, warn + `[]`), **`Analysis::HistoricalCandles`** (`fetch`, warn + `[]`; `Timeout::Error` includes `reason=timeout`), **`Delta::ProductCatalogSync`** (`sync_one!`), **`Analysis::AiSmcSynthesizer`** (`call`; `reason` `ruby_timeout` / `ollama_timeout` / `error`), **`Analysis::Store`** (`read`; invalid JSON / Redis errors), **`PaperWalletPublisher`**, **`PositionReconciliation`**, **`TelegramNotifications`**, **`Runner`** (`execute_signal` re-raises without duplicate report — `ExecutionEngine` + outer `run_strategy` cover execution failures), **`SessionResumer`**, **`PaperTrading`** (`enabled?` when `Bot::Config.load` fails), **`FreshStart`** (Redis DEL / SCAN / `Rails.cache.clear` soft-fail paths), **`RuntimeConfig`** (`fetch_boolean` only), **`Strategy::AiEdgeModel`** (`call`), **`Learning::AiRefinementTrigger`** (`call`). Specs: `ohlcv_fetcher_spec`, `historical_candles_spec`, `product_catalog_sync_spec`, `ai_smc_synthesizer_spec`, `analysis/store_spec`, `paper_wallet_publisher_spec`, `position_reconciliation_spec`, `telegram_notifications_spec`, `runner_signal_persistence_spec`, `session_resumer_spec`, `paper_trading_spec`, `fresh_start_spec`, `runtime_config_spec`, `strategy/ai_edge_model_spec`, `learning/ai_refinement_trigger_spec`. **Follow-up:** remaining swallowed `rescue` in dashboard / risk helpers; per-flow reconcile vs fail-loud.
 - [x] **P0 — BigDecimal (risk + execution prices slice):** `RiskManager` denominator / margin / daily-loss (prior). **`ExecutionEngine`** `resolve_intended_fill_price` and `synthetic_fill_price` use `decimal_price` (`.to_d`, blank → `0`, invalid → `0`) instead of `to_f` for LTP/order price. **Follow-up:** remaining execution / PnL `to_f`; UI serialization boundaries.
+- [x] **P3 — SMC Telegram event alerts + docs:** `Trading::Analysis::SmcAlertEvaluator` / `SmcAlertTickSubscriber` on `tick_received` (runner); rising-edge confluence alerts, Redis gate/cooldown/state, optional Ollama via `DigestBuilder.ai_synthesis_from_loaded_candles`; `pdh_sweep`/`pdl_sweep` on `BarResult`; `FreshStart` clears `delta:smc_alert:*`. Documented in [`backend/docs/smc_event_alerts.md`](backend/docs/smc_event_alerts.md); root `README` / `backend/README` / `configuration_precedence` / `architecture_diagrams` updated.
 
 ---
 
@@ -162,7 +163,7 @@ Turn the 2026-04-03 repo audits into one prioritized, checkable backlog for the 
 
 - [ ] **`.github/README.md`:** clarify required vs optional path gems (`DELTA_EXCHANGE_REPOSITORY`, `ollama-client` availability vs CI reality).
 
-- [ ] **Canonical architecture:** one diagram + sequence (root README + backend README) — todo.
+- [ ] **Canonical architecture:** one diagram + sequence (root README + backend README) — partial: see [`backend/docs/architecture_diagrams.md`](backend/docs/architecture_diagrams.md) and [`backend/docs/smc_event_alerts.md`](backend/docs/smc_event_alerts.md); keep README cross-links in sync when runtime changes.
 
 - [ ] **CI code-health gate (todo):** optional fail on new untested services, thresholds, unsafe patterns in execution-risk namespaces.
 

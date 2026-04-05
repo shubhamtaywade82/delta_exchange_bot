@@ -1,5 +1,7 @@
 # Delta Exchange Futures Trading Bot Implementation Plan
 
+> **Repo status (2026-04):** Superseded as an implementation target. The **canonical** runtime is the Rails app under **`backend/`** (`Trading::Runner`, Solid Queue, etc.). See root **`README.md`**, **`backend/README.md`**, and **`backend/docs/architecture_diagrams.md`**. This file is kept for historical planning context.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a standalone Ruby automated futures trading bot for Delta Exchange India that trades multiple crypto perpetuals using a multi-timeframe Supertrend + ADX strategy with percentage-based trailing stop exits.
