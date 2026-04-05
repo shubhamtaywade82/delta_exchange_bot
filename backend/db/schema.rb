@@ -127,10 +127,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_05_233000) do
     t.decimal "risk_unit_per_contract", precision: 36, scale: 18, null: false
     t.string "side", null: false
     t.datetime "updated_at", null: false
+    t.index ["last_funding_at"], name: "index_paper_positions_on_last_funding_at"
     t.index ["paper_product_snapshot_id"], name: "index_paper_positions_on_paper_product_snapshot_id"
     t.index ["paper_wallet_id", "paper_product_snapshot_id"], name: "index_paper_positions_on_wallet_and_product", unique: true
     t.index ["paper_wallet_id"], name: "index_paper_positions_on_paper_wallet_id"
-    t.index ["last_funding_at"], name: "index_paper_positions_on_last_funding_at"
   end
 
   create_table "paper_product_snapshots", force: :cascade do |t|
