@@ -11,7 +11,13 @@ module Trading
       return true if execution_mode == "paper"
 
       Bot::Config.load.dry_run?
-    rescue StandardError
+    rescue StandardError => e
+      HotPathErrorPolicy.log_swallowed_error(
+        component: "PaperTrading",
+        operation: "enabled?",
+        error:     e,
+        log_level: :warn
+      )
       !Rails.env.production?
     end
 

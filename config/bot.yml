@@ -4,7 +4,7 @@ strategy:
   supertrend:
     variant: classic # classic | ml_adaptive — see backend/config/bot.yml
     atr_period: 10
-    multiplier: 3.0
+    multiplier: 2.2
   adx:
     period: 14
     threshold: 20
@@ -27,8 +27,8 @@ strategy:
     oi_poll_interval: 30
   trailing_stop_pct: 1.5
   timeframes:
-    trend: "1h"
-    confirm: "15m"
+    trend: "4h"
+    confirm: "1h"
     entry: "5m"
   candles_lookback: 100
   min_candles_required: 30
@@ -59,6 +59,7 @@ notifications:
       positions: true
       trailing: true
       errors: true
+      analysis: false
   daily_summary_time: "18:00"
 
 logging:

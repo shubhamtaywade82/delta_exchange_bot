@@ -3,6 +3,42 @@
 require "rails_helper"
 
 RSpec.describe Trading::Analysis::AiSmcSynthesizer do
+  describe ".call" do
+    let(:payload) { { "chart" => { "symbol" => "BTCUSD" } } }
+
+    it "returns nil and reports when Ollama raises" do
+      allow(Ai::OllamaClient).to receive(:ask).and_raise(StandardError, "model not found")
+      allow(Rails.logger).to receive(:warn)
+      allow(Rails.error).to receive(:report)
+
+      expect(described_class.call(symbol: "BTCUSD", payload: payload)).to be_nil
+
+      expect(Rails.error).to have_received(:report).with(
+        an_object_having_attributes(message: "model not found"),
+        handled: true,
+        context: hash_including(
+          "component" => "Analysis::AiSmcSynthesizer",
+          "symbol" => "BTCUSD",
+          "reason" => "error"
+        )
+      )
+    end
+
+    it "returns nil and reports on Ruby Timeout::Error" do
+      allow(Ai::OllamaClient).to receive(:ask) { raise Timeout::Error, "execution expired" }
+      allow(Rails.logger).to receive(:warn)
+      allow(Rails.error).to receive(:report)
+
+      expect(described_class.call(symbol: "ETHUSD", payload: payload)).to be_nil
+
+      expect(Rails.error).to have_received(:report).with(
+        instance_of(Timeout::Error),
+        handled: true,
+        context: hash_including("reason" => "ruby_timeout", "symbol" => "ETHUSD")
+      )
+    end
+  end
+
   describe ".parse_model_json" do
     it "parses JSON wrapped in a markdown fence" do
       raw = <<~TEXT

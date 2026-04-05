@@ -5,6 +5,7 @@ module Finance
   # risk per contract at stop = stop_distance × contract_value (quote impact per contract).
   # +risk_percent+ is a fraction (0.015 = 1.5%). All money amounts are USD.
   # Optional margin cap: floor((margin_wallet_usd × fee_buffer × leverage) / (contract_value × entry_price)).
+  # Non-positive spendable wallet (passed margin_wallet_usd, else balance_usd) caps margin contracts at zero.
   class PositionSizer
     DEFAULT_FEE_BUFFER = 0.98
     NO_MARGIN_CAP = (1 << 30)
@@ -93,7 +94,7 @@ module Finance
         return NO_MARGIN_CAP if lev <= 0
 
         wallet = margin_wallet_usd.nil? ? balance_usd : margin_wallet_usd.to_f
-        return NO_MARGIN_CAP unless wallet.positive?
+        return 0 unless wallet.positive?
 
         num = wallet * fee_buffer * lev
         den = contract_value * entry_price

@@ -98,8 +98,8 @@ module Api
       {
         mode: "unknown", symbols: %w[BTCUSD ETHUSD SOLUSD],
         strategy: {
-          timeframe_trend: "1h", timeframe_confirm: "15m", timeframe_entry: "1m",
-          atr_period: 10, multiplier: 3.0, supertrend_variant: "ml_adaptive",
+          timeframe_trend: "4h", timeframe_confirm: "1h", timeframe_entry: "5m",
+          atr_period: 10, multiplier: 2.2, supertrend_variant: "ml_adaptive",
           supertrend_indicator_type: nil,
           ml_adaptive: {
             training_period: 100, highvol: 0.75, midvol: 0.5, lowvol: 0.25

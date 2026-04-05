@@ -13,7 +13,13 @@ module Trading
           PositionRecalculator.call(position.id)
           count += 1
         rescue StandardError => e
-          Rails.logger.error("[PositionReconciliation] recalc failed id=#{position.id}: #{e.class}: #{e.message}")
+          HotPathErrorPolicy.log_swallowed_error(
+            component: "PositionReconciliation",
+            operation: "recalculate_all_active!",
+            error:     e,
+            log_level: :error,
+            position_id: position.id
+          )
         end
         Rails.logger.info("[PositionReconciliation] recalculated #{count} active positions")
         count

@@ -321,7 +321,7 @@ RSpec.describe "Api::Dashboard", type: :request do
     context "when API_ACCESS_TOKEN is configured" do
       around do |example|
         previous = ENV["API_ACCESS_TOKEN"]
-        ENV["API_ACCESS_TOKEN"] = "test-dashboard-secret"
+        ENV["API_ACCESS_TOKEN"] = "dashboard_spec_ci_bearer_stub"
         example.run
       ensure
         ENV["API_ACCESS_TOKEN"] = previous
@@ -333,12 +333,12 @@ RSpec.describe "Api::Dashboard", type: :request do
       end
 
       it "returns ok with Authorization Bearer token" do
-        get "/api/dashboard", headers: { "Authorization" => "Bearer test-dashboard-secret" }
+        get "/api/dashboard", headers: { "Authorization" => "Bearer dashboard_spec_ci_bearer_stub" }
         expect(response).to have_http_status(:ok)
       end
 
       it "returns ok with X-Api-Token header" do
-        get "/api/dashboard", headers: { "X-Api-Token" => "test-dashboard-secret" }
+        get "/api/dashboard", headers: { "X-Api-Token" => "dashboard_spec_ci_bearer_stub" }
         expect(response).to have_http_status(:ok)
       end
     end

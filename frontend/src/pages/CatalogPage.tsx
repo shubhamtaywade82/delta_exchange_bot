@@ -4,7 +4,7 @@ import {
   Search, 
   Loader2
 } from 'lucide-react';
-import ProductDetailPanel from '../components/ProductDetailPanel';
+import ProductDetailPanel, { type AiAnalysis } from '../components/ProductDetailPanel';
 
 interface Product {
   id: number;
@@ -21,6 +21,14 @@ interface SymbolConfig {
   product_id?: number;
 }
 
+/** Row shape from GET /api/analysis_dashboard `symbols` array (subset for catalog). */
+interface AnalysisSymbolRow {
+  symbol: string;
+  error?: string | null;
+  updated_at?: string;
+  ai_smc?: AiAnalysis | null;
+}
+
 const CATEGORIES = ['ALL', 'BTC', 'ETH', 'USDT'];
 
 const CatalogPage: React.FC = () => {
@@ -31,7 +39,7 @@ const CatalogPage: React.FC = () => {
   const [category, setCategory] = useState('ALL');
   const [leverages, setLeverages] = useState<Record<string, number>>({});
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
-  const [analysisData, setAnalysisData] = useState<any[]>([]);
+  const [analysisData, setAnalysisData] = useState<AnalysisSymbolRow[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -211,7 +219,7 @@ const CatalogPage: React.FC = () => {
             symbol={product.symbol}
             description={product.description}
             contractType={product.contract_type}
-            analysis={analysis?.ai_smc}
+            analysis={analysis?.ai_smc ?? undefined}
             updatedAt={analysis?.updated_at}
             onClose={() => setSelectedSymbol(null)}
           />

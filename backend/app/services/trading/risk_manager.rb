@@ -24,8 +24,12 @@ module Trading
 
     private
 
+    def active_positions_for_session_portfolio
+      Position.active_for_portfolio(@session.portfolio_id)
+    end
+
     def check_max_concurrent_positions!
-      count = Position.active.count
+      count = active_positions_for_session_portfolio.count
       max_positions = Trading::RuntimeConfig.fetch_integer("risk.max_concurrent_positions", default: 5, env_key: "RISK_MAX_CONCURRENT_POSITIONS")
       raise RiskError, "max concurrent positions reached (#{count}/#{max_positions})" if count >= max_positions
     end
@@ -39,35 +43,43 @@ module Trading
 
       sym = @signal.symbol.to_s
       side_keys = Trading::ExecutionEngine.active_position_side_keys(@signal.side)
-      exists = Position.active.where(portfolio_id: @session.portfolio_id, symbol: sym, side: side_keys).exists?
+      exists = active_positions_for_session_portfolio.where(symbol: sym, side: side_keys).exists?
       return unless exists
 
       raise RiskError, "pyramiding disabled: active #{sym} position already open for this side"
     end
 
     def check_margin_utilization!
-      total_margin = Position.active.sum(:margin).to_f
+      total_margin = active_positions_for_session_portfolio.sum(:margin).to_d
       denominator = utilization_denominator_usd
       return if denominator.zero?
 
       utilization = total_margin / denominator
-      max_utilization = Trading::RuntimeConfig.fetch_float("risk.max_margin_utilization", default: 0.40, env_key: "RISK_MAX_MARGIN_UTILIZATION")
-      raise RiskError, "margin utilization #{(utilization * 100).round(1)}% exceeds #{(max_utilization * 100).to_i}% cap" if utilization >= max_utilization
+      max_utilization = BigDecimal(Trading::RuntimeConfig.fetch_float(
+        "risk.max_margin_utilization", default: 0.40, env_key: "RISK_MAX_MARGIN_UTILIZATION"
+      ).to_s)
+      pct = (utilization * 100).round(1)
+      cap_pct = (max_utilization * 100).to_i
+      raise RiskError, "margin utilization #{pct.to_f}% exceeds #{cap_pct}% cap" if utilization >= max_utilization
     end
 
+    # Realized PnL for the session’s portfolio only (fill-driven Trade rows set portfolio_id).
     def check_daily_loss_cap!
-      today_pnl = Trade.sum_effective_pnl_usd(Trade.where("closed_at >= ?", Time.current.beginning_of_day))
-      daily_loss_pct = Trading::RuntimeConfig.fetch_float("risk.daily_loss_cap_pct", default: 0.05, env_key: "RISK_DAILY_LOSS_CAP_PCT")
+      trades_today = Trade.where("closed_at >= ?", Time.current.beginning_of_day).where(portfolio_id: @session.portfolio_id)
+      today_pnl = Trade.sum_effective_pnl_usd(trades_today)
+      daily_loss_pct = BigDecimal(Trading::RuntimeConfig.fetch_float(
+        "risk.daily_loss_cap_pct", default: 0.05, env_key: "RISK_DAILY_LOSS_CAP_PCT"
+      ).to_s)
       cap = utilization_denominator_usd * daily_loss_pct
       raise RiskError, "daily loss cap exceeded (#{today_pnl.round(2)} USD vs cap -#{cap.round(2)} USD)" if
-        today_pnl < -cap
+        today_pnl.to_d < -cap
     end
 
     def utilization_denominator_usd
-      b = @session.portfolio.reload.balance.to_f
+      b = @session.portfolio.reload.balance.to_d
       return b if b.positive?
 
-      @session.capital.to_f
+      @session.capital.to_d
     end
   end
 end

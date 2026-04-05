@@ -72,10 +72,10 @@ module Bot
             prev_st = (prev_dir == -1 ? prev_lower : prev_upper)
 
             direction[i] = if prev_st == prev_upper
-                           (closes[i] > upper_band[i] ? -1 : 1)
-                         else
-                           (closes[i] < lower_band[i] ? 1 : -1)
-                         end
+                             (closes[i] > upper_band[i] ? -1 : 1)
+                           else
+                             (closes[i] < lower_band[i] ? 1 : -1)
+                           end
           end
 
           super_trend[i] = (direction[i] == -1 ? lower_band[i] : upper_band[i])

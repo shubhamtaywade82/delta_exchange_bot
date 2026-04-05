@@ -64,6 +64,13 @@ module Trading
       REDIS_TRADING_DOCUMENTED_KEYS.each do |key|
         redis.del(key)
       rescue StandardError => e
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "FreshStart",
+          operation: "flush_redis_trading_keys!",
+          error:     e,
+          log_level: :warn,
+          redis_key: key
+        )
         @stdout.puts "[fresh_start] Redis DEL #{key}: #{e.message}"
       end
 
@@ -73,12 +80,25 @@ module Trading
     def scan_delete!(pattern)
       redis.scan_each(match: pattern) { |key| redis.del(key) }
     rescue StandardError => e
+      HotPathErrorPolicy.log_swallowed_error(
+        component: "FreshStart",
+        operation: "scan_delete!",
+        error:     e,
+        log_level: :warn,
+        pattern:   pattern
+      )
       @stdout.puts "[fresh_start] Redis SCAN #{pattern}: #{e.message}"
     end
 
     def flush_rails_cache!
       Rails.cache.clear
     rescue NotImplementedError, StandardError => e
+      HotPathErrorPolicy.log_swallowed_error(
+        component: "FreshStart",
+        operation: "flush_rails_cache!",
+        error:     e,
+        log_level: :warn
+      )
       @stdout.puts "[fresh_start] Rails.cache.clear skipped: #{e.message}"
     end
 

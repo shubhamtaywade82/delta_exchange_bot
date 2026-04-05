@@ -72,9 +72,9 @@ class AddPortfoliosAndLedger < ActiveRecord::Migration[8.1]
       cap = session.read_attribute(:capital)
       initial = if cap.present? && BigDecimal(cap.to_s).positive?
                   BigDecimal(cap.to_s)
-                else
+      else
                   BigDecimal("10000")
-                end
+      end
       portfolio = Portfolio.create!(balance: initial, available_balance: initial, used_margin: 0)
       session.update_columns(portfolio_id: portfolio.id)
     end

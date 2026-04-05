@@ -7,5 +7,4 @@ RSpec.describe "Api::Trades", type: :request do
       expect(response).to have_http_status(:success)
     end
   end
-
 end

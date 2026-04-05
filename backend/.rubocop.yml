@@ -3,6 +3,6 @@ inherit_gem: { rubocop-rails-omakase: rubocop.yml }
 
 # Overwrite or add rules to create your own house style
 #
-# # Use `[a, [b, c]]` not `[ a, [ b, c ] ]`
-# Layout/SpaceInsideArrayLiteralBrackets:
-#   Enabled: false
+# Omakase enables spaces inside array literals; this repo’s specs/fixtures use compact nested arrays.
+Layout/SpaceInsideArrayLiteralBrackets:
+  Enabled: false

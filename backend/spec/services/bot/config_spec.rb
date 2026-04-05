@@ -126,7 +126,8 @@ RSpec.describe Bot::Config do
         "notifications.telegram.events.signals",
         "notifications.telegram.events.positions",
         "notifications.telegram.events.trailing",
-        "notifications.telegram.events.errors"
+        "notifications.telegram.events.errors",
+        "notifications.telegram.events.analysis"
       )
     end
 
@@ -162,10 +163,10 @@ RSpec.describe Bot::Config do
     {
       "mode" => "testnet",
       "strategy" => {
-        "supertrend" => { "atr_period" => 10, "multiplier" => 3.0 },
+        "supertrend" => { "atr_period" => 10, "multiplier" => 2.2 },
         "adx" => { "period" => 14, "threshold" => 25 },
         "trailing_stop_pct" => 1.5,
-        "timeframes" => { "trend" => "1h", "confirm" => "15m", "entry" => "5m" },
+        "timeframes" => { "trend" => "4h", "confirm" => "1h", "entry" => "5m" },
         "candles_lookback" => 100,
         "min_candles_required" => 30
       },
@@ -202,7 +203,7 @@ RSpec.describe Bot::Config do
 
   it "exposes supertrend config" do
     expect(config.supertrend_atr_period).to eq(10)
-    expect(config.supertrend_multiplier).to eq(3.0)
+    expect(config.supertrend_multiplier).to eq(2.2)
     expect(config.supertrend_variant).to eq("classic")
     expect(config.effective_min_candles_for_supertrend).to eq(30)
   end
@@ -252,8 +253,8 @@ RSpec.describe Bot::Config do
   end
 
   it "exposes timeframes" do
-    expect(config.timeframe_trend).to eq("1h")
-    expect(config.timeframe_confirm).to eq("15m")
+    expect(config.timeframe_trend).to eq("4h")
+    expect(config.timeframe_confirm).to eq("1h")
     expect(config.timeframe_entry).to eq("5m")
   end
 

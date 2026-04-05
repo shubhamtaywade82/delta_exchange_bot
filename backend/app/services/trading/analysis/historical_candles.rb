@@ -22,11 +22,26 @@ module Trading
           )
         end
         normalize_candles(raw)
-      rescue Timeout::Error
-        Rails.logger.warn("[Analysis::HistoricalCandles] timeout #{symbol} #{resolution}")
+      rescue Timeout::Error => e
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "Analysis::HistoricalCandles",
+          operation: "fetch",
+          error:     e,
+          log_level: :warn,
+          symbol:    symbol,
+          resolution: resolution,
+          reason:    "timeout"
+        )
         []
       rescue StandardError => e
-        Rails.logger.warn("[Analysis::HistoricalCandles] #{symbol} #{resolution}: #{e.message}")
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "Analysis::HistoricalCandles",
+          operation: "fetch",
+          error:     e,
+          log_level: :warn,
+          symbol:    symbol,
+          resolution: resolution
+        )
         []
       end
 

@@ -102,5 +102,16 @@ RSpec.describe "Api::TradingSessions", type: :request do
       expect(response).to have_http_status(:ok)
       expect(session.reload.status).to eq("stopped")
     end
+
+    it "runs emergency shutdown only on the first delete when the session is already stopped" do
+      allow(Trading::EmergencyShutdown).to receive(:call).and_call_original
+      allow_any_instance_of(Trading::EmergencyShutdown).to receive(:trigger!)
+
+      delete "/api/trading_sessions/#{session.id}"
+      delete "/api/trading_sessions/#{session.id}"
+
+      expect(Trading::EmergencyShutdown).to have_received(:call).once
+      expect(response).to have_http_status(:ok)
+    end
   end
 end

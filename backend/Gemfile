@@ -32,25 +32,28 @@ gem "thruster", require: false
 # Use Active Storage variants [https://guides.rubyonrails.org/active_storage_overview.html#transforming-images]
 gem "image_processing", "~> 1.2"
 
+# Pin above vulnerable trix (GHSA-53p3-c7vp-4mcc); pulled in via action_text.
+gem "action_text-trix", ">= 2.1.18"
+
 # Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin Ajax possible
 gem "rack-cors"
 gem "redis"
 
-gem 'delta_exchange', path: '../../delta_exchange'
-gem 'dotenv-rails'
-gem 'telegram-bot-ruby'
-gem 'tzinfo'
+gem "delta_exchange"
+gem "dotenv-rails"
+gem "telegram-bot-ruby"
+gem "tzinfo"
 
 # Technical Analysis
-gem 'ruby-technical-analysis'
-gem 'technical-analysis'
+gem "ruby-technical-analysis"
+gem "technical-analysis"
 
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"
 
-  gem 'rspec-rails'
-  gem 'factory_bot_rails'
+  gem "rspec-rails"
+  gem "factory_bot_rails"
   gem "bullet"
 
   # Audits gems for known security defects (use config/bundler-audit.yml to ignore issues)
@@ -64,4 +67,4 @@ group :development, :test do
 end
 
 # Local gem: Ollama::Client + Ollama Cloud (Bearer + https://ollama.com). Path from backend/ → project → ai-workspace.
-gem 'ollama-client', path: '../../../ai-workspace/ollama-client'
+gem "ollama-client", path: "../../../ai-workspace/ollama-client"

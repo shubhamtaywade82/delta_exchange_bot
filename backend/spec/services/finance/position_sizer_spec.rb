@@ -59,6 +59,25 @@ RSpec.describe Finance::PositionSizer do
       expect(result.final_contracts).to eq(5)
     end
 
+    it "caps margin contracts at zero when margin_wallet_usd is zero or negative" do
+      base_args = {
+        balance_usd: 10_000.0,
+        risk_percent: 0.015,
+        entry_price: 100.0,
+        stop_price: 99.0,
+        contract_value: 1.0,
+        leverage: 10
+      }
+
+      zero_wallet = described_class.compute!(**base_args.merge(margin_wallet_usd: 0.0))
+      expect(zero_wallet.qty_margin).to eq(0)
+      expect(zero_wallet.final_contracts).to eq(0)
+
+      neg_wallet = described_class.compute!(**base_args.merge(margin_wallet_usd: -50.0))
+      expect(neg_wallet.qty_margin).to eq(0)
+      expect(neg_wallet.final_contracts).to eq(0)
+    end
+
     it "uses margin_wallet_usd when passed; otherwise uses balance_usd for margin cap" do
       balance_usd = 500.0
       without_extra = described_class.compute!(

@@ -15,7 +15,13 @@ module Trading
         Trading::Learning::AiRefinementJob.perform_later
         true
       rescue StandardError => e
-        Rails.logger.warn("[AiRefinementTrigger] skipped: #{e.class} #{e.message}")
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "Learning::AiRefinementTrigger",
+          operation: "call",
+          error:     e,
+          log_level: :warn,
+          reason:    reason.to_s
+        )
         false
       end
 

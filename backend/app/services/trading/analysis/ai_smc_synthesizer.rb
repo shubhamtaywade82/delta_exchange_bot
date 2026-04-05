@@ -16,13 +16,17 @@ module Trading
         "invalidation" (string): specific structure/level that voids the idea (use INPUT only),
         "takeaway_bullets" (array of strings, max 5),
         "comment_on_plan" (string): critique of heuristic trade_plan (risk, PD zone, alignment),
-        "timeframe_notes" (object): optional strings for keys "5m","15m","1h",
+        "timeframe_notes" (object): optional strings keyed by resolution strings present in INPUT (e.g. "4h","1h","5m"),
+
+        "long_trigger_conditions" (array of strings, max 4): specific conditions from INPUT that, if met NOW or soon, would justify a LONG entry (e.g. "BOS bullish confirmed on confirm timeframe + price returns to unfilled bullish FVG in discount zone"). Leave empty array if no plausible long setup exists.
+
+        "short_trigger_conditions" (array of strings, max 4): specific conditions from INPUT that, if met NOW or soon, would justify a SHORT entry (e.g. "CHOCH bearish on entry timeframe + sweep of equal highs with bearish OB mitigation"). Leave empty array if no plausible short setup exists.
 
         "trading_recommendation" (object):
           "primary_action" ("long"|"short"|"wait"),
           "conviction_0_to_100" (integer 0-100),
           "preferred_entry_model" ("ob_mitigation"|"fvg_mitigation"|"liquidity_sweep_follow_through"|"wait"|"none"),
-          "entry_guidance" (string): zones/conditions from INPUT (no invented prices),
+          "entry_guidance" (string): zones/conditions from INPUT (no invented prices). Be specific about WHAT needs to happen for entry — not just "wait for confirmation",
           "structural_stop_guidance" (string),
           "target_guidance" (string or array of strings): next liquidity / RR framing,
           "aligns_with_htf_structure" (boolean),
@@ -38,9 +42,12 @@ module Trading
 
           Rules:
           - Do not invent prices, sessions, sweeps, or order flow not present in INPUT.
-          - Prefer "wait" when INPUT shows conflicted bias, premium/discount mismatch, or missing mitigation.
+          - When bias is clear and structure supports it, commit to "long" or "short" with specific entry conditions.
+          - Use "wait" only when bias is genuinely conflicted across timeframes, or the premium/discount zone strongly contradicts the direction.
+          - Always provide both long_trigger_conditions and short_trigger_conditions so the trader knows what to watch for in EITHER direction, even if primary_action favors one side.
           - Respect risk_and_execution_framework.min_suggested_rr conceptually when commenting on trade_plan.
           - trading_recommendation must be consistent with htf_bias and mtf_alignment unless you explain conflict in key_risks.
+          - entry_guidance must describe a concrete scenario, not vague "wait for confirmation."
 
           #{SCHEMA_HINT}
 
@@ -52,17 +59,36 @@ module Trading
 
         raw = Ai::OllamaClient.ask(prompt, connection_settings: connection_settings)
         parse_model_json(raw)
-      rescue ::Timeout::Error
+      rescue ::Timeout::Error => e
         log_ollama_timeout_hint(symbol)
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "Analysis::AiSmcSynthesizer",
+          operation: "call",
+          error:     e,
+          log_level: :warn,
+          symbol:    symbol,
+          reason:    "ruby_timeout"
+        )
         nil
       rescue StandardError => e
-        if defined?(Ollama::TimeoutError) && e.is_a?(Ollama::TimeoutError)
-          log_ollama_timeout_hint(symbol)
-        else
-          Rails.logger.warn("[AiSmcSynthesizer] #{symbol}: #{e.message}")
-        end
+        log_ollama_timeout_hint(symbol) if ollama_client_timeout?(e)
+
+        reason = ollama_client_timeout?(e) ? "ollama_timeout" : "error"
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "Analysis::AiSmcSynthesizer",
+          operation: "call",
+          error:     e,
+          log_level: :warn,
+          symbol:    symbol,
+          reason:    reason
+        )
         nil
       end
+
+      def self.ollama_client_timeout?(error)
+        defined?(Ollama::TimeoutError) && error.is_a?(Ollama::TimeoutError)
+      end
+      private_class_method :ollama_client_timeout?
 
       def self.log_ollama_timeout_hint(symbol)
         Rails.logger.warn(

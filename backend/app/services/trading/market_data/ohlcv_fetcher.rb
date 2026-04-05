@@ -34,8 +34,15 @@ module Trading
             closed:    true
           )
         end
-      rescue => e
-        Rails.logger.error("[OhlcvFetcher] Failed for #{symbol}/#{resolution}: #{e.message}")
+      rescue StandardError => e
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "MarketData::OhlcvFetcher",
+          operation: "fetch",
+          error:     e,
+          log_level: :warn,
+          symbol:    symbol,
+          resolution: resolution
+        )
         []
       end
     end

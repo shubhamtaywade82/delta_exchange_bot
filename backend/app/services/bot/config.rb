@@ -45,6 +45,7 @@ module Bot
       notifications.telegram.events.positions
       notifications.telegram.events.trailing
       notifications.telegram.events.errors
+      notifications.telegram.events.analysis
       notifications.daily_summary_time
       logging.level
       logging.file
@@ -56,7 +57,7 @@ module Bot
         "supertrend" => {
           "variant" => "classic",
           "atr_period" => 10,
-          "multiplier" => 3.0,
+          "multiplier" => 2.2,
           "ml_adaptive" => {
             "training_period" => 100,
             "highvol" => 0.75,
@@ -67,7 +68,7 @@ module Bot
         "adx" => { "period" => 14, "threshold" => 20 },
         "filters" => { "relax_in_dry_run" => true },
         "trailing_stop_pct" => 1.5,
-        "timeframes" => { "trend" => "1h", "confirm" => "15m", "entry" => "5m" },
+        "timeframes" => { "trend" => "4h", "confirm" => "1h", "entry" => "5m" },
         "candles_lookback" => 100,
         "min_candles_required" => 30
       },
@@ -88,7 +89,8 @@ module Bot
             "signals" => true,
             "positions" => true,
             "trailing" => true,
-            "errors" => true
+            "errors" => true,
+            "analysis" => false
           }
         },
         "daily_summary_time" => "18:00"
@@ -109,7 +111,7 @@ module Bot
     end
 
     def self.runtime_raw
-      raw = Marshal.load(Marshal.dump(DEFAULTS))
+      raw = DEFAULTS.deep_dup
       overlay = bot_yml_hash
       deep_merge_runtime_overlay!(raw, overlay)
 
@@ -147,6 +149,7 @@ module Bot
       apply_setting!(raw, "notifications", "telegram", "events", "positions", key: "notifications.telegram.events.positions", settings_by_key: settings_by_key)
       apply_setting!(raw, "notifications", "telegram", "events", "trailing", key: "notifications.telegram.events.trailing", settings_by_key: settings_by_key)
       apply_setting!(raw, "notifications", "telegram", "events", "errors", key: "notifications.telegram.events.errors", settings_by_key: settings_by_key)
+      apply_setting!(raw, "notifications", "telegram", "events", "analysis", key: "notifications.telegram.events.analysis", settings_by_key: settings_by_key)
       apply_setting!(raw, "notifications", "daily_summary_time", key: "notifications.daily_summary_time", settings_by_key: settings_by_key)
       apply_setting!(raw, "logging", "level", key: "logging.level", settings_by_key: settings_by_key)
       apply_setting!(raw, "logging", "file", key: "logging.file", settings_by_key: settings_by_key)
@@ -421,7 +424,7 @@ module Bot
           "or add symbols to config/bot.yml"
         )
       end
-      
+
       symbols.each do |s|
         error("symbol name must not be blank") if s[:symbol].to_s.strip.empty?
         error("leverage for #{s[:symbol]} must be 1–200") unless s[:leverage].to_i.between?(1, 200)

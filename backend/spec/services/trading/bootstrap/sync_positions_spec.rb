@@ -41,4 +41,20 @@ RSpec.describe Trading::Bootstrap::SyncPositions do
     described_class.call(client: client)
     expect(Position.find_by(symbol: "BTCUSD").status).to eq("closed")
   end
+
+  it "reports then re-raises when the exchange client fails" do
+    allow(client).to receive(:get_positions).and_raise(StandardError, "delta unreachable")
+    allow(Rails.logger).to receive(:error)
+    allow(Rails.error).to receive(:report)
+
+    expect {
+      described_class.call(client: client)
+    }.to raise_error(StandardError, "delta unreachable")
+
+    expect(Rails.error).to have_received(:report).with(
+      an_object_having_attributes(message: "delta unreachable"),
+      handled: false,
+      context: hash_including("component" => "Bootstrap::SyncPositions", "operation" => "call")
+    )
+  end
 end

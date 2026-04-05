@@ -43,7 +43,13 @@ module Trading
         config.update!(attrs)
         true
       rescue StandardError => e
-        Rails.logger.warn("[ProductCatalogSync] #{sym}: #{e.message}")
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "Delta::ProductCatalogSync",
+          operation: "sync_one!",
+          error:     e,
+          log_level: :warn,
+          symbol:    sym
+        )
         false
       end
 

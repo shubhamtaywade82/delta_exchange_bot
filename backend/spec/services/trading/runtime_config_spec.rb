@@ -19,6 +19,22 @@ RSpec.describe Trading::RuntimeConfig do
     end
   end
 
+  describe ".fetch_boolean" do
+    it "returns default and reports when the backing fetch raises" do
+      allow(described_class).to receive(:fetch).and_raise(StandardError, "cache/db error")
+      allow(Rails.error).to receive(:report)
+
+      value = described_class.fetch_boolean("feature.flag", default: false)
+
+      expect(value).to be(false)
+      expect(Rails.error).to have_received(:report).with(
+        an_object_having_attributes(message: "cache/db error"),
+        handled: true,
+        context: hash_including("component" => "RuntimeConfig", "operation" => "fetch_boolean", "key" => "feature.flag")
+      )
+    end
+  end
+
   describe ".refresh!" do
     it "evicts cached key and re-reads latest setting" do
       setting = Setting.create!(key: "runner.strategy_interval_seconds", value: "60", value_type: "integer")

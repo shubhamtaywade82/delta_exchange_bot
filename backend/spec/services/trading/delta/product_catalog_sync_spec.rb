@@ -40,7 +40,16 @@ RSpec.describe Trading::Delta::ProductCatalogSync do
     it "returns false on API error" do
       config = create(:symbol_config, symbol: "ETHUSD", enabled: true)
       allow(DeltaExchange::Models::Product).to receive(:find).and_raise(StandardError, "network")
+      allow(Rails.logger).to receive(:warn)
+      allow(Rails.error).to receive(:report)
+
       expect(described_class.sync_one!(config)).to be false
+
+      expect(Rails.error).to have_received(:report).with(
+        an_object_having_attributes(message: "network"),
+        handled: true,
+        context: hash_including("component" => "Delta::ProductCatalogSync", "symbol" => "ETHUSD")
+      )
     end
   end
 end

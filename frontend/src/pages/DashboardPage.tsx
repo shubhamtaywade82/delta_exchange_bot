@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
-import { useLiveLtp } from '../liveLtp/LiveLtpProvider';
+import { useLiveLtp } from '../liveLtp/liveLtpContext';
 import {
   Wallet,
   History,
@@ -32,9 +32,9 @@ interface OrderBlock {
 
 interface SymbolState {
   symbol: string;
-  h1_dir?: string;
-  m15_dir?: string;
-  m5_dir?: string;
+  trend_dir?: string;
+  confirm_dir?: string;
+  entry_dir?: string;
   adx?: number;
   signal?: string;
   updated_at?: string;
@@ -65,6 +65,51 @@ interface StrategyStatus {
     timeframes: { tf: string; role: string; indicator: string }[];
   };
   symbols: SymbolState[];
+}
+
+interface ApiPosition {
+  symbol: string;
+  side?: string;
+  entry_price?: number | null;
+  opened_at?: string | null;
+  mark_price?: number | null;
+  size?: number | null;
+  leverage?: number | null;
+  unrealized_pnl?: number | null;
+  unrealized_pnl_inr?: number | null;
+  unrealized_pnl_pct?: number | null;
+}
+
+interface ApiTrade {
+  symbol: string;
+  side?: string;
+  size?: number | null;
+  entry_price?: number | null;
+  exit_price?: number | null;
+  pnl_inr?: number | null;
+  timestamp?: string | null;
+}
+
+interface ApiWallet {
+  cash_balance_usd?: number | null;
+  cash_balance_inr?: number | null;
+  unrealized_pnl_usd?: number | null;
+  unrealized_pnl_inr?: number | null;
+  total_equity_usd?: number | null;
+  total_equity_inr?: number | null;
+  blocked_margin_usd?: number | null;
+  blocked_margin_inr?: number | null;
+  available_usd?: number | null;
+  available_inr?: number | null;
+  updated_at?: string | null;
+  stale?: boolean;
+  ledger_margin_exceeds_cash?: boolean;
+}
+
+interface ApiStats {
+  equity_curve?: number[];
+  daily_pnl?: number | null;
+  weekly_pnl?: number | null;
 }
 
 function filterBadge(result?: FilterResult) {
@@ -187,11 +232,11 @@ function SignalQualityPanel({ sym }: { sym: SymbolState }) {
 
 const DashboardPage: React.FC = () => {
   const liveLtp = useLiveLtp();
-  const [positions, setPositions] = useState<any[]>([]);
-  const [trades, setTrades] = useState<any[]>([]);
+  const [positions, setPositions] = useState<ApiPosition[]>([]);
+  const [trades, setTrades] = useState<ApiTrade[]>([]);
   const [strategyStatus, setStrategyStatus] = useState<StrategyStatus | null>(null);
-  const [wallet, setWallet] = useState<any>(null);
-  const [stats, setStats] = useState<any>(null);
+  const [wallet, setWallet] = useState<ApiWallet | null>(null);
+  const [stats, setStats] = useState<ApiStats | null>(null);
   const [signalActivity, setSignalActivity] = useState<SignalActivity | null>(null);
   const [expandedSym, setExpandedSym] = useState<string | null>(null);
   const [tradeHistoryDay, setTradeHistoryDay] = useState<string>(() => localCalendarDateISO());
@@ -209,28 +254,22 @@ const DashboardPage: React.FC = () => {
     return [...merged].sort((a, b) => b.localeCompare(a));
   }, [todayLocal, tradeHistoryDay, tradesCalendarDays]);
 
-  useEffect(() => {
-    fetchEverything();
-    const interval = setInterval(fetchEverything, 5000);
-    return () => clearInterval(interval);
-  }, [tradeHistoryDay]);
-
-  const fetchEverything = async () => {
+  const fetchEverything = useCallback(async () => {
     try {
       const params = new URLSearchParams();
       params.set('trades_limit', '500');
       params.set('trades_day', tradeHistoryDay || todayLocal());
       params.set('calendar_day', todayLocal());
       const { data: dash } = await axios.get(`/api/dashboard?${params.toString()}`);
-      setPositions(dash.positions);
+      setPositions((dash.positions ?? []) as ApiPosition[]);
       setPositionsMeta(dash.positions_meta ?? null);
-      setTrades(dash.trades);
+      setTrades((dash.trades ?? []) as ApiTrade[]);
       setTradesMeta(dash.trades_meta ?? null);
       setTradesCalendarDays(
         Array.isArray(dash.trades_calendar_days) ? dash.trades_calendar_days.map(String) : []
       );
-      setWallet(dash.wallet);
-      setStats(dash.stats);
+      setWallet((dash.wallet ?? null) as ApiWallet | null);
+      setStats((dash.stats ?? null) as ApiStats | null);
       setSignalActivity(dash.signal_activity ?? null);
 
       const { data: strat } = await axios.get('/api/strategy_status');
@@ -238,7 +277,28 @@ const DashboardPage: React.FC = () => {
     } catch (err) {
       console.error("Dashboard sync error", err);
     }
-  };
+  }, [tradeHistoryDay, todayLocal]);
+
+  useEffect(() => {
+    const initial = setTimeout(() => void fetchEverything(), 0);
+    const interval = setInterval(() => void fetchEverything(), 5000);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(interval);
+    };
+  }, [fetchEverything]);
+
+  const strategyTfLegend = useMemo(
+    () =>
+      strategyStatus?.strategy.timeframes?.length
+        ? strategyStatus.strategy.timeframes
+        : [
+            { tf: '4H', role: 'Trend filter', indicator: 'Supertrend direction' },
+            { tf: '1H', role: 'Confirmation', indicator: 'Supertrend + ADX strength' },
+            { tf: '5M', role: 'Entry trigger', indicator: 'BOS + Order Block zone' },
+          ],
+    [strategyStatus]
+  );
 
   const timeAgo = (ts: string) => {
     const diff = Math.floor((new Date().getTime() - new Date(ts).getTime()) / 1000);
@@ -265,7 +325,7 @@ const DashboardPage: React.FC = () => {
               </div>
 
               <div className="strategy-legend">
-                {strategyStatus.strategy.timeframes.map(tf => (
+                {strategyTfLegend.map(tf => (
                   <div key={tf.tf} className="tf-legend-item">
                     <span className="tf-label">{tf.tf}</span>
                     <span className="tf-role">{tf.role}</span>
@@ -279,8 +339,9 @@ const DashboardPage: React.FC = () => {
                   <thead>
                     <tr>
                       <th>SYMBOL</th>
-                      <th>1H_DIR</th>
-                      <th>15M_CONF</th>
+                      {strategyTfLegend.map(row => (
+                        <th key={row.tf}>{row.tf}_ST</th>
+                      ))}
                       <th>ADX_PWR</th>
                       <th>BOS</th>
                       <th>SIGNAL</th>
@@ -292,8 +353,13 @@ const DashboardPage: React.FC = () => {
                       <React.Fragment key={sym.symbol}>
                         <tr className="row-hover cursor-pointer" onClick={() => setExpandedSym(expandedSym === sym.symbol ? null : sym.symbol)}>
                           <td><span className="font-bold">{sym.symbol.replace('USDT', '')}</span></td>
-                          <td><span className={`dir-badge ${sym.h1_dir || 'neutral'}`}>{sym.h1_dir?.toUpperCase() || '---'}</span></td>
-                          <td><span className={`dir-badge ${sym.m15_dir || 'neutral'}`}>{sym.m15_dir?.toUpperCase() || '---'}</span></td>
+                          {[sym.trend_dir, sym.confirm_dir, sym.entry_dir]
+                            .slice(0, strategyTfLegend.length)
+                            .map((dir, idx) => (
+                              <td key={idx}>
+                                <span className={`dir-badge ${dir || 'neutral'}`}>{dir?.toUpperCase() || '---'}</span>
+                              </td>
+                            ))}
                           <td>
                             <FlashValue value={sym.adx}>
                               <span className="font-mono" style={{ color: (sym.adx ?? 0) > 20 ? 'var(--primary)' : 'var(--text-muted)' }}>
@@ -307,7 +373,7 @@ const DashboardPage: React.FC = () => {
                         </tr>
                         {expandedSym === sym.symbol && (
                           <tr>
-                            <td colSpan={7} className="no-padding">
+                            <td colSpan={5 + strategyTfLegend.length} className="no-padding">
                               <SignalQualityPanel sym={sym} />
                             </td>
                           </tr>
@@ -541,9 +607,9 @@ const DashboardPage: React.FC = () => {
                       </td>
                       <td className="font-mono">{formatQuotePrice(t.entry_price)}</td>
                       <td className="font-mono">{formatQuotePrice(t.exit_price)}</td>
-                      <td className={(t.pnl_inr || 0) >= 0 ? 'pos' : 'neg'}>
-                        {t.pnl_inr >= 0 ? '+' : ''}
-                        {formatInr(t.pnl_inr || 0)}
+                      <td className={(t.pnl_inr ?? 0) >= 0 ? 'pos' : 'neg'}>
+                        {(t.pnl_inr ?? 0) >= 0 ? '+' : ''}
+                        {formatInr(t.pnl_inr ?? 0)}
                       </td>
                       <td className="text-muted">
                         {t.timestamp
@@ -683,7 +749,8 @@ const DashboardPage: React.FC = () => {
             <div className="chart-mock">
               <div className="bars">
                 {stats?.equity_curve?.map((val: number, i: number) => {
-                  const max = Math.max(...(stats?.equity_curve.map(Math.abs) ?? [1]), 1);
+                  const curve = stats?.equity_curve ?? [];
+                  const max = Math.max(...curve.map(Math.abs), 1);
                   const h = Math.max((Math.abs(val) / max) * 100, 15);
                   return (
                     <div key={i} className="bar-container">

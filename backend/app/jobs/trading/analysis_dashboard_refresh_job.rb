@@ -5,6 +5,9 @@ module Trading
   # Does not run inside Trading::Runner and does not gate signals or order execution.
   # Each digest calls Ollama when `AiSmcSynthesizer` is configured — requires a reachable model and
   # adequate `OLLAMA_TIMEOUT_SECONDS`.
+  # Optional: after each symbol digest, pushes `ai_insight` to Telegram in chunked messages when
+  # `notifications.telegram.enabled` and `notifications.telegram.events.analysis` are true.
+  #
   # Schedule: `analysis_dashboard_refresh` in `config/recurring.yml` (requires `bin/jobs start` or Procfile `jobs`).
   class AnalysisDashboardRefreshJob < ApplicationJob
     queue_as :low
@@ -21,12 +24,14 @@ module Trading
 
       symbols.each_with_index do |sym, index|
         sleep(STAGGER_S) if index.positive?
-        rows << Trading::Analysis::DigestBuilder.call(
+        row = Trading::Analysis::DigestBuilder.call(
           symbol: sym,
           market_data: market_data,
           config: config,
           ollama_connection_settings: ollama_settings
         )
+        rows << row
+        Trading::Analysis::DigestTelegramPush.deliver_row(row)
       rescue StandardError => e
         Rails.logger.error("[AnalysisDashboardRefreshJob] #{sym}: #{e.class}: #{e.message}")
         rows << {

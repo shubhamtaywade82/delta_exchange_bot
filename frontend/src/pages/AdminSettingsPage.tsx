@@ -140,7 +140,7 @@ const AdminSettingsPage: React.FC = () => {
         };
       });
       setDrafts(nextDrafts);
-    } catch (e) {
+    } catch {
       setError('Failed to load settings panel data');
     } finally {
       setLoading(false);
@@ -183,7 +183,7 @@ const AdminSettingsPage: React.FC = () => {
         value_type: draft.value_type
       });
       await loadData();
-    } catch (_e) {
+    } catch {
       setError(`Failed to save setting: ${key}`);
     } finally {
       setSavingKey(null);

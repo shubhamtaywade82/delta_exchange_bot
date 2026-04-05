@@ -6,6 +6,8 @@ module Trading
     class SmcSnapshot
       BOS_LOOKBACK = Integer(ENV.fetch("ANALYSIS_BOS_SWING_LOOKBACK", "10"))
       CHOCH_SWING = Integer(ENV.fetch("ANALYSIS_CHOCH_SWING", "3"))
+      # HH/HL/LH/LL + SmcConfluence Layer 2 (Pine `ms_swing`); keep separate from CHOCH_SWING (legacy short pivot).
+      MS_SWING = Integer(ENV.fetch("ANALYSIS_MS_SWING", "10"))
       OB_MIN_IMPULSE_PCT = Float(ENV.fetch("ANALYSIS_OB_MIN_IMPULSE_PCT", "0.3"))
       OB_MAX_AGE = Integer(ENV.fetch("ANALYSIS_OB_MAX_AGE", "20"))
       FVG_MAX_AGE = Integer(ENV.fetch("ANALYSIS_FVG_MAX_AGE", "30"))
@@ -24,7 +26,7 @@ module Trading
         return insufficient if @candles.size < 5
 
         last_close = @candles.last[:close].to_f
-        internal_lb = [BOS_LOOKBACK / 2, 3].max
+        internal_lb = [ BOS_LOOKBACK / 2, 3 ].max
 
         bos_series = Bot::Strategy::Indicators::BOS.compute(@candles, swing_lookback: BOS_LOOKBACK)
         bos = bos_series.last
@@ -38,7 +40,7 @@ module Trading
         sweep = Bot::Strategy::Indicators::LiquiditySweep.recent(@candles, swing: CHOCH_SWING,
                                                                    lookback: SWEEP_LOOKBACK)
 
-        structure_sequence = SmcSwingStructure.analyze(@candles, swing: CHOCH_SWING)
+        structure_sequence = SmcSwingStructure.analyze(@candles, swing: MS_SWING)
         internal_external = SmcInternalExternalStructure.snapshot(
           @candles,
           external_lookback: BOS_LOOKBACK,
@@ -55,6 +57,8 @@ module Trading
         serialized_obs = order_blocks.last(8).map { |ob| serialize_ob(ob, last_close) }
         liq_h = serialize_liquidity(sweep)
 
+        confluence = SmcConfluence::Engine.run(@candles).last&.serialize
+
         base = {
           "resolution" => @resolution,
           "structure_sequence" => structure_sequence,
@@ -70,7 +74,8 @@ module Trading
           "order_flow" => order_flow,
           "price_action_classical" => price_action_classical,
           "volatility" => volatility,
-          "bias_hint" => bias_hint(bos, choch)
+          "bias_hint" => bias_hint(bos, choch),
+          "smc_confluence" => confluence
         }
 
         base["inducement_traps_hints"] = inducement_traps_hints(internal_external, base["choch"], base["bos"])
@@ -99,7 +104,8 @@ module Trading
           "volatility" => nil,
           "bias_hint" => nil,
           "inducement_traps_hints" => [],
-          "entry_model_flags" => {}
+          "entry_model_flags" => {},
+          "smc_confluence" => nil
         }
       end
 
@@ -134,8 +140,8 @@ module Trading
       end
 
       def serialize_fvg(fvg, last_close)
-        bottom = [fvg[:bottom], fvg[:top]].min
-        top = [fvg[:bottom], fvg[:top]].max
+        bottom = [ fvg[:bottom], fvg[:top] ].min
+        top = [ fvg[:bottom], fvg[:top] ].max
         mit = mitigate_linear(last_close, bottom, top)
 
         {

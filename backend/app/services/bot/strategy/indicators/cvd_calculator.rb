@@ -12,9 +12,9 @@ module Bot
 
           buy_vol  = trades.select { |t| t[:side] == "buy"  || t["side"] == "buy" }.sum { |t| (t[:size] || t["size"]).to_f }
           sell_vol = trades.select { |t| t[:side] == "sell" || t["side"] == "sell" }.sum { |t| (t[:size] || t["size"]).to_f }
-          
+
           puts "CVD DEBUG: buy_vol=#{buy_vol}, sell_vol=#{sell_vol}, trades_count=#{trades.size}"
-          
+
           total_vol = buy_vol + sell_vol
           return { delta: 0, delta_trend: :neutral, delta_pct: 0 } if total_vol.zero?
 

@@ -54,6 +54,27 @@ RSpec.describe Trading::ExecutionEngine do
     expect(Order.last.exchange_order_id).to eq("EX-001")
   end
 
+  it "reports unexpected failures to the error reporter then re-raises" do
+    allow(client).to receive(:place_order).and_raise(StandardError, "exchange unavailable")
+    allow(Rails.logger).to receive(:error)
+    allow(Rails.error).to receive(:report)
+
+    expect {
+      described_class.execute(signal, session: session, client: client)
+    }.to raise_error(StandardError, "exchange unavailable")
+
+    expect(Rails.error).to have_received(:report).with(
+      an_object_having_attributes(message: "exchange unavailable"),
+      handled: false,
+      context: hash_including(
+        "component" => "ExecutionEngine",
+        "operation" => "execute",
+        "symbol" => "BTCUSD",
+        "order_persisted" => "true"
+      )
+    )
+  end
+
   it "returns nil (skips) when idempotency key already acquired" do
     key = Trading::IdempotencyGuard.key_for_signal(signal)
     Trading::IdempotencyGuard.acquire(key)
@@ -71,6 +92,18 @@ RSpec.describe Trading::ExecutionEngine do
       described_class.execute(signal, session: session, client: client)
     }.to raise_error(Trading::RiskManager::RiskError)
     expect(Order.count).to eq(0)
+  end
+
+  it "releases idempotency after risk rejection so the same candle is not stuck as duplicate" do
+    allow(Trading::RiskManager).to receive(:validate!).and_raise(
+      Trading::RiskManager::RiskError, "daily loss cap exceeded"
+    )
+    key = Trading::IdempotencyGuard.key_for_signal(signal)
+    expect {
+      described_class.execute(signal, session: session, client: client)
+    }.to raise_error(Trading::RiskManager::RiskError)
+
+    expect(Trading::IdempotencyGuard.acquire(key)).to eq(true)
   end
 
   it "does not evaluate portfolio guard when paper risk override is active" do

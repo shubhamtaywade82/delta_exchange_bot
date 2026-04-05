@@ -4,7 +4,7 @@ source "https://rubygems.org"
 
 ruby "3.3.4"
 
-gem "delta_exchange", path: "../delta_exchange"
+gem "delta_exchange"
 gem "dotenv"
 gem "pg"
 gem "redis"

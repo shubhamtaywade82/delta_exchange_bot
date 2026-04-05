@@ -1,13 +1,6 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createConsumer, type Subscription } from '@rails/actioncable';
-
-export type LiveLtpMap = Record<string, number>;
-
-const LiveLtpContext = createContext<LiveLtpMap>({});
-
-export function useLiveLtp(): LiveLtpMap {
-  return useContext(LiveLtpContext);
-}
+import { LiveLtpContext, type LiveLtpMap } from './liveLtpContext';
 
 type LtpPayload = {
   type?: string;

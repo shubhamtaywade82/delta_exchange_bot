@@ -25,12 +25,19 @@ RSpec.describe Trading::FundingMonitor do
       allow(Position).to receive(:active).and_return([position])
 
       allow(products).to receive(:ticker).and_raise(StandardError, "network down")
-
-      expect(Rails.logger).to receive(:warn).with(
-        "[FundingMonitor] Could not fetch funding rate for ETHUSD: network down"
-      )
+      allow(Rails.logger).to receive(:warn)
+      allow(Rails.error).to receive(:report)
 
       described_class.check_all(client: client)
+
+      expect(Rails.logger).to have_received(:warn).with(
+        a_string_matching(/\[FundingMonitor\] fetch_funding_rate — StandardError: network down.*symbol=ETHUSD/)
+      )
+      expect(Rails.error).to have_received(:report).with(
+        an_object_having_attributes(message: "network down"),
+        handled: true,
+        context: hash_including("component" => "FundingMonitor", "symbol" => "ETHUSD")
+      )
     end
   end
 end

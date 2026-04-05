@@ -17,7 +17,8 @@ module Trading
           signals: config.telegram_event_enabled?(:signals),
           positions: config.telegram_event_enabled?(:positions),
           trailing: config.telegram_event_enabled?(:trailing),
-          errors: config.telegram_event_enabled?(:errors)
+          errors: config.telegram_event_enabled?(:errors),
+          analysis: config.telegram_event_enabled?(:analysis)
         }
       )
     end
@@ -25,7 +26,12 @@ module Trading
     def deliver
       yield notifier
     rescue StandardError => e
-      Rails.logger.warn("[TelegramNotifications] #{e.class}: #{e.message}")
+      HotPathErrorPolicy.log_swallowed_error(
+        component: "TelegramNotifications",
+        operation: "deliver",
+        error:     e,
+        log_level: :warn
+      )
     end
   end
 end

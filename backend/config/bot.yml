@@ -5,7 +5,7 @@ strategy:
     variant: ml_adaptive # classic | ml_adaptive (volatility-regime Supertrend, algo_scalper-style)
     # indicator_type: mast # optional aliases: ml_adaptive_supertrend, mast, ml_st, ml_adaptive
     atr_period: 10 # ATR length for ml_adaptive
-    multiplier: 3.0 # factor for ml_adaptive
+    multiplier: 2.2 # factor for ml_adaptive / classic Supertrend bands
     ml_adaptive:
       training_period: 100
       highvol: 0.75
@@ -16,9 +16,9 @@ strategy:
     threshold: 20
   trailing_stop_pct: 1.5
   timeframes:
-    trend: "1h"
-    confirm: "15m"
-    entry: "1m"
+    trend: "4h"
+    confirm: "1h"
+    entry: "5m"
   candles_lookback: 100
   min_candles_required: 30
 
@@ -48,6 +48,7 @@ notifications:
       positions: true
       trailing: true
       errors: true
+      analysis: false
   daily_summary_time: "18:00"
 
 logging:

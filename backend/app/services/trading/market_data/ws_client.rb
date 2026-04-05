@@ -36,8 +36,13 @@ module Trading
           feed.start
           sleep reconnect_interval
         end
-      rescue => e
-        Rails.logger.error("[WsClient] Feed crashed: #{e.message}")
+      rescue StandardError => e
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "WsClient",
+          operation: "feed_loop",
+          error:     e,
+          report_handled: false
+        )
         raise
       end
 
@@ -52,8 +57,12 @@ module Trading
             restart_missing_workers
             emit_metrics_if_due
             sleep 1
-          rescue => e
-            Rails.logger.error("[WsClient] Worker supervisor crash: #{e.message}")
+          rescue StandardError => e
+            HotPathErrorPolicy.log_swallowed_error(
+              component: "WsClient",
+              operation: "worker_supervisor_loop",
+              error:     e
+            )
           end
         end
       end
@@ -68,8 +77,12 @@ module Trading
               payload = @ingestion_queue.pop
               process_payload(payload)
               increment_processed
-            rescue => e
-              Rails.logger.error("[WsClient] Worker crash recovered: #{e.message}")
+            rescue StandardError => e
+              HotPathErrorPolicy.log_swallowed_error(
+                component: "WsClient",
+                operation: "ingestion_worker_loop",
+                error:     e
+              )
             end
           end
         end
@@ -133,8 +146,14 @@ module Trading
           adaptive = Trading::AdaptiveEngine.tick(book: book, trades: trades, client: @client)
           adaptive[:observed_at] = Time.current.to_i
           Rails.cache.write("adaptive:entry_context:#{symbol}", adaptive, expires_in: 10.minutes)
-        rescue => e
-          Rails.logger.warn("[WsClient] Adaptive engine fallback: #{e.message}")
+        rescue StandardError => e
+          HotPathErrorPolicy.log_swallowed_error(
+            component: "WsClient",
+            operation: "adaptive_engine_tick",
+            error:     e,
+            log_level: :warn,
+            symbol:    symbol
+          )
           Rails.cache.write(
             "adaptive:entry_context:#{symbol}",
             fallback_adaptive_context(book: book),

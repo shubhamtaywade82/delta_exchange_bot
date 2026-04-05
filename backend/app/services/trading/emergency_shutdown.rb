@@ -24,8 +24,15 @@ module Trading
         reason: reason,
         mark_price: latest_mark_price_for(position)
       )
-    rescue => e
-      Rails.logger.error("[EmergencyShutdown] force_exit_position failed for #{position.symbol}: #{e.message}")
+    rescue StandardError => e
+      HotPathErrorPolicy.log_swallowed_error(
+        component: "EmergencyShutdown",
+        operation: "force_exit_position",
+        error:     e,
+        symbol:    position&.symbol,
+        position_id: position&.id,
+        reason:    reason
+      )
     end
 
     def initialize(session_id, client)
@@ -34,10 +41,11 @@ module Trading
     end
 
     def trigger!
+      session = TradingSession.find(@session_id)
       Rails.logger.warn("[EmergencyShutdown] TRIGGERED for session #{@session_id}")
       cancel_open_orders!
-      close_open_positions!
-      mark_session_stopped!
+      close_open_positions_for_portfolio!(session.portfolio_id)
+      session.update!(status: "stopped", stopped_at: Time.current) unless session.status == "stopped"
     end
 
     private
@@ -50,23 +58,25 @@ module Trading
           @client.cancel_order(order.exchange_order_id)
         end
         order.update!(status: "cancelled")
-      rescue => e
-        Rails.logger.error("[EmergencyShutdown] cancel_order failed for order #{order.id}: #{e.message}")
+      rescue StandardError => e
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "EmergencyShutdown",
+          operation: "cancel_open_order",
+          error:     e,
+          order_id:  order.id,
+          session_id: @session_id
+        )
       end
     end
 
-    def close_open_positions!
-      Position.active.each do |position|
+    def close_open_positions_for_portfolio!(portfolio_id)
+      Position.active_for_portfolio(portfolio_id).find_each do |position|
         self.class.force_exit_position(position, @client, reason: "EMERGENCY_SHUTDOWN")
       end
     end
 
-    def mark_session_stopped!
-      TradingSession.find(@session_id).update!(status: "stopped", stopped_at: Time.current)
-    end
-
     def self.latest_mark_price_for(position)
-      Rails.cache.read("ltp:#{position.symbol}")&.to_d || position.entry_price.to_d
+      MarkPrice.for_synthetic_exit(position)
     end
   end
 end

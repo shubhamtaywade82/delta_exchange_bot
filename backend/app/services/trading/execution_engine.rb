@@ -33,6 +33,7 @@ module Trading
       idem_key = IdempotencyGuard.key_for_signal(@signal)
       return nil unless acquire_idempotency!(idem_key)
 
+      order_persisted = false
       ensure_session_has_portfolio!
 
       validate_risk_and_portfolio_guard!
@@ -41,6 +42,7 @@ module Trading
       order_attrs = OrderBuilder.build(@signal, session: @session, position: position)
       validate_margin_affordability!(order_attrs, position)
       order = OrdersRepository.create!(order_attrs)
+      order_persisted = true
 
       result = place_order(order)
       persist_order_result!(order, result)
@@ -49,13 +51,24 @@ module Trading
       Rails.logger.info("[ExecutionEngine] Order placed: #{order.exchange_order_id} for #{@signal.symbol} #{@signal.side}")
       order
     rescue OrderBuilder::SizingError => e
+      release_idempotency_after_failed_acquire!(idem_key)
       Rails.logger.warn("[ExecutionEngine] Sizing rejected signal for #{@signal.symbol}: #{e.message}")
       raise RiskManager::RiskError, e.message
     rescue RiskManager::RiskError => e
+      release_idempotency_after_failed_acquire!(idem_key)
       Rails.logger.warn("[ExecutionEngine] Risk rejected signal for #{@signal.symbol}: #{e.message}")
       raise
-    rescue => e
-      Rails.logger.error("[ExecutionEngine] Failed to execute signal for #{@signal.symbol}: #{e.message}")
+    rescue StandardError => e
+      release_idempotency_after_failed_acquire!(idem_key) unless order_persisted
+      HotPathErrorPolicy.log_swallowed_error(
+        component: "ExecutionEngine",
+        operation: "execute",
+        error:     e,
+        report_handled: false,
+        symbol:    @signal&.symbol,
+        session_id: @session&.id,
+        order_persisted: order_persisted
+      )
       raise
     end
 
@@ -66,6 +79,12 @@ module Trading
 
       Rails.logger.warn("[ExecutionEngine] Duplicate signal skipped: #{idem_key}")
       false
+    end
+
+    # Risk / sizing / margin run after acquire; without release, Redis blocks the same bar for 1h and the
+    # runner mis-labels the next attempt as SKIPPED_DUPLICATE though nothing executed.
+    def release_idempotency_after_failed_acquire!(idem_key)
+      IdempotencyGuard.release(idem_key)
     end
 
     def ensure_session_has_portfolio!
@@ -92,10 +111,10 @@ module Trading
     end
 
     def resolve_intended_fill_price(order_attrs)
-      px = order_attrs[:price].to_f
+      px = decimal_price(order_attrs[:price])
       return px if px.positive?
 
-      mark = Rails.cache.read("ltp:#{order_attrs[:symbol]}")&.to_f
+      mark = decimal_price(Rails.cache.read("ltp:#{order_attrs[:symbol]}"))
       unless mark&.positive?
         raise RiskManager::RiskError, "execution needs order price or cached ltp:#{order_attrs[:symbol]}"
       end
@@ -161,10 +180,10 @@ module Trading
     end
 
     def synthetic_fill_price(order)
-      px = order.price.to_f
+      px = decimal_price(order.price)
       return px if px.positive?
 
-      mark = Rails.cache.read("ltp:#{order.symbol}")&.to_f
+      mark = decimal_price(Rails.cache.read("ltp:#{order.symbol}"))
       raise "paper fill needs order price or cached ltp:#{order.symbol}" unless mark&.positive?
 
       mark
@@ -222,6 +241,14 @@ module Trading
       when "rejected" then "rejected"
       else "submitted"
       end
+    end
+
+    def decimal_price(value)
+      return BigDecimal("0") if value.respond_to?(:blank?) ? value.blank? : value.nil?
+
+      value.to_d
+    rescue ArgumentError, TypeError
+      BigDecimal("0")
     end
   end
 end

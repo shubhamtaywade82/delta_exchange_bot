@@ -61,7 +61,7 @@ module Bot
         price_store: @price_store,
         logger:      @logger,
         testnet:     @config.testnet?,
-        on_tick:     ->(symbol, price, _time) { 
+        on_tick:     ->(symbol, price, _time) {
           # Ensure both bot internal store and shared Rails cache are updated
           Rails.cache.write("ltp:#{symbol}", price, expires_in: 30.seconds)
         }
@@ -87,7 +87,7 @@ module Bot
 
       puts "Starting supervisor..."
       supervisor.start_all
-      
+
       puts "Bot is running. Monitoring..."
       until @shutdown_requested
         supervisor.monitor
@@ -143,10 +143,10 @@ module Bot
       loop do
         @logger.info("strategy_loop_tick")
         current_prices = @price_store.all
-        
+
         # Staggered scan of all symbols
         signals = @mtf_scanner.scan(@config.symbol_names, current_prices: current_prices)
-        
+
         signals.each do |signal|
           next if @position_tracker.open?(signal.symbol)
           unless execution_healthy?

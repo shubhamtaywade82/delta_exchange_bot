@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "erb"
 require "telegram/bot"
 
 module Bot
@@ -107,19 +108,20 @@ module Bot
         )
       end
 
-      def notify_trade_closed(symbol:, exit_price:, pnl_usd:, pnl_inr:, duration_seconds:, reason:)
+      def notify_trade_closed(symbol:, exit_price:, pnl_usd:, pnl_inr:, duration_seconds:, reason:, position_id: nil)
         return unless enabled_for?(:positions)
 
         sign  = pnl_usd >= 0 ? "+" : ""
         emoji = pnl_usd >= 0 ? "🟢" : "🔴"
         hours = duration_seconds / 3600
         mins  = (duration_seconds % 3600) / 60
+        tail = position_id.present? ? "\n<code>position_id=#{position_id}</code>" : ""
         send_message(
           "#{emoji} <b>POSITION CLOSED</b>\n" \
           "#{symbol} — #{reason}\n" \
           "Exit: $#{format('%.2f', exit_price)}\n" \
           "PnL: #{sign}$#{format('%.2f', pnl_usd)} (#{sign}₹#{pnl_inr.round(0)})\n" \
-          "Duration: #{hours}h #{mins}m"
+          "Duration: #{hours}h #{mins}m#{tail}"
         )
       end
 
@@ -127,6 +129,25 @@ module Bot
         return unless enabled_for?(:errors)
 
         send_message("🚨 <b>ERROR</b>\n#{context}\n#{message}")
+      end
+
+      # Plain-text SMC / Ollama summary from AnalysisDashboard digest; split across multiple Telegram messages.
+      def notify_smc_analysis_digest(symbol:, plain_text:)
+        return unless enabled_for?(:analysis)
+
+        plain_text = plain_text.to_s.strip
+        return if plain_text.empty?
+
+        symbol_esc = ERB::Util.html_escape(symbol.to_s)
+        body_limit = 3_800
+        pieces = Bot::Notifications::TelegramTextChunker.chunk(plain_text, max_body_chars: body_limit)
+        total = pieces.size
+
+        pieces.each_with_index do |body, i|
+          head = "🧠 <b>SMC ANALYSIS</b> #{symbol_esc}\n<code>#{i + 1}/#{total}</code>\n\n"
+          send_message("#{head}#{ERB::Util.html_escape(body)}")
+          sleep(0.06) if i < pieces.size - 1
+        end
       end
     end
   end

@@ -17,8 +17,14 @@ module Trading
         handlers = @mutex.synchronize { @subscribers[event_type].dup }
         handlers.each do |handler|
           handler.call(payload)
-        rescue => e
-          Rails.logger.error("[EventBus] Handler error for #{event_type}: #{e.message}")
+        rescue StandardError => e
+          HotPathErrorPolicy.log_swallowed_error(
+            component: "EventBus",
+            operation: "dispatch_handler",
+            error:     e,
+            event_type: event_type,
+            payload_type: payload.class.name
+          )
         end
       end
 

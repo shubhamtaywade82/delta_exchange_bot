@@ -11,11 +11,17 @@ module Trading
         order = update_order_status
         return unless order&.filled?
 
-        update_position(order)
-        create_trade_if_closing(order)
+        closing_entry = PositionsRepository.snapshot_for_closing_trade(order)
+        PositionsRepository.apply_fill_from_order!(order, closing: closing_entry.present?)
+        create_trade_if_closing(order, closing_entry)
         EventBus.publish(:position_updated, build_position_event(order))
-      rescue => e
-        Rails.logger.error("[OrderHandler] Error processing fill #{@event.exchange_order_id}: #{e.message}")
+      rescue StandardError => e
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "OrderHandler",
+          operation: "process_fill",
+          error:     e,
+          exchange_order_id: @event.exchange_order_id
+        )
       end
 
       private
@@ -29,19 +35,8 @@ module Trading
         )
       end
 
-      def update_position(order)
-        if order.side == "buy"
-          PositionsRepository.upsert_from_order(order)
-        else
-          PositionsRepository.close!(order.symbol)
-        end
-      end
-
-      def create_trade_if_closing(order)
-        return if order.side == "buy"
-
-        entry_position = PositionsRepository.open_for(order.symbol)
-        return unless entry_position
+      def create_trade_if_closing(order, entry_position)
+        return if entry_position.nil?
 
         pnl = calculate_pnl(entry_position, order)
         Trade.create!(
@@ -66,15 +61,15 @@ module Trading
       end
 
       def build_position_event(order)
-        pos = Position.find_by(symbol: order.symbol)
+        pos = Position.find_by(symbol: order.symbol, portfolio_id: order.portfolio_id)
         Events::PositionUpdated.new(
-          symbol:        order.symbol,
-          side:          pos&.side || "unknown",
-          size:          order.filled_qty,
-          entry_price:   pos&.entry_price || 0,
-          mark_price:    Rails.cache.read("ltp:#{order.symbol}").to_f,
+          symbol:         order.symbol,
+          side:           pos&.side || "unknown",
+          size:           order.filled_qty,
+          entry_price:    pos&.entry_price || 0,
+          mark_price:     MarkPrice.for_symbol(order.symbol)&.to_f || 0.0,
           unrealized_pnl: 0.0,
-          status:        pos&.status || "closed"
+          status:         pos&.status || "closed"
         )
       end
     end

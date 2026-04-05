@@ -3,6 +3,25 @@ require "rails_helper"
 RSpec.describe Position, type: :model do
   let(:portfolio) { create(:portfolio) }
 
+  describe ".active_for_portfolio" do
+    it "returns only active rows for the given portfolio" do
+      other = create(:portfolio)
+      active_target = described_class.create!(
+        symbol: "BTCUSD", side: "long", size: 1, portfolio: portfolio, status: "filled", leverage: 10, product_id: 1
+      )
+      described_class.create!(
+        symbol: "ETHUSD", side: "long", size: 1, portfolio: other, status: "filled", leverage: 10, product_id: 1
+      )
+      described_class.create!(
+        symbol: "XRPUSD", side: "long", size: 1, portfolio: portfolio, status: "closed", leverage: 10, product_id: 1
+      )
+
+      result = described_class.active_for_portfolio(portfolio.id)
+
+      expect(result).to contain_exactly(active_target)
+    end
+  end
+
   describe "validations" do
     it "defaults to init status" do
       position = described_class.new(symbol: "BTCUSD", side: "buy", size: 1, portfolio: portfolio)

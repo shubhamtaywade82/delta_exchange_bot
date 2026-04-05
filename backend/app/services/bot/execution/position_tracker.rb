@@ -188,7 +188,7 @@ module Bot
         # We need contract_value here. If it's not in the hash, we might need to store it in DB
         # or pass it from ProductCache. For now, I'll assume it's in the hash if we opened it.
         # But for re-adopted positions, we need to ensure it's there.
-        cv = pos[:contract_value] || 0.0 
+        cv = pos[:contract_value] || 0.0
         multiplier = pos[:side] == :long ? 1 : -1
         multiplier * (ltp - pos[:entry]) * pos[:lots] * cv
       end

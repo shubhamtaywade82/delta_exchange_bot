@@ -97,18 +97,18 @@ module Bot
 
         trend_st   = IndicatorFactory.compute_supertrend(trend_candles, config: @config)
         confirm_st = IndicatorFactory.compute_supertrend(confirm_candles, config: @config)
-        m15_adx = ADX.compute(confirm_candles, period: @config.adx_period)
+        confirm_adx = ADX.compute(confirm_candles, period: @config.adx_period)
         entry_st = IndicatorFactory.compute_supertrend(entry_candles, config: @config)
 
         # New Indicators
-        m15_rsi  = Indicators::RSI.compute(confirm_candles, period: 14)
+        confirm_rsi = Indicators::RSI.compute(confirm_candles, period: 14)
         entry_vwap = Indicators::VWAP.compute(entry_candles)
 
         current_vwap = entry_vwap.last
-        rsi_val      = m15_rsi.last
-        adx_val      = m15_adx.last[:adx]
-        h1_dir       = trend_st.last[:direction]
-        m15_dir      = confirm_st.last[:direction]
+        rsi_val      = confirm_rsi.last
+        adx_val      = confirm_adx.last[:adx]
+        trend_dir    = trend_st.last[:direction]
+        confirm_dir  = confirm_st.last[:direction]
         entry_prev_dir = entry_st[-2]&.dig(:direction)
         entry_last_dir = entry_st.last[:direction]
         entry_last_ts = entry_candles.last[:timestamp].to_i
@@ -124,7 +124,7 @@ module Bot
                    raw_trades
                  end
         cvd_data = Indicators::CvdCalculator.compute(trades)
-        
+
         deriv_data = if ticker
                        {
                          oi_trend: :neutral,
@@ -137,7 +137,7 @@ module Bot
                      end
 
         # Run Filters with Real Data
-        potential_side = h1_dir == :bullish ? :long : :short
+        potential_side = trend_dir == :bullish ? :long : :short
         mom_res = Filters::MomentumFilter.check(potential_side, rsi_val, logger: @logger)
         vol_res = Filters::VolumeFilter.check(potential_side, cvd_data, current_price, current_vwap, logger: @logger)
         der_res = Filters::DerivativesFilter.check(deriv_data)
@@ -149,9 +149,9 @@ module Bot
 
         # MANDATORY: Update UI even if we skip trade logic
         persist_symbol_state(symbol, {
-          h1_dir: h1_dir,
-          m15_dir: m15_dir,
-          m5_dir: entry_last_dir,
+          trend_dir: trend_dir,
+          confirm_dir: confirm_dir,
+          entry_dir: entry_last_dir,
           entry_timeframe: @config.timeframe_entry,
           adx: adx_val,
           rsi: rsi_val ? rsi_val[:value] : nil,
@@ -178,7 +178,7 @@ module Bot
         })
 
         # --- TRADE LOGIC ---
-        if h1_dir.nil? || m15_dir.nil? || entry_last_dir.nil?
+        if trend_dir.nil? || confirm_dir.nil? || entry_last_dir.nil?
           Bot::StructuredLog.log(@logger, :info, "strategy_skip", symbol: symbol, reason: "nil_direction")
           return nil
         end
@@ -200,9 +200,9 @@ module Bot
           return nil
         end
 
-        side = if h1_dir == :bullish && m15_dir == :bullish && entry_last_dir == :bullish
+        side = if trend_dir == :bullish && confirm_dir == :bullish && entry_last_dir == :bullish
                  :long
-               elsif h1_dir == :bearish && m15_dir == :bearish && entry_last_dir == :bearish
+               elsif trend_dir == :bearish && confirm_dir == :bearish && entry_last_dir == :bearish
                  :short
                end
 
@@ -213,9 +213,9 @@ module Bot
             "strategy_skip",
             symbol: symbol,
             reason: "no_confluence",
-            h1: h1_dir,
-            m15: m15_dir,
-            m5: entry_last_dir
+            trend: trend_dir,
+            confirm: confirm_dir,
+            entry: entry_last_dir
           )
           return nil
         end
@@ -395,9 +395,9 @@ module Bot
 
       def cleared_indicator_payload
         {
-          h1_dir: nil,
-          m15_dir: nil,
-          m5_dir: nil,
+          trend_dir: nil,
+          confirm_dir: nil,
+          entry_dir: nil,
           entry_timeframe: @config.timeframe_entry,
           adx: nil,
           rsi: nil,

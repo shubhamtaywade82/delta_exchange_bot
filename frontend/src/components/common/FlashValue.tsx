@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 
 interface FlashValueProps extends React.HTMLAttributes<HTMLSpanElement> {
-  value: any;
+  value: string | number | null | undefined;
   children?: React.ReactNode;
 }
 
@@ -10,12 +10,14 @@ export const FlashValue: React.FC<FlashValueProps> = ({ value, children, classNa
   const prevValue = useRef(value);
 
   useEffect(() => {
-    if (value !== prevValue.current) {
+    if (value === prevValue.current) return undefined;
+
+    prevValue.current = value;
+    const raf = requestAnimationFrame(() => {
       setIsFlashing(true);
-      const timer = setTimeout(() => setIsFlashing(false), 800);
-      prevValue.current = value;
-      return () => clearTimeout(timer);
-    }
+      setTimeout(() => setIsFlashing(false), 800);
+    });
+    return () => cancelAnimationFrame(raf);
   }, [value]);
 
   return (

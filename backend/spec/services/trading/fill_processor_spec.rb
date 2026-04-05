@@ -101,6 +101,32 @@ RSpec.describe Trading::FillProcessor do
     expect(Trading::PaperWalletPublisher).to have_received(:publish!)
   end
 
+  it "completes fill processing when PaperWalletPublisher fails under paper trading" do
+    order
+    allow(Trading::PaperTrading).to receive(:enabled?).and_return(true)
+    allow(Trading::PaperWalletPublisher).to receive(:publish!).and_raise(StandardError, "wallet publish failed")
+    allow(Rails.error).to receive(:report)
+    allow(Rails.logger).to receive(:warn)
+
+    event = Trading::Events::OrderFilled.new(
+      exchange_fill_id: "F-paper-fail",
+      exchange_order_id: "EX-1",
+      quantity: 1,
+      price: 49_900,
+      fee: 0,
+      filled_at: Time.current,
+      status: "open",
+      raw_payload: { source: "spec" }
+    )
+
+    expect { described_class.process(event) }.not_to raise_error
+    expect(Rails.error).to have_received(:report).with(
+      an_object_having_attributes(message: "wallet publish failed"),
+      handled: true,
+      context: hash_including("component" => "FillProcessor", "operation" => "publish_paper_wallet_after_fill")
+    )
+  end
+
   it "raises OverfillError when cumulative fills would exceed order size" do
     order
     create(:fill, order: order, exchange_fill_id: "F-partial", quantity: 2, price: 49_900)

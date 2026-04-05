@@ -17,7 +17,12 @@ module Trading
 
         JSON.parse(raw)
       rescue JSON::ParserError, Redis::BaseError => e
-        Rails.logger.warn("[Analysis::Store] read failed: #{e.message}")
+        HotPathErrorPolicy.log_swallowed_error(
+          component: "Analysis::Store",
+          operation: "read",
+          error:     e,
+          log_level: :warn
+        )
         empty_payload
       end
 
