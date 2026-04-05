@@ -7,7 +7,7 @@
 #     use webfactory/ssh-agent, or run this workflow on a self-hosted runner)
 #
 # Repository variables (optional):
-#   DELTA_EXCHANGE_REPOSITORY — e.g. org/delta_exchange (private gem checkout)
+#   DELTA_EXCHANGE_REPOSITORY — only if Gemfile uses path: ../../delta_exchange; else omit (rubygems).
 
 name: Deploy
 
@@ -70,14 +70,9 @@ jobs:
           fetch-depth: 1
 
       - name: Link delta_exchange for Gemfile path ../../delta_exchange
-        run: |
-          if [ -d "${GITHUB_WORKSPACE}/delta_exchange" ]; then
-            ln -sfn "${GITHUB_WORKSPACE}/delta_exchange" "${GITHUB_WORKSPACE}/../delta_exchange"
-          fi
-          if [ ! -d "${GITHUB_WORKSPACE}/../delta_exchange" ]; then
-            echo "::error::Missing path gem at ../../delta_exchange. Set DELTA_EXCHANGE_REPOSITORY."
-            exit 1
-          fi
+        env:
+          DELTA_EXCHANGE_REPOSITORY: ${{ vars.DELTA_EXCHANGE_REPOSITORY }}
+        run: bash "${GITHUB_WORKSPACE}/.github/scripts/link_delta_exchange_path_gem.sh"
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1

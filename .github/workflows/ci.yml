@@ -1,6 +1,6 @@
 # Monorepo CI: backend (Rails) + frontend (Vite/React).
-# Requires sibling gem `delta_exchange` — set repo variable DELTA_EXCHANGE_REPOSITORY
-# (e.g. owner/delta_exchange) so the checkout + symlink step can satisfy Gemfile path.
+# Optional: set DELTA_EXCHANGE_REPOSITORY (e.g. owner/delta_exchange) only when Gemfile uses
+# `gem "delta_exchange", path: "../../delta_exchange"`. Otherwise Bundler uses rubygems (default here).
 
 name: CI
 
@@ -41,14 +41,9 @@ jobs:
           fetch-depth: 1
 
       - name: Link delta_exchange for Gemfile path ../../delta_exchange
-        run: |
-          if [ -d "${GITHUB_WORKSPACE}/delta_exchange" ]; then
-            ln -sfn "${GITHUB_WORKSPACE}/delta_exchange" "${GITHUB_WORKSPACE}/../delta_exchange"
-          fi
-          if [ ! -d "${GITHUB_WORKSPACE}/../delta_exchange" ]; then
-            echo "::error::Missing path gem at ../../delta_exchange. Set GitHub variable DELTA_EXCHANGE_REPOSITORY to the repo that contains the delta_exchange gem (checked out next to this repo on disk), or vendor the gem."
-            exit 1
-          fi
+        env:
+          DELTA_EXCHANGE_REPOSITORY: ${{ vars.DELTA_EXCHANGE_REPOSITORY }}
+        run: bash "${GITHUB_WORKSPACE}/.github/scripts/link_delta_exchange_path_gem.sh"
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
@@ -95,14 +90,9 @@ jobs:
           fetch-depth: 1
 
       - name: Link delta_exchange for Gemfile path ../../delta_exchange
-        run: |
-          if [ -d "${GITHUB_WORKSPACE}/delta_exchange" ]; then
-            ln -sfn "${GITHUB_WORKSPACE}/delta_exchange" "${GITHUB_WORKSPACE}/../delta_exchange"
-          fi
-          if [ ! -d "${GITHUB_WORKSPACE}/../delta_exchange" ]; then
-            echo "::error::Missing path gem at ../../delta_exchange. Set GitHub variable DELTA_EXCHANGE_REPOSITORY."
-            exit 1
-          fi
+        env:
+          DELTA_EXCHANGE_REPOSITORY: ${{ vars.DELTA_EXCHANGE_REPOSITORY }}
+        run: bash "${GITHUB_WORKSPACE}/.github/scripts/link_delta_exchange_path_gem.sh"
 
       - name: Gitleaks
         uses: gitleaks/gitleaks-action@v2
@@ -229,14 +219,9 @@ jobs:
           fetch-depth: 1
 
       - name: Link delta_exchange for Gemfile path ../../delta_exchange
-        run: |
-          if [ -d "${GITHUB_WORKSPACE}/delta_exchange" ]; then
-            ln -sfn "${GITHUB_WORKSPACE}/delta_exchange" "${GITHUB_WORKSPACE}/../delta_exchange"
-          fi
-          if [ ! -d "${GITHUB_WORKSPACE}/../delta_exchange" ]; then
-            echo "::error::Missing path gem at ../../delta_exchange. Set GitHub variable DELTA_EXCHANGE_REPOSITORY."
-            exit 1
-          fi
+        env:
+          DELTA_EXCHANGE_REPOSITORY: ${{ vars.DELTA_EXCHANGE_REPOSITORY }}
+        run: bash "${GITHUB_WORKSPACE}/.github/scripts/link_delta_exchange_path_gem.sh"
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1

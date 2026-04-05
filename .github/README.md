@@ -9,15 +9,17 @@ Runs on pull requests and pushes to `main`:
 - **Docker:** Hadolint on `backend/Dockerfile`.
 - **PRs only:** GitHub dependency review.
 
-### Path gem `delta_exchange`
+### `delta_exchange` gem
 
-`backend/Gemfile` uses `gem "delta_exchange", path: "../../delta_exchange"`. On GitHub-hosted runners, set a **repository variable**:
+`backend/Gemfile` loads **`delta_exchange` from RubyGems** by default (`Gemfile.lock` has no `PATH` entry for it). CI does **not** require any extra checkout.
+
+If you switch the Gemfile to **`gem "delta_exchange", path: "../../delta_exchange"`**, set a **repository variable** so CI can check out and symlink the gem:
 
 | Variable | Example | Purpose |
 |----------|---------|---------|
-| `DELTA_EXCHANGE_REPOSITORY` | `your-org/delta_exchange` | Optional second checkout; CI symlinks it to `../delta_exchange` next to the workspace. |
+| `DELTA_EXCHANGE_REPOSITORY` | `your-org/delta_exchange` | Second checkout; workflow links it to `../delta_exchange` for Bundler. |
 
-If the variable is empty, CI fails fast with an error (same as the previous backend-local workflow).
+If that variable is set but checkout or permissions fail, the link step errors with a targeted message.
 
 ### Path gem `ollama-client`
 
