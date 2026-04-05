@@ -32,6 +32,10 @@ Primary goal: ship readable, maintainable Ruby code that is safe to change.
 - Start bot process directly: `cd backend && bin/bot`
 - Run primary tests: `cd backend && bundle exec rspec`
 
+## Cursor project skills
+
+Agent-oriented skill files for this repo live under [`.cursor/skills/`](.cursor/skills/) (each folder contains `SKILL.md` with YAML frontmatter). Current topics: canonical Rails runtime, SMC analysis + Telegram, Clean Ruby / PR expectations. Cursor loads them for matching tasks when skills are enabled in the product.
+
 ## Core working mindset
 
 1. Favor clarity over speed.
