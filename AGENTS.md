@@ -13,6 +13,7 @@ Primary goal: ship readable, maintainable Ruby code that is safe to change.
 ## Architecture facts to respect
 
 - Configuration vs DB vs cache precedence (bot config merge, Redis, Postgres): see [backend/docs/configuration_precedence.md](backend/docs/configuration_precedence.md).
+- SMC **event** Telegram alerts (tick-throttled, rising-edge, optional Ollama): see [backend/docs/smc_event_alerts.md](backend/docs/smc_event_alerts.md).
 - Canonical runtime: `backend/` Rails app (`Trading::Runner`, API, DB, jobs).
 - `./bin/run` delegates to `backend/bin/bot`.
 - Do not run multiple long-lived trading loops for the same session.
