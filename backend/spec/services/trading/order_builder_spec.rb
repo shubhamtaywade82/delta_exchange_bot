@@ -85,6 +85,21 @@ RSpec.describe Trading::OrderBuilder do
       }.to raise_error(Trading::OrderBuilder::SizingError, /zero contracts/)
     end
 
+    it "rejects sizing when portfolio available_balance is not positive" do
+      session.portfolio.update!(available_balance: -100.0, balance: 75.0, used_margin: 9000.0)
+      insolvent = SignalStub.new(
+        symbol: "BTCUSD",
+        side: :long,
+        entry_price: 3000.0,
+        candle_timestamp: 1,
+        strategy: "mtf",
+        stop_price: 2950.0
+      )
+      expect {
+        described_class.build(insolvent, session: session, position: position)
+      }.to raise_error(Trading::OrderBuilder::SizingError, /margin or product limit/)
+    end
+
     it "caps size by portfolio available_balance (margin budget in USD)" do
       session.portfolio.update!(available_balance: 12.0, balance: 10_000, used_margin: 9_988)
       capped = SignalStub.new(
