@@ -9,9 +9,13 @@ module Trading
     # wall-clock evaluations; rising-edge detection avoids repeats while a condition stays true; Redis
     # cooldown dampens oscillation on the same forming bar.
     #
-    # When any alert fires, optional Ollama synthesis (+DigestBuilder+ payload parity) runs **once** per burst
-    # and the summary is appended to each Telegram message (+ANALYSIS_SMC_ALERT_INCLUDE_AI+).
+    # Heavy work (REST candles, confluence, optional Ollama) runs in +SmcAlertEvaluationJob+ so the
+    # WebSocket thread only acquires the gate and enqueues.
+    #
+    # When any alert fires, optional Ollama synthesis (+DigestBuilder+ payload parity) runs **once** per burst;
+    # the summary is attached to the **first** Telegram alert delivered in that pass (+ANALYSIS_SMC_ALERT_INCLUDE_AI+).
     class SmcAlertEvaluator
+      HIGH_CONVICTION_SCORE_MIN = 5
       STATE_KEY = "delta:smc_alert:prev:%<symbol>s"
       GATE_KEY = "delta:smc_alert:gate:%<symbol>s"
       COOLDOWN_KEY = "delta:smc_alert:cooldown:%<symbol>s:%<alert_id>s"
@@ -38,6 +42,17 @@ module Trading
           return unless symbol_tracked?(sym)
           return unless acquire_eval_gate!(sym)
 
+          SmcAlertEvaluationJob.perform_later(sym)
+        end
+
+        # Invoked only from +SmcAlertEvaluationJob+ (after tick path acquired the gate).
+        def perform_evaluation!(symbol:)
+          sym = symbol.to_s.strip
+          return if sym.empty?
+          return unless feature_enabled?
+          return unless telegram_analysis_enabled?
+          return unless symbol_tracked?(sym)
+
           evaluate_and_notify!(sym)
         end
 
@@ -50,8 +65,8 @@ module Trading
           {
             "long_signal" => long_signal,
             "short_signal" => short_signal,
-            "high_conviction_long" => long_signal && long_score >= 5,
-            "high_conviction_short" => short_signal && short_score >= 5,
+            "high_conviction_long" => long_signal && long_score >= HIGH_CONVICTION_SCORE_MIN,
+            "high_conviction_short" => short_signal && short_score >= HIGH_CONVICTION_SCORE_MIN,
             "liq_sweep_bull" => truthy?(c["liq_sweep_bull"]),
             "liq_sweep_bear" => truthy?(c["liq_sweep_bear"]),
             "choch_bull" => truthy?(c["choch_bull"]),
@@ -165,7 +180,7 @@ module Trading
           current = flags_from_confluence(confluence)
           state_key = format(STATE_KEY, symbol: sym)
           prev_raw = Redis.current.get(state_key)
-          prev = prev_raw.present? ? JSON.parse(prev_raw) : {}
+          prev = parse_prev_flags(prev_raw, sym: sym)
 
           if prev.empty?
             Redis.current.set(state_key, JSON.generate(current))
@@ -233,6 +248,21 @@ module Trading
               ai_insight: ai_insight
             )
           end
+        end
+
+        def parse_prev_flags(raw, sym:)
+          return {} if raw.blank?
+
+          JSON.parse(raw)
+        rescue JSON::ParserError => e
+          HotPathErrorPolicy.log_swallowed_error(
+            component: "SmcAlertEvaluator",
+            operation: "parse_prev_flags",
+            error:     e,
+            log_level: :warn,
+            symbol:    sym
+          )
+          {}
         end
       end
     end

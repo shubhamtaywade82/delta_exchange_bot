@@ -58,25 +58,6 @@ module Trading
         return insufficient(@symbol, confirm_tf, candles_confirm.size, required) if candles_confirm.size < required
         return insufficient(@symbol, entry_tf, candles_entry.size, required) if candles_entry.size < required
 
-        trend_st = supertrend_last(candles_trend)
-        confirm_st = supertrend_last(candles_confirm)
-        entry_st = supertrend_last(candles_entry)
-        confirm_adx = Bot::Strategy::ADX.compute(candles_confirm, period: @config.adx_period).last
-
-        structure = structure_summary(trend_st, confirm_st, entry_st, confirm_adx, trend_tf, confirm_tf, entry_tf)
-
-        smc_by_timeframe = {
-          trend_tf => round_smc_snapshot(
-            Trading::Analysis::SmcSnapshot.build(candles: candles_trend, resolution: trend_tf)
-          ),
-          confirm_tf => round_smc_snapshot(
-            Trading::Analysis::SmcSnapshot.build(candles: candles_confirm, resolution: confirm_tf)
-          ),
-          entry_tf => round_smc_snapshot(
-            Trading::Analysis::SmcSnapshot.build(candles: candles_entry, resolution: entry_tf)
-          )
-        }
-
         smc_confluence_mtf = SmcConfluenceMtf.from_timeframe_candles(
           symbol: @symbol,
           timeframe_candles: {
@@ -86,36 +67,21 @@ module Trading
           }
         )
 
-        last_bar = candles_entry.last
-        last_close = last_bar[:close].to_f
-        ltp = Rails.cache.read("ltp:#{@symbol}")&.to_f
-
-        trade_plan = round_trade_plan(
-          Trading::Analysis::TradePlanBuilder.call(
-            smc_by_timeframe: smc_by_timeframe,
-            last_price: ltp.positive? ? ltp : last_close,
-            structure_bias: structure[:bias],
-            trend_timeframe: trend_tf,
-            entry_timeframe: entry_tf
-          )
+        slice = ollama_payload_slice_for_loaded_candles(
+          trend_tf: trend_tf,
+          confirm_tf: confirm_tf,
+          entry_tf: entry_tf,
+          candles_trend: candles_trend,
+          candles_confirm: candles_confirm,
+          candles_entry: candles_entry,
+          smc_confluence_mtf: smc_confluence_mtf
         )
 
-        legacy_smc = legacy_smc_from(smc_by_timeframe[entry_tf])
+        legacy_smc = legacy_smc_from(slice[:smc_by_timeframe][entry_tf])
 
-        ai_payload = {
-          smc_model_version: "2",
-          symbol: @symbol,
-          generated_at_utc: Time.current.utc.iso8601,
-          market_structure: structure,
-          mtf_alignment: mtf_alignment(smc_by_timeframe, structure),
-          risk_and_execution_framework: risk_execution_framework,
-          smc_by_timeframe: smc_by_timeframe,
-          smc_confluence_mtf: smc_confluence_mtf,
-          trade_plan: trade_plan
-        }
         ai_smc = Trading::Analysis::AiSmcSynthesizer.call(
           symbol: @symbol,
-          payload: ai_payload,
+          payload: slice[:ai_payload],
           connection_settings: @ollama_connection_settings
         )
         ai_smc = stringify_ai_smc(ai_smc) if ai_smc.is_a?(Hash)
@@ -127,23 +93,23 @@ module Trading
           ai_insight: ai_smc&.dig("summary"),
           ai_smc: ai_smc,
           price_action: {
-            last_close: round_price(last_close),
-            ltp: ltp.positive? ? round_price(ltp) : nil,
+            last_close: round_price(slice[:last_close]),
+            ltp: slice[:ltp].positive? ? round_price(slice[:ltp]) : nil,
             entry_timeframe: entry_tf,
-            last_bar_at: Time.zone.at(last_bar[:timestamp]).iso8601
+            last_bar_at: Time.zone.at(slice[:last_bar][:timestamp]).iso8601
           },
-          market_structure: structure,
+          market_structure: slice[:structure],
           timeframes: {
-            trend: timeframe_digest(trend_tf, candles_trend, trend_st),
-            confirm: timeframe_digest(confirm_tf, candles_confirm, confirm_st),
-            entry: timeframe_digest(entry_tf, candles_entry, entry_st)
+            trend: timeframe_digest(trend_tf, candles_trend, slice[:trend_st]),
+            confirm: timeframe_digest(confirm_tf, candles_confirm, slice[:confirm_st]),
+            entry: timeframe_digest(entry_tf, candles_entry, slice[:entry_st])
           },
-          smc_by_timeframe: smc_by_timeframe,
+          smc_by_timeframe: slice[:smc_by_timeframe],
           smc_confluence_mtf: smc_confluence_mtf,
-          trade_plan: trade_plan,
+          trade_plan: slice[:trade_plan],
           smc: legacy_smc,
           smc_model_version: "2",
-          mtf_alignment: mtf_alignment(smc_by_timeframe, structure),
+          mtf_alignment: mtf_alignment(slice[:smc_by_timeframe], slice[:structure]),
           risk_and_execution_framework: risk_execution_framework
         }
       end
@@ -151,6 +117,33 @@ module Trading
       private
 
       def build_ai_synthesis_from_loaded_candles(
+        trend_tf:, confirm_tf:, entry_tf:,
+        candles_trend:, candles_confirm:, candles_entry:,
+        smc_confluence_mtf:
+      )
+        slice = ollama_payload_slice_for_loaded_candles(
+          trend_tf: trend_tf,
+          confirm_tf: confirm_tf,
+          entry_tf: entry_tf,
+          candles_trend: candles_trend,
+          candles_confirm: candles_confirm,
+          candles_entry: candles_entry,
+          smc_confluence_mtf: smc_confluence_mtf
+        )
+        ai_smc = Trading::Analysis::AiSmcSynthesizer.call(
+          symbol: @symbol,
+          payload: slice[:ai_payload],
+          connection_settings: @ollama_connection_settings
+        )
+        ai_smc = stringify_ai_smc(ai_smc) if ai_smc.is_a?(Hash)
+
+        {
+          ai_insight: ai_smc&.dig("summary"),
+          ai_smc: ai_smc
+        }
+      end
+
+      def ollama_payload_slice_for_loaded_candles(
         trend_tf:, confirm_tf:, entry_tf:,
         candles_trend:, candles_confirm:, candles_entry:,
         smc_confluence_mtf:
@@ -198,16 +191,18 @@ module Trading
           smc_confluence_mtf: smc_confluence_mtf,
           trade_plan: trade_plan
         }
-        ai_smc = Trading::Analysis::AiSmcSynthesizer.call(
-          symbol: @symbol,
-          payload: ai_payload,
-          connection_settings: @ollama_connection_settings
-        )
-        ai_smc = stringify_ai_smc(ai_smc) if ai_smc.is_a?(Hash)
 
         {
-          ai_insight: ai_smc&.dig("summary"),
-          ai_smc: ai_smc
+          trend_st: trend_st,
+          confirm_st: confirm_st,
+          entry_st: entry_st,
+          structure: structure,
+          smc_by_timeframe: smc_by_timeframe,
+          trade_plan: trade_plan,
+          ai_payload: ai_payload,
+          last_bar: last_bar,
+          last_close: last_close,
+          ltp: ltp
         }
       end
 
