@@ -263,6 +263,8 @@ module Trading
             short_score: short_score,
             long_signal: long_signal,
             short_signal: short_signal,
+            pdh_sweep: pdh_sweep,
+            pdl_sweep: pdl_sweep,
             pdh: pdh,
             pdl: pdl,
             poc: poc,

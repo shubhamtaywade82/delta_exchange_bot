@@ -149,6 +149,49 @@ module Bot
           sleep(0.06) if i < pieces.size - 1
         end
       end
+
+      # Single-line SMC confluence event (Pine-style alert); uses +notifications.telegram.events.analysis+.
+      # Optional +ai_insight+ is the Ollama +AiSmcSynthesizer+ summary (chunked when long), same family as digest pushes.
+      def notify_smc_confluence_event(symbol:, title:, message_line:, ltp: nil, resolution: nil, ai_insight: nil)
+        return unless enabled_for?(:analysis)
+
+        symbol_esc = ERB::Util.html_escape(symbol.to_s)
+        title_esc = ERB::Util.html_escape(title.to_s)
+        line_esc = ERB::Util.html_escape(message_line.to_s)
+        res_tail =
+          if resolution.present?
+            "\nTF: <code>#{ERB::Util.html_escape(resolution.to_s)}</code>"
+          else
+            ""
+          end
+        close_tail =
+          if ltp.present? && ltp.to_d.positive?
+            "\nClose: $#{format('%.2f', ltp.to_f)}"
+          else
+            ""
+          end
+
+        send_message("🔔 <b>#{title_esc}</b>\n#{symbol_esc}#{res_tail}\n#{line_esc}#{close_tail}")
+
+        deliver_smc_event_ai_followup(symbol_esc: symbol_esc, plain_text: ai_insight)
+      end
+
+      private
+
+      def deliver_smc_event_ai_followup(symbol_esc:, plain_text:)
+        body = plain_text.to_s.strip
+        return if body.empty?
+
+        body_limit = 3_800
+        pieces = Bot::Notifications::TelegramTextChunker.chunk(body, max_body_chars: body_limit)
+        total = pieces.size
+
+        pieces.each_with_index do |chunk, i|
+          head = "🧠 <b>AI (SMC EVENT)</b> #{symbol_esc}\n<code>#{i + 1}/#{total}</code>\n\n"
+          send_message("#{head}#{ERB::Util.html_escape(chunk)}")
+          sleep(0.06) if i < pieces.size - 1
+        end
+      end
     end
   end
 end

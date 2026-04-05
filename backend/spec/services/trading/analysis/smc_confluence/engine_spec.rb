@@ -91,7 +91,7 @@ RSpec.describe Trading::Analysis::SmcConfluence::Engine do
       candles = 30.times.map { |i| candle(i, open: 100, high: 101, low: 99, close: 100) }
       last = described_class.run(candles).last.serialize
       expect(last).to be_a(Hash)
-      expect(last.keys).to include("long_score", "short_score", "choch_bull", "structure_bias")
+      expect(last.keys).to include("long_score", "short_score", "choch_bull", "structure_bias", "pdh_sweep", "pdl_sweep")
     end
   end
 end

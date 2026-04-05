@@ -153,4 +153,69 @@ RSpec.describe Bot::Notifications::TelegramNotifier do
       notifier.notify_smc_analysis_digest(symbol: "SOLUSD", plain_text: long)
     end
   end
+
+  context "SMC confluence event alert" do
+    let(:bot_double) { instance_double("Telegram::Bot::Client") }
+    let(:api_double) { double("api") }
+
+    it "does not send when analysis events are disabled" do
+      notifier = described_class.new(
+        enabled: true,
+        token: "token",
+        chat_id: "123",
+        event_settings: { analysis: false }
+      )
+      allow(notifier).to receive(:client).and_return(bot_double)
+      allow(bot_double).to receive(:api).and_return(api_double)
+
+      expect(api_double).not_to receive(:send_message)
+      notifier.notify_smc_confluence_event(symbol: "BTCUSD", title: "T", message_line: "M", ltp: 1.0, resolution: "5m")
+    end
+
+    it "includes title, timeframe, body, and close when enabled" do
+      notifier = described_class.new(
+        enabled: true,
+        token: "token",
+        chat_id: "123",
+        event_settings: { analysis: true }
+      )
+      allow(notifier).to receive(:client).and_return(bot_double)
+      allow(bot_double).to receive(:api).and_return(api_double)
+
+      expect(api_double).to receive(:send_message).with(
+        hash_including(
+          parse_mode: "HTML",
+          text: a_string_including("CHOCH Bullish", "BTCUSD", "5m", "structure shifted", "Close: $100.50")
+        )
+      )
+      notifier.notify_smc_confluence_event(
+        symbol: "BTCUSD",
+        title: "CHOCH Bullish",
+        message_line: "structure shifted",
+        ltp: 100.5,
+        resolution: "5m"
+      )
+    end
+
+    it "sends a follow-up AI message when ai_insight is present" do
+      notifier = described_class.new(
+        enabled: true,
+        token: "token",
+        chat_id: "123",
+        event_settings: { analysis: true }
+      )
+      allow(notifier).to receive(:client).and_return(bot_double)
+      allow(bot_double).to receive(:api).and_return(api_double)
+
+      expect(api_double).to receive(:send_message).exactly(2).times
+      notifier.notify_smc_confluence_event(
+        symbol: "BTCUSD",
+        title: "T",
+        message_line: "M",
+        ltp: nil,
+        resolution: nil,
+        ai_insight: "Ollama summary for this SMC event."
+      )
+    end
+  end
 end

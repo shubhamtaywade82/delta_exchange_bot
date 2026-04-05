@@ -64,6 +64,39 @@ RSpec.describe Trading::Analysis::DigestBuilder do
     )
   end
 
+  describe ".ai_synthesis_from_loaded_candles" do
+    let(:mtf_payload) do
+      {
+        "kind" => "smc_confluence_mtf",
+        "symbol" => "BTCUSD",
+        "timeframes" => {},
+        "alignment" => {}
+      }
+    end
+
+    it "returns ai_insight and passes the provided MTF into the Ollama payload" do
+      allow(Trading::Analysis::AiSmcSynthesizer).to receive(:call).and_return({ "summary" => "synth ok" })
+
+      result = described_class.ai_synthesis_from_loaded_candles(
+        symbol: "BTCUSD",
+        market_data: market_data,
+        config: config,
+        trend_tf: "4h",
+        confirm_tf: "1h",
+        entry_tf: "5m",
+        candles_trend: candles,
+        candles_confirm: candles,
+        candles_entry: candles,
+        smc_confluence_mtf: mtf_payload
+      )
+
+      expect(result[:ai_insight]).to eq("synth ok")
+      expect(Trading::Analysis::AiSmcSynthesizer).to have_received(:call) do |args|
+        expect(args[:payload][:smc_confluence_mtf]).to eq(mtf_payload)
+      end
+    end
+  end
+
   it "returns structure, multi-timeframe SMC, trade plan, and timeframes without error" do
     digest = described_class.call(symbol: "BTCUSD", market_data: market_data, config: config)
 

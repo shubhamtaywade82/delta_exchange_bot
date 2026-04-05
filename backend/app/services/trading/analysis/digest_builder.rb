@@ -13,6 +13,30 @@ module Trading
         ).build
       end
 
+      # Same Ollama payload as +build+ but skips writing the dashboard row; for SMC event alerts (one call per burst).
+      def self.ai_synthesis_from_loaded_candles(
+        symbol:, market_data:, config:, ollama_connection_settings: nil,
+        trend_tf:, confirm_tf:, entry_tf:,
+        candles_trend:, candles_confirm:, candles_entry:,
+        smc_confluence_mtf:
+      )
+        new(
+          symbol: symbol,
+          market_data: market_data,
+          config: config,
+          ollama_connection_settings: ollama_connection_settings
+        ).send(
+          :build_ai_synthesis_from_loaded_candles,
+          trend_tf: trend_tf,
+          confirm_tf: confirm_tf,
+          entry_tf: entry_tf,
+          candles_trend: candles_trend,
+          candles_confirm: candles_confirm,
+          candles_entry: candles_entry,
+          smc_confluence_mtf: smc_confluence_mtf
+        )
+      end
+
       def initialize(symbol:, market_data:, config:, ollama_connection_settings: nil)
         @symbol = symbol
         @market_data = market_data
@@ -126,6 +150,67 @@ module Trading
 
       private
 
+      def build_ai_synthesis_from_loaded_candles(
+        trend_tf:, confirm_tf:, entry_tf:,
+        candles_trend:, candles_confirm:, candles_entry:,
+        smc_confluence_mtf:
+      )
+        trend_st = supertrend_last(candles_trend)
+        confirm_st = supertrend_last(candles_confirm)
+        entry_st = supertrend_last(candles_entry)
+        confirm_adx = Bot::Strategy::ADX.compute(candles_confirm, period: @config.adx_period).last
+        structure = structure_summary(trend_st, confirm_st, entry_st, confirm_adx, trend_tf, confirm_tf, entry_tf)
+
+        smc_by_timeframe = {
+          trend_tf => round_smc_snapshot(
+            Trading::Analysis::SmcSnapshot.build(candles: candles_trend, resolution: trend_tf)
+          ),
+          confirm_tf => round_smc_snapshot(
+            Trading::Analysis::SmcSnapshot.build(candles: candles_confirm, resolution: confirm_tf)
+          ),
+          entry_tf => round_smc_snapshot(
+            Trading::Analysis::SmcSnapshot.build(candles: candles_entry, resolution: entry_tf)
+          )
+        }
+
+        last_bar = candles_entry.last
+        last_close = last_bar[:close].to_f
+        ltp = Rails.cache.read("ltp:#{@symbol}")&.to_f
+
+        trade_plan = round_trade_plan(
+          Trading::Analysis::TradePlanBuilder.call(
+            smc_by_timeframe: smc_by_timeframe,
+            last_price: ltp.positive? ? ltp : last_close,
+            structure_bias: structure[:bias],
+            trend_timeframe: trend_tf,
+            entry_timeframe: entry_tf
+          )
+        )
+
+        ai_payload = {
+          smc_model_version: "2",
+          symbol: @symbol,
+          generated_at_utc: Time.current.utc.iso8601,
+          market_structure: structure,
+          mtf_alignment: mtf_alignment(smc_by_timeframe, structure),
+          risk_and_execution_framework: risk_execution_framework,
+          smc_by_timeframe: smc_by_timeframe,
+          smc_confluence_mtf: smc_confluence_mtf,
+          trade_plan: trade_plan
+        }
+        ai_smc = Trading::Analysis::AiSmcSynthesizer.call(
+          symbol: @symbol,
+          payload: ai_payload,
+          connection_settings: @ollama_connection_settings
+        )
+        ai_smc = stringify_ai_smc(ai_smc) if ai_smc.is_a?(Hash)
+
+        {
+          ai_insight: ai_smc&.dig("summary"),
+          ai_smc: ai_smc
+        }
+      end
+
       def mtf_alignment(smc_by_timeframe, structure)
         trend_tf = structure.dig(:timeframes, :trend).to_s
         confirm_tf = structure.dig(:timeframes, :confirm).to_s
@@ -237,7 +322,7 @@ module Trading
         %w[pdh pdl poc vah val atr14].each do |key|
           c[key] = round_price(c[key]) if c.key?(key)
         end
-        %w[tl_bear_break tl_bull_break].each do |key|
+        %w[tl_bear_break tl_bull_break pdh_sweep pdl_sweep].each do |key|
           c[key] = c[key] ? true : false if c.key?(key)
         end
         out["smc_confluence"] = c

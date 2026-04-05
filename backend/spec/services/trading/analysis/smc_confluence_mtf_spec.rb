@@ -37,6 +37,10 @@ RSpec.describe Trading::Analysis::SmcConfluenceMtf do
       align = payload["alignment"]
       expect(align["long_signal"].keys.map(&:to_s)).to include("4h", "1h", "5m")
       expect(align["structure_bias"]).to be_a(Hash)
+      %w[liq_sweep_bull liq_sweep_bear pdh_sweep pdl_sweep].each do |key|
+        expect(align).to have_key(key)
+        expect(align[key]).to be_a(Hash)
+      end
     end
 
     it "coerces trendline break flags to booleans inside confluence" do

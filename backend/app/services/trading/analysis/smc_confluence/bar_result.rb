@@ -14,6 +14,7 @@ module Trading
                     :sess_level_bull, :sess_level_bear,
                     :vp_bull_conf, :vp_bear_conf, :near_poc, :near_vah, :near_val,
                     :long_score, :short_score, :long_signal, :short_signal,
+                    :pdh_sweep, :pdl_sweep,
                     :pdh, :pdl, :poc, :vah, :val_line, :atr14
 
         def initialize(**attrs)
@@ -47,6 +48,8 @@ module Trading
           @short_score = attrs[:short_score]
           @long_signal = attrs[:long_signal]
           @short_signal = attrs[:short_signal]
+          @pdh_sweep = attrs[:pdh_sweep]
+          @pdl_sweep = attrs[:pdl_sweep]
           @pdh = attrs[:pdh]
           @pdl = attrs[:pdl]
           @poc = attrs[:poc]
@@ -87,6 +90,8 @@ module Trading
             "short_score" => short_score,
             "long_signal" => long_signal,
             "short_signal" => short_signal,
+            "pdh_sweep" => pdh_sweep,
+            "pdl_sweep" => pdl_sweep,
             "pdh" => pdh,
             "pdl" => pdl,
             "poc" => poc,

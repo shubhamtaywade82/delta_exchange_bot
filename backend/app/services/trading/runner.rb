@@ -97,6 +97,7 @@ module Trading
       end
       EventBus.subscribe(:tick_received) do |tick|
         Handlers::TrailingStopHandler.new(tick, client: @client).call
+        Analysis::SmcAlertTickSubscriber.call(tick)
       end
     end
 

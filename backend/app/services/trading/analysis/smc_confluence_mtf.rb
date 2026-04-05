@@ -52,7 +52,11 @@ module Trading
           "long_score" => {},
           "short_score" => {},
           "choch_bull" => {},
-          "choch_bear" => {}
+          "choch_bear" => {},
+          "liq_sweep_bull" => {},
+          "liq_sweep_bear" => {},
+          "pdh_sweep" => {},
+          "pdl_sweep" => {}
         }
 
         @timeframe_candles.each do |resolution, candles|
@@ -78,6 +82,10 @@ module Trading
           alignment["short_score"][resolution] = last.short_score
           alignment["choch_bull"][resolution] = last.choch_bull
           alignment["choch_bear"][resolution] = last.choch_bear
+          alignment["liq_sweep_bull"][resolution] = last.liq_sweep_bull
+          alignment["liq_sweep_bear"][resolution] = last.liq_sweep_bear
+          alignment["pdh_sweep"][resolution] = last.pdh_sweep
+          alignment["pdl_sweep"][resolution] = last.pdl_sweep
         end
 
         {
@@ -105,7 +113,7 @@ module Trading
         %w[pdh pdl poc vah val atr14].each do |key|
           c[key] = round_price(c[key]) if c.key?(key)
         end
-        %w[tl_bear_break tl_bull_break].each do |key|
+        %w[tl_bear_break tl_bull_break pdh_sweep pdl_sweep].each do |key|
           c[key] = c[key] ? true : false if c.key?(key)
         end
         c

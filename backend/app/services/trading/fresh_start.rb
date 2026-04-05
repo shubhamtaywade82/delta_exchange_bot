@@ -20,7 +20,8 @@ module Trading
     REDIS_TRADING_SCAN_PATTERNS = [
       "delta_bot_lock:*",
       "delta:order:*",
-      "delta_bot:prices:*"
+      "delta_bot:prices:*",
+      "delta:smc_alert:*"
     ].freeze
 
     def self.call!(confirm:, stdout: $stdout)
