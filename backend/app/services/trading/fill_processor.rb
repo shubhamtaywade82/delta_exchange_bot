@@ -115,10 +115,13 @@ module Trading
 
     def apply_portfolio_after_fill!(order, fill)
       portfolio = order.portfolio
-      prior_fills = Fill.joins(:order)
-                        .where(orders: { portfolio_id: portfolio.id, symbol: order.symbol })
-                        .where.not(fills: { id: fill.id })
-                        .to_a
+      fill_ids = Fill.joins(:order)
+                     .where(orders: { portfolio_id: portfolio.id, symbol: order.symbol })
+                     .where.not(fills: { id: fill.id })
+                     .distinct
+                     .pluck(:id)
+      prior_fills = fill_ids.empty? ? [] : Fill.where(id: fill_ids).to_a
+      Fill.attach_orders!(prior_fills + [fill])
       lot = Trading::Risk::PositionLotSize.from_exchange(order.symbol.to_s).to_d
       lot = 1.to_d if lot <= 0
       delta = Trading::Ledger::NetPositionCalculator.realized_delta_for_append(

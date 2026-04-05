@@ -36,7 +36,7 @@ module Trading
         "liq=#{@position.liquidation_price} distance=#{(distance * 100).round(2)}%"
       )
       Rails.cache.write(cooldown_cache_key, 1, expires_in: COOLDOWN_TTL)
-      EmergencyShutdown.force_exit_position(@position, @client)
+      EmergencyShutdown.force_exit_position(@position, @client, reason: "NEAR_LIQUIDATION_EXIT")
     end
 
     private

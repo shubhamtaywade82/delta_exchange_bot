@@ -236,10 +236,15 @@ module Bot
       setting = settings_by_key[key]
       return if setting.nil?
 
+      value = setting.typed_value
+      return if value.nil?
+      # Blank string in DB means "no override" — keep YAML/default (avoids seed rows wiping yaml-chat, etc.).
+      return if value.is_a?(String) && value.strip.empty?
+
       leaf_key = path.pop
       container = raw
       path.each { |segment| container = container[segment] ||= {} }
-      container[leaf_key] = setting.typed_value
+      container[leaf_key] = value
     end
 
     def mode               = @raw["mode"]

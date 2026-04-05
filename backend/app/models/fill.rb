@@ -12,6 +12,19 @@ class Fill < ApplicationRecord
 
   scope :chronological, -> { order(:filled_at, :exchange_fill_id) }
 
+  # Loads orders in one query and assigns via +order=+ so associations are marked loaded (avoids N+1 on +signed_quantity+).
+  def self.attach_orders!(fills)
+    return fills if fills.blank?
+
+    order_ids = fills.map(&:order_id).uniq
+    orders_by_id = Order.where(id: order_ids).index_by(&:id)
+    fills.each do |fill|
+      order = orders_by_id[fill.order_id]
+      fill.order = order if order
+    end
+    fills
+  end
+
   # Signed contract quantity: buy adds, sell reduces (linear perp convention).
   def signed_quantity
     return 0.to_d if quantity.blank?

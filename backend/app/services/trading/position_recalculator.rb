@@ -50,8 +50,7 @@ module Trading
 
     private
 
-    # Join selects matching fill ids; load orders in one extra query and attach without +preload+ so Bullet
-    # does not treat this as an unused +includes+ (it misses +NetPositionCalculator+’s use of +order+).
+    # Join selects matching fill ids; batch-load orders and assign with +Fill.attach_orders!+ (+order=+ marks loaded).
     def load_fills_with_orders(position)
       fill_ids = Fill.joins(:order)
                      .where(orders: { portfolio_id: position.portfolio_id, symbol: position.symbol })
@@ -60,14 +59,7 @@ module Trading
       return [] if fill_ids.empty?
 
       fills = Fill.where(id: fill_ids).to_a
-      order_ids = fills.map(&:order_id).uniq
-      orders_by_id = Order.where(id: order_ids).index_by(&:id)
-      fills.each do |fill|
-        assoc = fill.association(:order)
-        assoc.target = orders_by_id[fill.order_id]
-        assoc.loaded!
-      end
-      fills
+      Fill.attach_orders!(fills)
     end
 
     def base_attrs(q, calc, lot_d, next_state, position, mark)

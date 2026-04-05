@@ -84,7 +84,11 @@ RSpec.describe Trading::NearLiquidationExit do
 
       described_class.new(position, client).check!
 
-      expect(Trading::EmergencyShutdown).to have_received(:force_exit_position).with(position, client)
+      expect(Trading::EmergencyShutdown).to have_received(:force_exit_position).with(
+        position,
+        client,
+        reason: "NEAR_LIQUIDATION_EXIT"
+      )
     end
 
     it "does not exit a long when price is far above liquidation" do
@@ -122,7 +126,11 @@ RSpec.describe Trading::NearLiquidationExit do
 
       described_class.new(position, client).check!
 
-      expect(Trading::EmergencyShutdown).to have_received(:force_exit_position).with(position, client)
+      expect(Trading::EmergencyShutdown).to have_received(:force_exit_position).with(
+        position,
+        client,
+        reason: "NEAR_LIQUIDATION_EXIT"
+      )
     end
 
     it "does not call force_exit twice within the cooldown window" do

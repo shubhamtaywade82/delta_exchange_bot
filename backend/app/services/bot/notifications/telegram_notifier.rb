@@ -24,6 +24,22 @@ module Bot
 
       private
 
+      # Maps internal close reasons to short Telegram-friendly labels (HTML-escaped).
+      def trade_close_reason_label(reason)
+        key = reason.to_s.strip
+        label = {
+          "EMERGENCY_SHUTDOWN" => "Emergency shutdown (session stopped)",
+          "FORCE_EXIT" => "Force exit",
+          "MANUAL_DASHBOARD_CLOSE" => "Manual close (dashboard)",
+          "TRAILING_STOP_EXIT" => "Trailing stop",
+          "LIQUIDATION_EXIT" => "Liquidation",
+          "NEAR_LIQUIDATION_EXIT" => "Near liquidation (protective exit)"
+        }[key]
+        return ERB::Util.html_escape(label) if label
+
+        ERB::Util.html_escape(key.presence || "unknown")
+      end
+
       def log_send_failure(message)
         unless @logger
           $stderr.puts("[TelegramNotifier] Failed to send: #{message}")
@@ -116,9 +132,10 @@ module Bot
         hours = duration_seconds / 3600
         mins  = (duration_seconds % 3600) / 60
         tail = position_id.present? ? "\n<code>position_id=#{position_id}</code>" : ""
+        reason_label = trade_close_reason_label(reason)
         send_message(
           "#{emoji} <b>POSITION CLOSED</b>\n" \
-          "#{symbol} — #{reason}\n" \
+          "#{symbol} — #{reason_label}\n" \
           "Exit: $#{format('%.2f', exit_price)}\n" \
           "PnL: #{sign}$#{format('%.2f', pnl_usd)} (#{sign}₹#{pnl_inr.round(0)})\n" \
           "Duration: #{hours}h #{mins}m#{tail}"
