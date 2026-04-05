@@ -133,19 +133,22 @@ module PaperTrading
     end
 
     def apply_fills!(fills:, order:, wallet:, product:)
+      depth = market_depth
+
       fills.each do |fill|
-        adjusted_price = ImpactModel.apply(
+        impacted_price = ImpactModel.apply(
           price: fill[:price],
           quantity: fill[:qty],
-          depth: market_depth,
+          depth: depth,
           side: order.side
         )
 
         FillApplier.new(order: order, wallet: wallet, product: product).call(
-          price: adjusted_price,
+          price: impacted_price,
           size: fill[:qty],
           leverage: effective_leverage(product),
-          liquidity: fill[:liquidity]
+          liquidity: fill[:liquidity],
+          market_snapshot: { bid: impacted_price, ask: impacted_price, depth: depth }
         )
       end
     end

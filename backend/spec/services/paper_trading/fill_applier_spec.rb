@@ -91,8 +91,18 @@ RSpec.describe PaperTrading::FillApplier do
       allow(ENV).to receive(:[]).with("PAPER_SLIPPAGE_BPS").and_return("0")
       allow(ENV).to receive(:[]).with("PAPER_IMPACT_BPS").and_return("200")
       allow(ENV).to receive(:[]).with("PAPER_MAX_SLIPPAGE_BPS").and_return("50")
+      allow(ENV).to receive(:[]).with("PAPER_MAX_LEVERAGE_CAP").and_return("10000")
 
-      applier = described_class.new(order: create_order(side: "buy", size: 1000), wallet: wallet, product: product)
+      large_wallet = create(:paper_wallet, seed_inr: BigDecimal("10000000"))
+      large_signal = create(:paper_trading_signal, paper_wallet: large_wallet, product_id: product.product_id)
+      large_order = create(:paper_order,
+        paper_wallet: large_wallet,
+        paper_product_snapshot: product,
+        paper_trading_signal: large_signal,
+        side: "buy",
+        size: 1000)
+
+      applier = described_class.new(order: large_order, wallet: large_wallet, product: product)
       applier.call(price: BigDecimal("100"), size: 1000, leverage: 10, liquidity: :taker, market_snapshot: { bid: 99, ask: 100, depth: 10 })
 
       expect(PaperFill.last.price).to eq(BigDecimal("100.5"))

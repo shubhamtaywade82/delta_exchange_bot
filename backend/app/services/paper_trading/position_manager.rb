@@ -7,6 +7,7 @@ module PaperTrading
   class PositionManager
     InsufficientMarginError = Class.new(StandardError)
     Result = Struct.new(:action, :realized_pnl, :margin_delta, keyword_init: true)
+    ADVISORY_LOCK_NAMESPACE = 0x50504152
     DEFAULT_MAINTENANCE_MARGIN_RATE = BigDecimal("0.005")
     DEFAULT_LIQUIDATION_FEE_RATE = BigDecimal("0.003")
     DEFAULT_LIQUIDATION_STEP_SIZE = 1
@@ -48,7 +49,6 @@ module PaperTrading
       contract_value = @product.contract_value.to_d
       risk_unit = @product.risk_unit_per_contract.to_d
       fill_leverage = resolve_leverage(leverage)
-      ensure_notional_cap!(incoming_qty: quantity, incoming_price: fill_price, side: side)
 
       result = nil
 
@@ -57,6 +57,7 @@ module PaperTrading
           fill.with_lock do
             @wallet.with_lock do
               @wallet.recompute_from_ledger!
+              ensure_notional_cap!(incoming_qty: quantity, incoming_price: fill_price, side: side)
               position = PaperPosition.lock.find_by(
                 paper_wallet_id: @wallet.id,
                 paper_product_snapshot_id: @product.id
@@ -74,7 +75,6 @@ module PaperTrading
               @wallet.recompute_from_ledger!
               liquidate_if_breached!
             end
-            @wallet.recompute_from_ledger!
           end
         end
       end
@@ -275,10 +275,10 @@ module PaperTrading
       cap_usd = (@wallet.balance_inr.to_d / @usd_inr_rate) * max_leverage_cap
 
       existing_notional = open_positions.sum do |position|
-        position.net_quantity.to_d * @product.contract_value.to_d * incoming_price.to_d
+        position.net_quantity.to_d * @product.contract_value.to_d * position.avg_entry_price.to_d
       end
       incoming_notional = incoming_qty.to_d * @product.contract_value.to_d * incoming_price.to_d
-      total = side == "buy" || side == "sell" ? (existing_notional + incoming_notional) : existing_notional
+      total = existing_notional + incoming_notional
       return if total <= cap_usd
 
       raise InsufficientMarginError, "notional cap exceeded: required_usd=#{total.to_s("F")} cap_usd=#{cap_usd.to_s("F")}"
@@ -343,8 +343,10 @@ module PaperTrading
 
       while position.net_quantity.positive? && !safe_after_liquidation?(mark_price: mark_price)
         step_index += 1
-        step_qty = [ liquidation_quantity_for(position: position, mark_price: mark_price), position.net_quantity ].min
+        step_qty = [liquidation_quantity_for(position: position, mark_price: mark_price), position.net_quantity].min
         apply_liquidation_step!(position: position, mark_price: mark_price, quantity: step_qty, step_index: step_index)
+        break if position.destroyed?
+
         position.reload
       end
     end
@@ -476,9 +478,16 @@ module PaperTrading
     end
 
     def with_fill_advisory_lock(fill_id)
-      key = Integer(fill_id)
-      ActiveRecord::Base.connection.execute("SELECT pg_advisory_xact_lock(#{key})")
+      lock_key = advisory_lock_key(fill_id)
+      ActiveRecord::Base.connection.exec_query(
+        "SELECT pg_advisory_xact_lock($1, $2)", "PaperFillLock",
+        [ADVISORY_LOCK_NAMESPACE, lock_key]
+      )
       yield
+    end
+
+    def advisory_lock_key(fill_id)
+      Integer(fill_id) & 0x7FFFFFFF
     end
 
     def consume_entry_fills!(position_side:, close_qty:)
@@ -543,7 +552,8 @@ module PaperTrading
     def clamp_wallet_equity_floor!
       return unless @wallet.equity_inr.to_d.negative?
 
-      @wallet.update_columns(balance_inr: 0, available_inr: 0, equity_inr: 0, used_margin_inr: 0, status: "bankrupt")
+      @wallet.assign_attributes(balance_inr: 0, available_inr: 0, equity_inr: 0, used_margin_inr: 0, status: "bankrupt")
+      @wallet.save!(validate: true)
     end
 
     def ledger_external_ref(reference:)
