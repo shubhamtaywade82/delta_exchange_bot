@@ -3,6 +3,27 @@
 **Sources:** [docs/repo_audit_backlog.md](docs/repo_audit_backlog.md), [docs/repo_audit_todo_2026-04-03.md](docs/repo_audit_todo_2026-04-03.md)  
 **Last merged:** 2026-04-05
 
+**References (paper vs live):**
+
+- [`backend/docs/paper_vs_live_parity.md`](backend/docs/paper_vs_live_parity.md) — parity matrix, operator checklist, sizing-pipeline note  
+- [`backend/docs/configuration_precedence.md`](backend/docs/configuration_precedence.md) — execution mode + config merge (links to parity doc)
+
+---
+
+## Paper vs live parity (production-like paper wallet)
+
+Target: paper should mirror **live execution, risk, and wallet semantics** except where strategy thresholds are intentionally relaxed (confidence/score gates live in config/strategy code — see [`backend/docs/paper_vs_live_parity.md`](backend/docs/paper_vs_live_parity.md)). Items below are **gaps or optional enhancements**; not all are P0.
+
+- [ ] **Simulated fills:** model **fees**, **slippage**, optional **reject** / partial-fill probability; configurable strictness (vs current instant `simulate_fill_at_market` in `Trading::ExecutionEngine`).
+- [ ] **Near-liquidation watchdog in paper:** optional flag to run `Trading::NearLiquidationExit` in paper with production thresholds (currently hard-disabled when `PaperTrading.enabled?`).
+- [ ] **Runner bootstrap in paper:** optional read-only **exchange reconcile** (positions / open orders / wallet snapshot) for drift detection vs DB-only paper state (today bootstrap is skipped in paper in `Trading::Runner#bootstrap!`).
+- [ ] **Private WS streams in paper:** document trade-off (today `Trading::PaperTrading.subscribe_private_ws_streams?` is false); optional **read-only** private subscription mode for fill/reject testing without placing orders.
+- [ ] **Emergency shutdown parity:** paper path skips exchange **cancel** and **market close** — add simulated **order book** / latency or document as permanent limitation; ensure dashboard/operators understand DB-only flatten.
+- [ ] **Unify or document sizing pipelines:** `PaperTrading::RrPositionSizer` (`PaperTradingSignal` jobs) vs `Trading::Paper::SignalPreflight` + `CapitalAllocator` (`ProcessGeneratedSignalJob`) vs live `OrderBuilder` — align economics or publish a single recommended path for “production-like” rehearsal.
+- [ ] **Live margin affordability flag parity:** when `RISK_LIVE_MARGIN_AFFORDABILITY_ENABLED` is on in live, define equivalent **strict paper** behavior (today paper uses the `MarginAffordability` branch in `ExecutionEngine`, not the live env-gated path).
+- [ ] **Regression tests:** synthetic exit marks when **Redis LTP missing** (catalog fallback vs entry); forced-close **PnL** matches `PositionRisk` for long/short with contract multiplier.
+- [ ] **Explicit “strict paper” mode (optional):** single env or setting that forces **paper risk override off**, asserts required LTP keys, and fails startup if bootstrap parity checks fail (design + implement).
+
 ---
 
 ## Incremental execution (no unnecessary regressions)
@@ -25,6 +46,7 @@ Work through items **in priority order**, one PR-sized slice at a time.
 - [x] **P0 — Hot-path error policy (baseline):** `HotPathErrorPolicy.log_swallowed_error` — `log_level:`, `report_handled:` (default `true`; `false` when error is re-raised). Wired in `EmergencyShutdown`, `OrderHandler`, `FillProcessor`, `PositionHandler`, `EventBus`, `FundingMonitor`, `MarketData::WsClient`, `ExecutionEngine`, `Bootstrap::Sync*`, **`MarketData::OhlcvFetcher`** (`fetch`, warn + `[]`), **`Analysis::HistoricalCandles`** (`fetch`, warn + `[]`; `Timeout::Error` includes `reason=timeout`), **`Delta::ProductCatalogSync`** (`sync_one!`), **`Analysis::AiSmcSynthesizer`** (`call`; `reason` `ruby_timeout` / `ollama_timeout` / `error`), **`Analysis::Store`** (`read`; invalid JSON / Redis errors), **`PaperWalletPublisher`**, **`PositionReconciliation`**, **`TelegramNotifications`**, **`Runner`** (`execute_signal` re-raises without duplicate report — `ExecutionEngine` + outer `run_strategy` cover execution failures), **`SessionResumer`**, **`PaperTrading`** (`enabled?` when `Bot::Config.load` fails), **`FreshStart`** (Redis DEL / SCAN / `Rails.cache.clear` soft-fail paths), **`RuntimeConfig`** (`fetch_boolean` only), **`Strategy::AiEdgeModel`** (`call`), **`Learning::AiRefinementTrigger`** (`call`). Specs: `ohlcv_fetcher_spec`, `historical_candles_spec`, `product_catalog_sync_spec`, `ai_smc_synthesizer_spec`, `analysis/store_spec`, `paper_wallet_publisher_spec`, `position_reconciliation_spec`, `telegram_notifications_spec`, `runner_signal_persistence_spec`, `session_resumer_spec`, `paper_trading_spec`, `fresh_start_spec`, `runtime_config_spec`, `strategy/ai_edge_model_spec`, `learning/ai_refinement_trigger_spec`. **Follow-up:** remaining swallowed `rescue` in dashboard / risk helpers; per-flow reconcile vs fail-loud.
 - [x] **P0 — BigDecimal (risk + execution prices slice):** `RiskManager` denominator / margin / daily-loss (prior). **`ExecutionEngine`** `resolve_intended_fill_price` and `synthetic_fill_price` use `decimal_price` (`.to_d`, blank → `0`, invalid → `0`) instead of `to_f` for LTP/order price. **Follow-up:** remaining execution / PnL `to_f`; UI serialization boundaries.
 - [x] **P3 — SMC Telegram event alerts + docs:** `Trading::Analysis::SmcAlertEvaluator` / `SmcAlertTickSubscriber` on `tick_received` (runner); rising-edge confluence alerts, Redis gate/cooldown/state, optional Ollama via `DigestBuilder.ai_synthesis_from_loaded_candles`; `pdh_sweep`/`pdl_sweep` on `BarResult`; `FreshStart` clears `delta:smc_alert:*`. Documented in [`backend/docs/smc_event_alerts.md`](backend/docs/smc_event_alerts.md); root `README` / `backend/README` / `configuration_precedence` / `architecture_diagrams` updated.
+- [x] **P3 — Paper vs live parity doc + backlog:** [`backend/docs/paper_vs_live_parity.md`](backend/docs/paper_vs_live_parity.md) (matrix, operator checklist, override note, sizing fork); link from [`backend/docs/configuration_precedence.md`](backend/docs/configuration_precedence.md); new **Paper vs live parity** section in this `TODO.md` for remaining work.
 
 ---
 
