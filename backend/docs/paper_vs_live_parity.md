@@ -6,6 +6,46 @@ This document describes how **paper** execution diverges from **live** in the ca
 
 ---
 
+## Canonical production topology (paper + live)
+
+**Single decision stack for “should we trade?”** Use the long-lived runner: [`Trading::Runner`](../app/services/trading/runner.rb) → [`Trading::ExecutionEngine`](../app/services/trading/execution_engine.rb). That path always runs [`Trading::RiskManager`](../app/services/trading/risk_manager.rb), [`Trading::Risk::PortfolioGuard`](../app/services/trading/risk/portfolio_guard.rb), and (in paper, unless [`PaperRiskOverride`](../app/services/trading/paper_risk_override.rb) is on) paper [`MarginAffordability`](../app/services/trading/risk/margin_affordability.rb). **Live** sends real orders to Delta; **paper** simulates fills in-process (see table below).
+
+**Paper wallet async path** — [`PaperTradingSignal`](../app/models/paper_trading_signal.rb) → [`PaperTrading::ProcessSignalJob`](../app/jobs/paper_trading/process_signal_job.rb) → [`PaperWallet`](../app/models/paper_wallet.rb) / [`PaperTrading::PositionManager`](../app/services/paper_trading/position_manager.rb) — is the **INR ledger + deep simulation** stack (FIFO margin, liquidation, funding, matching). It does **not** reuse `RiskManager` / session `Portfolio` rows. Treat it as a **lab or secondary book**, not as the sole pre-trade gate for production discipline.
+
+**Dashboard / Redis wallet API** — [`Trading::PaperWalletPublisher`](../app/services/trading/paper_wallet_publisher.rb) already prefers a **running session’s `Portfolio`** when one exists; it falls back to **`PaperWallet`** when there is no active portfolio session. That matches “runner is canonical; wallet is mirror when no session.”
+
+**Align runner paper fills with wallet-grade matching** — [`PaperTrading::SimulationProfile`](../app/services/paper_trading/simulation_profile.rb) drives **`PAPER_USE_ORDERBOOK_SIMULATOR`**: explicit env always wins; when **unset**, **production** defaults to **on** (same [`DeltaLikeFillSimulator`](../app/services/paper_trading/delta_like_fill_simulator.rb) as `ProcessSignalJob` — partials, impact, fees into `Fill` / `Portfolio`). **Development and test** default to **off** (legacy instant single-fill for speed). Set `PAPER_USE_ORDERBOOK_SIMULATOR=false` in production only if you need the old instant path.
+
+**Unification roadmap (avoid two divergent “brains” forever):**
+
+1. Prefer **ingress through the runner** (generated signals / `ProcessGeneratedSignalJob`, or future API enqueue that builds the same signal objects the runner consumes).
+2. Keep **`PaperWallet`** for INR reporting, stress tests, and exchange-shaped mechanics; optionally add explicit **mirror / projection** from runner fills into the INR ledger later if you need one operator-facing INR view — today the two books remain separate unless you build that bridge.
+
+```mermaid
+flowchart LR
+  subgraph canonical [CanonicalPath]
+    Runner[TradingRunner]
+    EE[ExecutionEngine]
+    Gates[RiskManagerAndGuards]
+    Runner --> EE
+    EE --> Gates
+  end
+  EE -->|paper| SimFill[SimulatedFills]
+  EE -->|live| Delta[DeltaREST]
+  SimFill --> Portfolio[SessionPortfolio]
+  Delta --> Portfolio
+  Portfolio --> Pub[PaperWalletPublisher]
+  subgraph lab [PaperWalletLab]
+    Job[ProcessSignalJob]
+    Ledger[PaperWalletLedger]
+    Job --> Ledger
+  end
+  Pub --> Redis[delta_wallet_state]
+  Ledger -.->|fallback when no session| Redis
+```
+
+---
+
 ## Operator checklist: “realistic paper”
 
 1. Set **`EXECUTION_MODE=paper`** explicitly (avoid ambiguous dry-run defaults in odd configs).
@@ -22,7 +62,7 @@ This document describes how **paper** execution diverges from **live** in the ca
 
 | Area | Live behavior | Paper behavior | Primary references |
 |------|----------------|----------------|-------------------|
-| **Order placement** | REST `place_order` to Delta | **(1)** Skipped — default `simulate_fill_at_market` (**instant**, fee `0`); opt-in **`PAPER_USE_ORDERBOOK_SIMULATOR`** uses the same synthetic book as (2) and emits **multiple** `FillProcessor` events with **taker fees** (`PaperTrading::Fees`, `PaperProductSnapshot` or stub). **(2)** Synthetic `PaperOrder` + simulator + [`FillApplier`](../app/services/paper_trading/fill_applier.rb) (slippage/delay per fill). | [`execution_engine.rb`](../app/services/trading/execution_engine.rb), [`process_signal_job.rb`](../app/jobs/paper_trading/process_signal_job.rb) |
+| **Order placement** | REST `place_order` to Delta | **(1)** Skipped — `simulate_fill_at_market` (**instant**, fee `0`) when orderbook sim is **off**; **`PAPER_USE_ORDERBOOK_SIMULATOR`** (see `PaperTrading::SimulationProfile`: **on by default in production** when env unset) uses the same synthetic book as (2) and emits **multiple** `FillProcessor` events with **taker fees** (`PaperTrading::Fees`, `PaperProductSnapshot` or stub). **(2)** Synthetic `PaperOrder` + simulator + [`FillApplier`](../app/services/paper_trading/fill_applier.rb) (slippage/delay per fill). | [`execution_engine.rb`](../app/services/trading/execution_engine.rb), [`simulation_profile.rb`](../app/services/paper_trading/simulation_profile.rb), [`process_signal_job.rb`](../app/jobs/paper_trading/process_signal_job.rb) |
 | **Fill realism** | Exchange partials, rejects, latency, slippage | **(1)** Legacy: single fill, fee `0`. Flagged: partials, impact, fees; **`PAPER_LIMIT_FILL_STRICT`**: empty book / non-crossing **limit** → `RiskError` (no fallback). **(2)** Same book; optional delay in `FillApplier`; reject on no liquidity. **`Portfolio`**: `apply_fill_and_sync!` debits **`fill.fee`** from balance (wallet delta = realized PnL − fee). | [`delta_like_fill_simulator.rb`](../app/services/paper_trading/delta_like_fill_simulator.rb), [`portfolio.rb`](../app/models/portfolio.rb) |
 | **Private WebSocket** | Can subscribe to private streams (orders/fills) | **`subscribe_private_streams: false`** — avoids mixing exchange account state with simulated positions; allows running with empty API keys | [`paper_trading.rb`](../app/services/trading/paper_trading.rb), [`market_data/ws_client.rb`](../app/services/trading/market_data/ws_client.rb) |
 | **Runner bootstrap** | `Bootstrap::SyncPositions` + `SyncOrders` from exchange | **Skipped** — log line “Paper mode — skipping exchange position/order bootstrap” | [`runner.rb`](../app/services/trading/runner.rb) |

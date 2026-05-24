@@ -197,7 +197,7 @@ module Trading
     end
 
     def paper_orderbook_simulator_enabled?
-      %w[1 true yes on].include?(ENV["PAPER_USE_ORDERBOOK_SIMULATOR"].to_s.strip.downcase)
+      ::PaperTrading::SimulationProfile.orderbook_simulator_enabled?
     end
 
     def paper_limit_fill_strict?
