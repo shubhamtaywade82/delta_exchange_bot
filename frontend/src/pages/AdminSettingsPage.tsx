@@ -379,7 +379,14 @@ const AdminSettingsPage: React.FC = () => {
 
       return (
         <tr key={setting.key} className="row-hover">
-          <td className="font-bold">{setting.key}</td>
+          <td className="font-bold">
+            {ui.label || setting.key}
+            {ui.description && (
+              <div className="text-muted font-normal" style={{ fontSize: '0.75rem', marginTop: '2px' }}>
+                {ui.description}
+              </div>
+            )}
+          </td>
           <td>{renderTypeCell()}</td>
           <td>{renderValueCell()}</td>
           <td>

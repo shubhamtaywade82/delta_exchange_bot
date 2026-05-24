@@ -90,7 +90,10 @@ class RuntimeSettingUi
         "risk.max_margin_per_position_pct" => number_field("float", min: 5, max: 100, step: 0.5),
         "risk.max_margin_utilization" => number_field("float", min: 0.05, max: 1, step: 0.05),
         "risk.usd_to_inr_rate" => number_field("float", min: 1, max: 200, step: 0.5),
-        "risk.simulated_capital_inr" => number_field("float", min: 1000, max: 10_000_000, step: 1000),
+        "risk.simulated_capital_inr" => number_field("float", min: 1000, max: 10_000_000, step: 1000).merge(
+          "label" => "INITIAL_PAPER_CAPITAL_INR",
+          "description" => "Seed balance for dry_run mode in INR"
+        ),
         "strategy.trailing_stop_pct" => number_field("float", min: 0.1, max: 20, step: 0.1),
         "strategy.adx.period" => number_field("integer", min: 1, max: 50, step: 1),
         "strategy.adx.threshold" => number_field("float", min: 10, max: 50, step: 0.5),
