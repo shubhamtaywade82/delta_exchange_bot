@@ -3,7 +3,7 @@
 ## 2026-04-06
 
 - **`PaperTrading::DeltaLikeFillSimulator`:** shared LTP-centered book + `MatchingEngine` + `ImpactModel` slice planning; used by `PaperTrading::ProcessSignalJob` (refactor) and optionally by `Trading::ExecutionEngine` paper mode.
-- **`PAPER_USE_ORDERBOOK_SIMULATOR`** (default off): runner / `ExecutionEngine` multi-fill path through `FillProcessor` with non-zero fees from `PaperTrading::Fees` (+ `PaperProductSnapshot` or fee stub).
+- **`PAPER_USE_ORDERBOOK_SIMULATOR`:** resolved by `PaperTrading::SimulationProfile` — explicit env wins; when unset, **production** defaults **on** (runner paper matches `DeltaLikeFillSimulator` / wallet path); **development/test** default **off**. Runner / `ExecutionEngine` multi-fill path uses `FillProcessor` with non-zero fees from `PaperTrading::Fees` (+ `PaperProductSnapshot` or fee stub).
 - **`PAPER_LIMIT_FILL_STRICT`:** when simulator returns no slices, raise `RiskManager::RiskError` instead of falling back to instant `simulate_fill_at_market`.
 - **`Portfolio#apply_fill_and_sync!`:** wallet `balance_delta` is **realized PnL − fill.fee** (fees reduce `Portfolio.balance`).
 - Specs: `delta_like_fill_simulator_spec`, `portfolio_spec`, `execution_engine` paper simulator contexts.
