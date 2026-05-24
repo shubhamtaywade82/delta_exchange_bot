@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 module PaperTrading
+  # INR-ledger async path (PaperWallet + PositionManager). For the same pre-trade risk stack as live,
+  # use Trading::Runner → ExecutionEngine; see backend/docs/paper_vs_live_parity.md (Canonical production topology).
   class ProcessSignalJob < ApplicationJob
     queue_as :trading
 
