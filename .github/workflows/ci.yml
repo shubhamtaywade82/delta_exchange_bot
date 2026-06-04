@@ -76,7 +76,7 @@ jobs:
         run: echo "version=$(tr -d '\r\n' < "${GITHUB_WORKSPACE}/backend/.ruby-version")" >> "$GITHUB_OUTPUT"
 
       - name: Gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
