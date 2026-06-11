@@ -12,7 +12,7 @@
   "dependencies": {
     "@rails/actioncable": "^8.1.300",
     "axios": "^1.16.1",
-    "lucide-react": "^1.7.0",
+    "lucide-react": "^1.17.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.15.1"
